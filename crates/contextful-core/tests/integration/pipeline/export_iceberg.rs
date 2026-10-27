@@ -1,7 +1,7 @@
 //! `run.export-iceberg`: the Iceberg `[[export]]` block, the Iceberg type each stored
 //! column takes, and the namespace each credential owns.
 
-use contextful_core::export::iceberg::{plan, IcebergRecord, IcebergType, ICEBERG_COMMIT_ATTEMPTS, ICEBERG_DATA_FILE_BYTES};
+use contextful_core::export::iceberg::{plan, IcebergRecord, IcebergType};
 use contextful_core::export::{parse_exports, ExportError, Signal};
 use contextful_core::store::reconcile::{ColumnType, FloatItem, StructField};
 
@@ -21,6 +21,7 @@ fn columns(list: &[(&str, ColumnType)]) -> Vec<(String, ColumnType)> {
 /// An Iceberg block declares `format = "iceberg"`, one landed `table`, the admitted `credential` it reads as, a REST
 /// `catalog` URI, a `storage` endpoint, a `warehouse`, a `namespace`, a `table_name`, a `format_version` of 2 or 3, and
 /// a token reference.
+// spec: run.export-iceberg.block@9f15668a
 #[test]
 fn an_iceberg_block_declares_its_catalog_target_and_credential() {
     let text = block("events-copy", "svc://mirror", "mirror", "events");
@@ -53,6 +54,7 @@ fn an_iceberg_block_declares_its_catalog_target_and_credential() {
 }
 
 /// Each stored column takes one Iceberg type that holds every value it stores.
+// spec: run.export-iceberg.cast@ff15e673
 #[test]
 fn each_stored_column_takes_the_iceberg_type_holding_its_values() {
     let stored = columns(&[
@@ -97,6 +99,7 @@ fn each_stored_column_takes_the_iceberg_type_holding_its_values() {
 
 /// A `FixedSizeList<T, n>` column exports as `list<T>` and records `n` in the table property
 /// `contextful.fixed-size-list.<column>`.
+// spec: run.export-iceberg.fixed-list@315a7e02
 #[test]
 fn a_fixed_size_list_exports_as_a_list_and_records_its_width() {
     let stored = columns(&[
@@ -113,6 +116,7 @@ fn a_fixed_size_list_exports_as_a_list_and_records_its_width() {
 }
 
 /// Under `format_version = 3`, a nanosecond timestamp column exports as `timestamptz_ns`, keeping every digit.
+// spec: run.export-iceberg.timestamp-ns@97953598
 #[test]
 fn a_nanosecond_timestamp_exports_whole_under_format_version_3() {
     let stored = columns(&[("observed_at", ColumnType::Timestamp), ("window", ColumnType::List(Box::new(ColumnType::Timestamp)))]);
@@ -123,6 +127,7 @@ fn a_nanosecond_timestamp_exports_whole_under_format_version_3() {
 
 /// A nanosecond timestamp column, top-level or nested, under `format_version = 2` raises `ExportTypeUnsupported`
 /// naming the column.
+// spec: run.export-iceberg.type-refused@7d03d5b7
 #[test]
 fn a_nanosecond_timestamp_under_format_version_2_refuses_naming_the_column() {
     for (column, ty) in [
@@ -145,6 +150,7 @@ fn a_nanosecond_timestamp_under_format_version_2_refuses_naming_the_column() {
 
 /// Two Iceberg exports naming one namespace under different credentials, one credential under two namespaces, or one
 /// table raise `ExportNamespaceShared`, naming both exports.
+// spec: run.export-iceberg.namespace-shared@f91141d4
 #[test]
 fn a_namespace_serves_one_credential_and_a_credential_one_namespace() {
     let two = |a: String, b: String| parse_exports(&format!("{a}{}", b.replace("table = \"events\"", "table = \"notes\"")));
@@ -175,11 +181,4 @@ fn an_export_commits_nothing_while_its_record_matches_the_table_and_the_source()
     assert!(!record.holds(Some(7), "f2", "i1", "t1"), "the source committed");
     assert!(!record.holds(Some(7), "f1", "i2", "t1"), "the grant changed");
     assert!(!record.holds(Some(7), "f1", "i1", "t2"), "the block points elsewhere");
-}
-
-/// The commit attempts and the data file ceiling.
-#[test]
-fn the_commit_attempts_and_the_data_file_ceiling_hold_their_bounds() {
-    assert_eq!(ICEBERG_COMMIT_ATTEMPTS, 3);
-    assert_eq!(ICEBERG_DATA_FILE_BYTES, 128 * 1024 * 1024);
 }

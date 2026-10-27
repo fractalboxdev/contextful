@@ -112,6 +112,10 @@ fn export(dir: &Path, name: &str, public: &str, token: &str) -> Output {
 
 /// The first export creates the table and appends its files; each later export commits one `overwrite` snapshot that
 /// marks every live parent file deleted, so the reader sees the latest export's rows alone.
+// spec: run.export-iceberg.create@44e94a58
+// spec: run.export-iceberg.overwrite@b95024bc
+// spec: run.export-iceberg.retention@1dc99459
+// spec: run.export-iceberg.read@f96b87c1
 #[test]
 fn two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second() {
     let remote = Remote::start();
@@ -145,6 +149,7 @@ fn two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second
 }
 
 /// An export whose recorded snapshot, frontier, read identity and target all still hold commits nothing.
+// spec: run.export-iceberg.frontier@b4d4def0
 #[test]
 fn an_unchanged_export_commits_nothing() {
     let remote = Remote::start();
@@ -165,6 +170,8 @@ fn an_unchanged_export_commits_nothing() {
 /// A commit conflicting with a snapshot another writer committed, as catalog compaction does, reloads the table and
 /// retries with the files it wrote; the last conflict raises `ExportCommitConflict`, and the exporter deletes every
 /// file that export wrote.
+// spec: run.export-iceberg.commit-retry@ed16e180
+// spec: run.export-iceberg.orphans@671e1959
 #[test]
 fn a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files() {
     let remote = Remote::start();
@@ -193,6 +200,7 @@ fn a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files()
 
 /// A commit whose outcome is unknown deletes no file; the next run reloads the table and records the commit as taken
 /// when `main` names its snapshot id.
+// spec: run.export-iceberg.commit-unknown@48a96073
 #[test]
 fn an_unknown_commit_outcome_keeps_its_files_and_the_next_run_records_it() {
     let remote = Remote::start();
@@ -219,8 +227,29 @@ fn an_unknown_commit_outcome_keeps_its_files_and_the_next_run_records_it() {
     assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "a001", "b000"]);
 }
 
+/// A source whose columns no longer match the table's current schema raises `ExportSchemaChanged` before any file is
+/// written; the export evolves no schema.
+// spec: run.export-iceberg.schema-changed@1d69fa1b
+#[test]
+fn a_source_schema_change_refuses_and_writes_no_file() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    ok(&export(p, "spans-lake", &public, &token));
+    std::fs::write(p.join("load-2.jsonl"), "{\"span_id\":\"b000\",\"duration_ms\":3,\"status\":\"ok\"}\n").unwrap();
+    ok(&cf(p, &["context", "land", "spans", "--project", "research", "--rows", "load-2.jsonl", "--run-id", "load-2", "--site-id", "site", "--now", "2030-01-01T00:01:00Z"], &[]));
+    let before = remote.s3.keys();
+    let refused = err(&export(p, "spans-lake", &public, &token));
+    assert!(refused.contains("ExportSchemaChanged"), "{refused}");
+    assert_eq!(remote.s3.keys(), before, "no file is written");
+    assert_eq!(remote.catalog.commits(), 1);
+    assert_eq!(strings(&remote.scan(), "span_id"), ids("a", 2));
+}
+
 /// A table configuration naming a storage host the block does not declare raises `ExportStorageUndeclared` before any
 /// file is written.
+// spec: run.export-iceberg.egress@24ccf4f3
 #[test]
 fn a_table_configuration_naming_an_undeclared_storage_host_refuses() {
     let remote = Remote::start();
@@ -235,6 +264,7 @@ fn a_table_configuration_naming_an_undeclared_storage_host_refuses() {
 }
 
 /// A token reference no adapter resolves refuses at preflight, before any row is read or any catalog request leaves.
+// spec: run.export-iceberg.token-preflight@bc91b669
 #[test]
 fn an_unresolved_token_refuses_before_any_catalog_request() {
     let remote = Remote::start();
@@ -262,6 +292,7 @@ fn an_export_publishes_for_its_declared_credential_alone() {
 }
 
 /// The export reads through the read face under the admitted credential, so a mask holds in the published copy.
+// spec: run.export-iceberg.read@f96b87c1
 #[test]
 fn the_published_copy_holds_the_credential_s_masks() {
     let remote = Remote::start();

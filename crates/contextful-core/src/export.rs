@@ -69,19 +69,19 @@ pub enum ExportError {
     /// A pending typed export under another read identity, or its target redirected under the same name. (`run.export.typed-identity-changed`)
     #[error("ExportIdentityChanged: {0}")]
     ExportIdentityChanged(String),
-    /// An Iceberg export column no lossless Iceberg type holds under its format version. (`run.export-iceberg.type-refused`)
+    /// An Iceberg export column holding nanosecond timestamps under format version 2. (`run.export-iceberg.type-refused`)
     #[error("ExportTypeUnsupported: {0}")]
     ExportTypeUnsupported(String),
     /// An Iceberg snapshot commit still conflicting after its last attempt. (`run.export-iceberg.commit-retry`)
     #[error("ExportCommitConflict: {0}")]
     ExportCommitConflict(String),
-    /// An Iceberg table configuration naming a storage host the block does not declare. (`run.export-iceberg.egress`)
+    /// An Iceberg table configuration naming a storage host its export block does not declare. (`run.export-iceberg.egress`)
     #[error("ExportStorageUndeclared: {0}")]
     ExportStorageUndeclared(String),
-    /// Two Iceberg exports sharing a namespace, a credential or a table. (`run.export-iceberg.namespace-shared`)
+    /// Two Iceberg exports sharing a namespace across credentials, a credential across namespaces, or one table. (`run.export-iceberg.namespace-shared`)
     #[error("ExportNamespaceShared: {0}")]
     ExportNamespaceShared(String),
-    /// A source schema the Iceberg table's current schema no longer matches. (`run.export-iceberg.schema-changed`)
+    /// An Iceberg export source whose columns no longer match the table's current schema. (`run.export-iceberg.schema-changed`)
     #[error("ExportSchemaChanged: {0}")]
     ExportSchemaChanged(String),
     /// A block that does not parse, or a row export cannot place past a cursor.

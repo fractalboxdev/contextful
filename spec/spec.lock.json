@@ -13970,7 +13970,7 @@
       "operation": "export-iceberg",
       "subject": "read",
       "kind": "behavior",
-      "statement": "An Iceberg export reads through {{run.export.post-commit-read}} and writes fresh Parquet whose every column carries its field id from the table's current schema; it references and copies no store file.",
+      "statement": "An Iceberg export reads through {{run.export.post-commit-read}} every column outside the `_` namespace and writes fresh Parquet whose every column carries its field id from the table's current schema; it references and copies no store file.",
       "why": "P5",
       "file": "spec/31-pipeline.md",
       "line": 478
@@ -14003,8 +14003,8 @@
       "operation": "export-iceberg",
       "subject": "cast",
       "kind": "behavior",
-      "statement": "Each column takes one lossless cast: 8- and 16-bit integers, signed or unsigned, to `int`, 32-bit to `long`, 64-bit to `decimal(20,0)`; a Decimal256 within Iceberg's precision to `decimal`; large and view strings to `string`.",
-      "why": "because Iceberg has no unsigned or 256-bit type, and a reader of the copy sees every source value unchanged",
+      "statement": "Each column takes the Iceberg type holding every value its stored type does: `int`, `long`, `double`, `boolean`, `string` for text and JSON, `binary`, `fixed[n]`, and nested `struct`, `list` and `map`; a variant exports as its tagged struct.",
+      "why": "because a reader of the copy sees every source value unchanged, and the read face answers each cell in its stored type",
       "file": "spec/31-pipeline.md",
       "line": 484
     },
@@ -14036,7 +14036,7 @@
       "operation": "export-iceberg",
       "subject": "type-refused",
       "kind": "refusal",
-      "statement": "A column with no lossless Iceberg type or cast, a Decimal256 of precision above 38, or a nanosecond timestamp under `format_version = 2` raises `ExportTypeUnsupported` naming the column at preflight, before any row is read.",
+      "statement": "A nanosecond timestamp column, top-level or nested, under `format_version = 2` raises `ExportTypeUnsupported` naming the column at preflight, before any row is read.",
       "why": "P1",
       "file": "spec/31-pipeline.md",
       "line": 490,
@@ -14139,6 +14139,17 @@
       ]
     },
     {
+      "id": "run.export-iceberg.schema-changed",
+      "contract": "run",
+      "operation": "export-iceberg",
+      "subject": "schema-changed",
+      "kind": "refusal",
+      "statement": "A source whose columns or types no longer match the Iceberg table's current schema raises `ExportSchemaChanged` before any file is written; the export evolves no schema.",
+      "why": "because a reader's queries name the columns they were written against, and an evolution the exporter chooses changes them unannounced",
+      "file": "spec/31-pipeline.md",
+      "line": 508
+    },
+    {
       "id": "run.export-iceberg.audience",
       "contract": "run",
       "operation": "export-iceberg",
@@ -14147,7 +14158,7 @@
       "statement": "Each Iceberg export publishes for exactly one admitted credential, which maps to exactly one namespace; the route derives the namespace from the caller's credential, and the caller never names one.",
       "why": "A-run#iceberg-audience",
       "file": "spec/31-pipeline.md",
-      "line": 508
+      "line": 510
     },
     {
       "id": "run.export-iceberg.namespace-shared",
@@ -14158,7 +14169,7 @@
       "statement": "Two Iceberg exports naming one namespace under different credentials, one credential under two namespaces, or one table raise `ExportNamespaceShared` at preflight, naming both exports.",
       "why": "A-run#iceberg-audience",
       "file": "spec/31-pipeline.md",
-      "line": 510
+      "line": 512
     },
     {
       "id": "run.export-iceberg.caller-sql",
@@ -14169,7 +14180,7 @@
       "statement": "Caller-written SQL reaches the catalog's query engine only when the warehouse holds one audience; otherwise the route runs fixed query templates against the mapped namespace.",
       "why": "A-run#iceberg-audience",
       "file": "spec/31-pipeline.md",
-      "line": 512
+      "line": 514
     },
     {
       "id": "run.export-iceberg.route",
@@ -14180,7 +14191,7 @@
       "statement": "Where a deployment adds a catalog query engine, the routing Worker sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.",
       "why": "A-topology#catalog-read-add-on",
       "file": "spec/31-pipeline.md",
-      "line": 514
+      "line": 516
     },
     {
       "id": "run.backfill.phase",
@@ -36769,6 +36780,30 @@
         },
         {
           "name": "headers"
+        },
+        {
+          "name": "credential"
+        },
+        {
+          "name": "catalog"
+        },
+        {
+          "name": "storage"
+        },
+        {
+          "name": "warehouse"
+        },
+        {
+          "name": "namespace"
+        },
+        {
+          "name": "table_name"
+        },
+        {
+          "name": "format_version"
+        },
+        {
+          "name": "token"
         }
       ],
       "clauses": [
@@ -42596,6 +42631,10 @@
             "clause": "run.export-iceberg.namespace-shared",
             "gloss": "Two Iceberg exports sharing a namespace across credentials, a credential across namespaces, or one table."
           },
+          "ExportSchemaChanged": {
+            "clause": "run.export-iceberg.schema-changed",
+            "gloss": "An Iceberg export source whose columns no longer match the table's current schema."
+          },
           "ExportSignalUnknown": {
             "clause": "run.export.signal-unknown",
             "gloss": "An export block naming a signal the built-in arm does not map."
@@ -42606,7 +42645,7 @@
           },
           "ExportTypeUnsupported": {
             "clause": "run.export-iceberg.type-refused",
-            "gloss": "An Iceberg export column no lossless cast maps under its declared format version."
+            "gloss": "An Iceberg export column holding nanosecond timestamps under format version 2."
           },
           "HistoryBoundSpelling": {
             "clause": "run.record.bound-spelling",
@@ -60417,6 +60456,166 @@
         "kind": "test",
         "path": "crates/contextful-connectors/tests/integration/derive.rs",
         "name": "a_binary_replaced_after_resolution_never_runs",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.block": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/pipeline/export_iceberg.rs",
+        "name": "an_iceberg_block_declares_its_catalog_target_and_credential",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.cast": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/pipeline/export_iceberg.rs",
+        "name": "each_stored_column_takes_the_iceberg_type_holding_its_values",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.commit-retry": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.commit-unknown": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "an_unknown_commit_outcome_keeps_its_files_and_the_next_run_records_it",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.create": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.egress": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "a_table_configuration_naming_an_undeclared_storage_host_refuses",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.fixed-list": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/pipeline/export_iceberg.rs",
+        "name": "a_fixed_size_list_exports_as_a_list_and_records_its_width",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.frontier": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "an_unchanged_export_commits_nothing",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.namespace-shared": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/pipeline/export_iceberg.rs",
+        "name": "a_namespace_serves_one_credential_and_a_credential_one_namespace",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.orphans": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.overwrite": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.read": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "the_published_copy_holds_the_credential_s_masks",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.retention": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.schema-changed": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "a_source_schema_change_refuses_and_writes_no_file",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.timestamp-ns": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/pipeline/export_iceberg.rs",
+        "name": "a_nanosecond_timestamp_exports_whole_under_format_version_3",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.token-preflight": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "an_unresolved_token_refuses_before_any_catalog_request",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.type-refused": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/pipeline/export_iceberg.rs",
+        "name": "a_nanosecond_timestamp_under_format_version_2_refuses_naming_the_column",
         "verdict": "performed",
         "proved": false
       }

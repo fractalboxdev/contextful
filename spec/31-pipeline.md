@@ -475,19 +475,19 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
 
 - `block` — An Iceberg {{type:contextful_core::export::Block}} declares `format = "iceberg"`, one landed `table`, the admitted `credential` it reads as, a REST `catalog` URI, a `storage` endpoint, a `warehouse`, a `namespace`, a `table_name`, a `format_version` of 2 or 3, and a token reference.
   *A-topology#catalog-read-add-on*
-- `read` — An Iceberg export reads through {{run.export.post-commit-read}} and writes fresh Parquet whose every column carries its field id from the table's current schema; it references and copies no store file.
+- `read` — An Iceberg export reads through {{run.export.post-commit-read}} every column outside the `_` namespace and writes fresh Parquet whose every column carries its field id from the table's current schema; it references and copies no store file.
   *P5*
 - `token-preflight` — If no adapter resolves the token reference, the exporter refuses at preflight as {{connector.resolve.unresolved-name}} before reading any row.
   *because a catalog the export cannot authenticate to is known before a file is written*
 - `egress` — Every catalog and object-store request passes through the mediated client, whose allowlist holds the declared catalog and storage hosts; a table configuration naming another storage host raises `ExportStorageUndeclared` before any file is written.
   *A-topology#one-egress*
-- `cast` — Each column takes one lossless cast: 8- and 16-bit integers, signed or unsigned, to `int`, 32-bit to `long`, 64-bit to `decimal(20,0)`; a Decimal256 within Iceberg's precision to `decimal`; large and view strings to `string`.
-  *because Iceberg has no unsigned or 256-bit type, and a reader of the copy sees every source value unchanged*
+- `cast` — Each column takes the Iceberg type holding every value its stored type does: `int`, `long`, `double`, `boolean`, `string` for text and JSON, `binary`, `fixed[n]`, and nested `struct`, `list` and `map`; a variant exports as its tagged struct.
+  *because a reader of the copy sees every source value unchanged, and the read face answers each cell in its stored type*
 - `fixed-list` — A `FixedSizeList<T, n>` column exports as `list<T>`, the exporter reattaching the element's field id and recording `n` in the table property `contextful.fixed-size-list.<column>`.
   *because Iceberg has no fixed-size list in any format version, and the width is the one fact the cast drops*
 - `timestamp-ns` — Under `format_version = 3`, a nanosecond timestamp column exports as `timestamp_ns` or `timestamptz_ns`, keeping every digit.
   *because a microsecond cast loses the digit a key or an ordering may depend on*
-- `type-refused` — A column with no lossless Iceberg type or cast, a Decimal256 of precision above 38, or a nanosecond timestamp under `format_version = 2` raises `ExportTypeUnsupported` naming the column at preflight, before any row is read.
+- `type-refused` — A nanosecond timestamp column, top-level or nested, under `format_version = 2` raises `ExportTypeUnsupported` naming the column at preflight, before any row is read.
   *P1*
 - `file-size` — The exporter writes data files of at most 128 MiB and opens a new file only when the current one reaches that size.
   *A-topology#catalog-read-add-on*
@@ -505,6 +505,8 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
   *because a reader may still plan a query against the previous snapshot while the next export commits*
 - `frontier` — The export records its committed snapshot id, source frontier, read identity and declared target, and commits nothing when all four equal the table's current snapshot id and the export's present values.
   *because each retained snapshot holds a full copy, and an unchanged export buys a reader nothing*
+- `schema-changed` — A source whose columns or types no longer match the Iceberg table's current schema raises `ExportSchemaChanged` before any file is written; the export evolves no schema.
+  *because a reader's queries name the columns they were written against, and an evolution the exporter chooses changes them unannounced*
 - `audience` — Each Iceberg export publishes for exactly one admitted credential, which maps to exactly one namespace; the route derives the namespace from the caller's credential, and the caller never names one.
   *A-run#iceberg-audience*
 - `namespace-shared` — Two Iceberg exports naming one namespace under different credentials, one credential under two namespaces, or one table raise `ExportNamespaceShared` at preflight, naming both exports.
@@ -519,8 +521,6 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
 - `run.export-iceberg.commit-retry`: WHEN catalog compaction commits between the export's table load and its commit, THEN the export reloads, marks the compacted files deleted and commits on its second attempt.
 - `run.export-iceberg.type-refused`: WHEN a table holding a nanosecond timestamp column exports under `format_version = 2`, THEN preflight refuses naming the column and no Parquet file is written.
 - `run.export-iceberg.frontier`: WHEN an export runs twice with no commit and no grant change between, THEN the second run commits no snapshot.
-
-unsettled: Does a source schema change evolve the Iceberg table through `update-schema`, or refuse as a changed read identity? owner: pipeline affects: run.export-iceberg
 
 ## backfill
 
