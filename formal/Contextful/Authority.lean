@@ -315,6 +315,7 @@ inductive Dimension where
   | maxDurationMs
   | maxResponseBytes
   | horizon
+  deriving DecidableEq
 
 /-- The dimension when a check fails, nothing when it holds. -/
 def failing (ok : Bool) (d : Dimension) : List Dimension := if ok then [] else [d]
@@ -394,7 +395,7 @@ theorem minOpt_of_within : ∀ (c p : Option Nat), ceilingWithin c p = true → 
 /-- Ceilings never widen and never clamp: a child grant the narrowing check admits names no
 ceiling above its parent grant's, and each ceiling takes effect as the child names it, or as
 the parent's when the child names none. -/
-theorem ceilings_take_effect_as_named :
+theorem grant_under_keeps_named_max_ceilings :
     ∀ (c p : Grant), c.includedIn p = true →
       (c.under p).maxRows = c.maxRows.or p.maxRows ∧ (c.under p).maxDurationMs = c.maxDurationMs.or p.maxDurationMs ∧
         (c.under p).maxResponseBytes = c.maxResponseBytes.or p.maxResponseBytes := by
