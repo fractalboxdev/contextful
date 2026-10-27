@@ -15,10 +15,10 @@
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",
-    "@fractalboxdev/merlion-rehype": "file:vendor/merlion/fractalboxdev-merlion-rehype-0.2.0.tgz",
+    "@fractalboxdev/merlion-rehype": "file:vendor/merlion/fractalboxdev-merlion-rehype-0.2.1-pre.1.tgz",
     "@fractalboxdev/merlion-themes": "file:vendor/merlion/fractalboxdev-merlion-themes-0.2.0.tgz",
-    "@fractalboxdev/merlion-view": "file:vendor/merlion/fractalboxdev-merlion-view-0.2.0.tgz",
-    "@fractalboxdev/merlion-wasm": "file:vendor/merlion/fractalboxdev-merlion-wasm-0.2.0.tgz",
+    "@fractalboxdev/merlion-view": "file:vendor/merlion/fractalboxdev-merlion-view-0.2.1-pre.1.tgz",
+    "@fractalboxdev/merlion-wasm": "file:vendor/merlion/fractalboxdev-merlion-wasm-0.2.1-pre.1.tgz",
     "astro": "^7.3.3",
     "cookie": "^2.0.1",
     "pagefind": "1.5.2",
