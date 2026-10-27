@@ -1,8 +1,12 @@
 ---
+import { release } from "../lib/corpus.mjs";
+
 const path = Astro.url.pathname;
+const target = release();
 ---
 <header class="topbar">
   <a class="brand" href="/"><strong>Contextful</strong></a>
+  <a class="release" href={target.href} title={`These pages describe Contextful ${target.tag}`}>{target.tag}</a>
   <nav class="topnav" aria-label="Main navigation">
     <a href="/docs/" aria-current={path === "/docs/" ? "page" : undefined}>Docs</a>
     <a href="/docs/specs/" aria-current={path.startsWith("/docs/specs/") ? "page" : undefined}>Specification</a>
