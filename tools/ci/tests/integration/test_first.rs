@@ -224,6 +224,25 @@ fn a_refactor_trailer_exempts_the_range() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
+// spec: assurance.test.comment-only@8c0c6370
+#[test]
+fn a_source_change_altering_only_comments_needs_no_test() {
+    let r = Repo::init();
+    r.write("crates/demo/src/lib.rs", "/// Doubles.\npub fn double(x: i32) -> i32 {\n    // the product\n    x * 2\n}\n");
+    r.commit("double");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", "/// Doubles its input.\npub fn double(x: i32) -> i32 {\n\n    // twice the input\n    x * 2\n}\n");
+    r.commit("reword the doc comment");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(o.status.success(), "{}", stderr(&o));
+
+    r.write("crates/demo/src/lib.rs", "/// Doubles its input.\npub fn double(x: i32) -> i32 {\n\n    // twice the input\n    x + x\n}\n");
+    r.commit("a code line beside the comments");
+    let o = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(!o.status.success(), "a code change rode on a comment-only file");
+    assert!(stderr(&o).contains("TestNotFirst"), "{}", stderr(&o));
+}
+
 #[test]
 fn a_refactor_commit_does_not_exempt_the_rest_of_the_range() {
     let r = Repo::init();

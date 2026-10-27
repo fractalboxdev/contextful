@@ -1733,7 +1733,34 @@ fn sources_outside_refactors(base: &str) -> Result<Vec<String>> {
             }
         }
     }
-    Ok(sources)
+    let mut held = Vec::new();
+    for source in sources {
+        if !comment_only(base, &source)? {
+            held.push(source);
+        }
+    }
+    Ok(held)
+}
+
+/// Whether the diff of `path` from the merge base alters only `//` comment lines and blank
+/// lines (`assurance.test.comment-only`): a doc comment, a gloss or a clause pointer behind
+/// `//` changes no behavior a test could observe.
+fn comment_only(base: &str, path: &str) -> Result<bool> {
+    let diff = git(&["diff", "--unified=0", &format!("{base}...HEAD"), "--", path])?;
+    let mut changed = false;
+    for line in diff.lines() {
+        let body = match line.as_bytes().first() {
+            Some(b'+') if !line.starts_with("+++") => &line[1..],
+            Some(b'-') if !line.starts_with("---") => &line[1..],
+            _ => continue,
+        };
+        changed = true;
+        let code = body.trim();
+        if !(code.is_empty() || code.starts_with("//")) {
+            return Ok(false);
+        }
+    }
+    Ok(changed)
 }
 
 fn merge_base(base: &str) -> Result<String> {
