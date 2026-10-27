@@ -177,6 +177,16 @@ export const readLock = () => {
 export const REPOSITORY = "https://github.com/fractalboxdev/contextful";
 
 /**
+ * The release these pages describe: the workspace version in the root `Cargo.toml`, the
+ * version `contextful-ci tag` names next, as its tag and that tag's release page.
+ */
+export const release = () => {
+  const cargo = parse(readFileSync(resolve(SPEC_DIR, "../Cargo.toml"), "utf8"));
+  const tag = `v${cargo.workspace.package.version}`;
+  return { tag, href: `${REPOSITORY}/releases/tag/${tag}` };
+};
+
+/**
  * Clause id → its pins from the lock's `pins` key, each `{ kind, label, href }`; an empty
  * map while the lock carries none.
  */
