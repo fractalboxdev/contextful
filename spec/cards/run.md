@@ -244,7 +244,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_cli::context::SessionBatch`
 
-The struct at `crates/contextful-cli/src/context.rs:223`, named by `run.land.session-input`.
+The struct at `crates/contextful-cli/src/context.rs`, named by `run.land.session-input`.
 
 | Key | Doc |
 | --- | --- |
@@ -254,7 +254,7 @@ The struct at `crates/contextful-cli/src/context.rs:223`, named by `run.land.ses
 
 ### `contextful_core::export::Block`
 
-The struct at `crates/contextful-core/src/export.rs:202`, named by `run.export.export-block`, `run.export.typed-block`.
+The struct at `crates/contextful-core/src/export.rs`, named by `run.export.export-block`, `run.export.typed-block`.
 
 | Key | Doc |
 | --- | --- |
@@ -269,7 +269,7 @@ The struct at `crates/contextful-core/src/export.rs:202`, named by `run.export.e
 
 ### `contextful_core::export::publication::PublicationDeclaration`
 
-The struct at `crates/contextful-core/src/export/publication.rs:14`, named by `run.export.group-block`.
+The struct at `crates/contextful-core/src/export/publication.rs`, named by `run.export.group-block`.
 
 | Key | Doc |
 | --- | --- |
@@ -279,7 +279,7 @@ The struct at `crates/contextful-core/src/export/publication.rs:14`, named by `r
 
 ### `contextful_core::pipeline::declare::PipelineSpec`
 
-The struct at `crates/contextful-core/src/pipeline/declare.rs:89`, named by `run.declare.pipeline-spec`.
+The struct at `crates/contextful-core/src/pipeline/declare.rs`, named by `run.declare.pipeline-spec`.
 
 | Key | Doc |
 | --- | --- |
@@ -302,7 +302,7 @@ The struct at `crates/contextful-core/src/pipeline/declare.rs:89`, named by `run
 
 ### `contextful_core::pipeline::declare::SourceBlock`
 
-The struct at `crates/contextful-core/src/pipeline/declare.rs:18`, named by `run.declare.pipeline-spec`.
+The struct at `crates/contextful-core/src/pipeline/declare.rs`, named by `run.declare.pipeline-spec`.
 
 | Key | Doc |
 | --- | --- |
@@ -311,7 +311,7 @@ The struct at `crates/contextful-core/src/pipeline/declare.rs:18`, named by `run
 
 ### `contextful_core::pipeline::model::BuildEntry`
 
-The struct at `crates/contextful-core/src/pipeline/model.rs:650`, named by `run.publish.build-entry`.
+The struct at `crates/contextful-core/src/pipeline/model.rs`, named by `run.publish.build-entry`.
 
 | Key | Doc |
 | --- | --- |
@@ -326,7 +326,7 @@ The struct at `crates/contextful-core/src/pipeline/model.rs:650`, named by `run.
 
 ### `contextful_core::pipeline::model::ContractColumn`
 
-The struct at `crates/contextful-core/src/pipeline/model.rs:99`, named by `run.model.contract-block`.
+The struct at `crates/contextful-core/src/pipeline/model.rs`, named by `run.model.contract-block`.
 
 | Key | Doc |
 | --- | --- |
@@ -336,7 +336,7 @@ The struct at `crates/contextful-core/src/pipeline/model.rs:99`, named by `run.m
 
 ### `contextful_core::pipeline::model::HoldRecord`
 
-The struct at `crates/contextful-core/src/pipeline/model.rs:674`, named by `run.publish.hold`.
+The struct at `crates/contextful-core/src/pipeline/model.rs`, named by `run.publish.hold`.
 
 | Key | Doc |
 | --- | --- |
@@ -347,7 +347,7 @@ The struct at `crates/contextful-core/src/pipeline/model.rs:674`, named by `run.
 
 ### `contextful_core::pipeline::model::ModelSpec`
 
-The struct at `crates/contextful-core/src/pipeline/model.rs:144`, named by `run.model.model-block`.
+The struct at `crates/contextful-core/src/pipeline/model.rs`, named by `run.model.model-block`.
 
 | Key | Doc |
 | --- | --- |
@@ -365,7 +365,7 @@ The struct at `crates/contextful-core/src/pipeline/model.rs:144`, named by `run.
 
 ### `contextful_core::pipeline::model::PublishSection`
 
-The struct at `crates/contextful-core/src/pipeline/model.rs:486`, named by `run.publish.manifest-section`.
+The struct at `crates/contextful-core/src/pipeline/model.rs`, named by `run.publish.manifest-section`.
 
 | Key | Doc |
 | --- | --- |
@@ -385,7 +385,7 @@ The struct at `crates/contextful-core/src/pipeline/model.rs:486`, named by `run.
 
 ### `contextful_core::pipeline::transform::TransformOp`
 
-The enum at `crates/contextful-core/src/pipeline/transform.rs:13`, named by `run.transform.chain`.
+The enum at `crates/contextful-core/src/pipeline/transform.rs`, named by `run.transform.chain`.
 
 | Key | Doc |
 | --- | --- |
@@ -397,7 +397,7 @@ The enum at `crates/contextful-core/src/pipeline/transform.rs:13`, named by `run
 
 ### `contextful_core::run::advance::CursorKind`
 
-The enum at `crates/contextful-core/src/run/advance.rs:13`, named by `run.advance.cursor-kind`, `run.advance.concurrency-by-kind`, `run.backfill.chunk-plan`.
+The enum at `crates/contextful-core/src/run/advance.rs`, named by `run.advance.cursor-kind`, `run.advance.concurrency-by-kind`, `run.backfill.chunk-plan`.
 
 | Key | Doc |
 | --- | --- |
@@ -407,7 +407,7 @@ The enum at `crates/contextful-core/src/run/advance.rs:13`, named by `run.advanc
 
 ### `contextful_core::run::backfill::BackfillBlock`
 
-The struct at `crates/contextful-core/src/run/backfill.rs:48`, named by `run.backfill.block`.
+The struct at `crates/contextful-core/src/run/backfill.rs`, named by `run.backfill.block`.
 
 | Key | Doc |
 | --- | --- |
@@ -417,7 +417,7 @@ The struct at `crates/contextful-core/src/run/backfill.rs:48`, named by `run.bac
 
 ### `contextful_core::run::backfill::ChunkRow`
 
-The struct at `crates/contextful-core/src/run/backfill.rs:215`, named by `run.backfill.chunk`.
+The struct at `crates/contextful-core/src/run/backfill.rs`, named by `run.backfill.chunk`.
 
 | Key | Doc |
 | --- | --- |
@@ -436,7 +436,7 @@ The struct at `crates/contextful-core/src/run/backfill.rs:215`, named by `run.ba
 
 ### `contextful_core::run::backfill::PipelinePhase`
 
-The enum at `crates/contextful-core/src/run/backfill.rs:21`, named by `run.backfill.phase`.
+The enum at `crates/contextful-core/src/run/backfill.rs`, named by `run.backfill.phase`.
 
 | Key | Doc |
 | --- | --- |
@@ -447,7 +447,7 @@ The enum at `crates/contextful-core/src/run/backfill.rs:21`, named by `run.backf
 
 ### `contextful_core::run::derive::config::Binding`
 
-The struct at `crates/contextful-core/src/run/derive/config.rs:232`, named by `run.bind.command-in-manifest`, `run.fetch.binding-key`.
+The struct at `crates/contextful-core/src/run/derive/config.rs`, named by `run.bind.command-in-manifest`, `run.fetch.binding-key`.
 
 | Key | Doc |
 | --- | --- |
@@ -468,7 +468,7 @@ The struct at `crates/contextful-core/src/run/derive/config.rs:232`, named by `r
 
 ### `contextful_core::run::drive::ItemTerminal`
 
-The enum at `crates/contextful-core/src/run/drive.rs:108`, named by `run.items.terminal-outcome`.
+The enum at `crates/contextful-core/src/run/drive.rs`, named by `run.items.terminal-outcome`.
 
 | Key | Doc |
 | --- | --- |
@@ -478,7 +478,7 @@ The enum at `crates/contextful-core/src/run/drive.rs:108`, named by `run.items.t
 
 ### `contextful_core::run::failure::FailureTag`
 
-The enum at `crates/contextful-core/src/run/failure.rs:7`, named by `run.retry.failure-taxonomy`.
+The enum at `crates/contextful-core/src/run/failure.rs`, named by `run.retry.failure-taxonomy`.
 
 | Key | Doc |
 | --- | --- |
@@ -495,7 +495,7 @@ The enum at `crates/contextful-core/src/run/failure.rs:7`, named by `run.retry.f
 
 ### `contextful_core::run::nodes::NodeKind`
 
-The enum at `crates/contextful-core/src/run/nodes.rs:32`, named by `run.compile.plan-node`.
+The enum at `crates/contextful-core/src/run/nodes.rs`, named by `run.compile.plan-node`.
 
 | Key | Doc |
 | --- | --- |
@@ -508,7 +508,7 @@ The enum at `crates/contextful-core/src/run/nodes.rs:32`, named by `run.compile.
 
 ### `contextful_core::run::ports::DeadLetter`
 
-The struct at `crates/contextful-core/src/run/ports.rs:74`, named by `run.guard-secrets.dead-letter-reason`, `run.land.dead-letter`, `run.land.dead-letter-occupied`.
+The struct at `crates/contextful-core/src/run/ports.rs`, named by `run.guard-secrets.dead-letter-reason`, `run.land.dead-letter`, `run.land.dead-letter-occupied`.
 
 | Key | Doc |
 | --- | --- |
@@ -518,7 +518,7 @@ The struct at `crates/contextful-core/src/run/ports.rs:74`, named by `run.guard-
 
 ### `contextful_core::run::project::Snapshot`
 
-The struct at `crates/contextful-core/src/run/project.rs:80`, named by `run.project.wire-snapshot`.
+The struct at `crates/contextful-core/src/run/project.rs`, named by `run.project.wire-snapshot`.
 
 | Key | Doc |
 | --- | --- |
@@ -534,7 +534,7 @@ The struct at `crates/contextful-core/src/run/project.rs:80`, named by `run.proj
 
 ### `contextful_core::run::project::StepStatus`
 
-The enum at `crates/contextful-core/src/run/project.rs:32`, named by `run.project.step-view`.
+The enum at `crates/contextful-core/src/run/project.rs`, named by `run.project.step-view`.
 
 | Key | Doc |
 | --- | --- |
@@ -546,7 +546,7 @@ The enum at `crates/contextful-core/src/run/project.rs:32`, named by `run.projec
 
 ### `contextful_core::run::project::StepView`
 
-The struct at `crates/contextful-core/src/run/project.rs:64`, named by `run.project.step-view`.
+The struct at `crates/contextful-core/src/run/project.rs`, named by `run.project.step-view`.
 
 | Key | Doc |
 | --- | --- |
@@ -560,7 +560,7 @@ The struct at `crates/contextful-core/src/run/project.rs:64`, named by `run.proj
 
 ### `contextful_core::run::record::InputBounds`
 
-The struct at `crates/contextful-core/src/run/record.rs:233`, named by `run.record.sweep-bounds`.
+The struct at `crates/contextful-core/src/run/record.rs`, named by `run.record.sweep-bounds`.
 
 | Key | Doc |
 | --- | --- |
@@ -574,7 +574,7 @@ The struct at `crates/contextful-core/src/run/record.rs:233`, named by `run.reco
 
 ### `contextful_core::run::record::RunRow`
 
-The struct at `crates/contextful-core/src/run/record.rs:127`, named by `run.record.columns`, `run.land.ingest-tally`.
+The struct at `crates/contextful-core/src/run/record.rs`, named by `run.record.columns`, `run.land.ingest-tally`.
 
 | Key | Doc |
 | --- | --- |
@@ -615,7 +615,7 @@ The struct at `crates/contextful-core/src/run/record.rs:127`, named by `run.reco
 
 ### `contextful_core::run::record::RunStatus`
 
-The enum at `crates/contextful-core/src/run/record.rs:13`, named by `run.cancel.not-in-flight`, `run.record.status-set`.
+The enum at `crates/contextful-core/src/run/record.rs`, named by `run.cancel.not-in-flight`, `run.record.status-set`.
 
 | Key | Doc |
 | --- | --- |
@@ -629,7 +629,7 @@ The enum at `crates/contextful-core/src/run/record.rs:13`, named by `run.cancel.
 
 ### `contextful_core::run::sweep::Sweep`
 
-The struct at `crates/contextful-core/src/run/sweep.rs:23`, named by `run.sweep.origins`.
+The struct at `crates/contextful-core/src/run/sweep.rs`, named by `run.sweep.origins`.
 
 | Key | Doc |
 | --- | --- |
@@ -640,7 +640,7 @@ The struct at `crates/contextful-core/src/run/sweep.rs:23`, named by `run.sweep.
 
 ### `contextful_core::store::declare::TableDecl`
 
-The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store.declare.table-block`, `store.declare.erasure-metadata`, `run.model.restricted-input`, `run.publish.disclosure-digest`.
+The struct at `crates/contextful-core/src/store/declare.rs`, named by `store.declare.table-block`, `store.declare.erasure-metadata`, `run.model.restricted-input`, `run.publish.disclosure-digest`.
 
 | Key | Doc |
 | --- | --- |
@@ -681,7 +681,7 @@ The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store
 
 ### `contextful_core::surface::delegate::Answer`
 
-The enum at `crates/contextful-core/src/surface/delegate.rs:221`, named by `run.items.delegated-item`, `surface.delegate.outcome`.
+The enum at `crates/contextful-core/src/surface/delegate.rs`, named by `run.items.delegated-item`, `surface.delegate.outcome`.
 
 | Key | Doc |
 | --- | --- |

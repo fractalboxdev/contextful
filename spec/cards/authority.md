@@ -149,7 +149,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_core::exchange::RawPolicy`
 
-The struct at `crates/contextful-core/src/exchange.rs:210`, named by `authority.exchange.policy`.
+The struct at `crates/contextful-core/src/exchange.rs`, named by `authority.exchange.policy`.
 
 | Key | Doc |
 | --- | --- |
@@ -166,7 +166,7 @@ The struct at `crates/contextful-core/src/exchange.rs:210`, named by `authority.
 
 ### `contextful_core::grant::Action`
 
-The enum at `crates/contextful-core/src/grant.rs:16`, named by `authority.grant.actions`.
+The enum at `crates/contextful-core/src/grant.rs`, named by `authority.grant.actions`.
 
 | Key | Doc |
 | --- | --- |
@@ -178,7 +178,7 @@ The enum at `crates/contextful-core/src/grant.rs:16`, named by `authority.grant.
 
 ### `contextful_core::identify::LinkMethod`
 
-The enum at `crates/contextful-core/src/identify.rs:256`, named by `authority.identify.unverified-link`.
+The enum at `crates/contextful-core/src/identify.rs`, named by `authority.identify.unverified-link`.
 
 | Key | Doc |
 | --- | --- |
@@ -188,7 +188,7 @@ The enum at `crates/contextful-core/src/identify.rs:256`, named by `authority.id
 
 ### `contextful_policy::enforce::mask::RawColumnPolicy`
 
-The struct at `crates/contextful-policy/src/enforce/mask.rs:158`, named by `authority.mask.column-policy`, `authority.mask.row-class`.
+The struct at `crates/contextful-policy/src/enforce/mask.rs`, named by `authority.mask.column-policy`, `authority.mask.row-class`.
 
 | Key | Doc |
 | --- | --- |

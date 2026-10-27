@@ -161,7 +161,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_core::connector::manifest::Raw`
 
-The struct at `crates/contextful-core/src/connector/manifest.rs:15`, named by `connector.package.manifest-keys`.
+The struct at `crates/contextful-core/src/connector/manifest.rs`, named by `connector.package.manifest-keys`.
 
 | Key | Doc |
 | --- | --- |
@@ -176,7 +176,7 @@ The struct at `crates/contextful-core/src/connector/manifest.rs:15`, named by `c
 
 ### `contextful_core::connector::record::OperatorRecord`
 
-The struct at `crates/contextful-core/src/connector/record.rs:41`, named by `connector.record.record-table`.
+The struct at `crates/contextful-core/src/connector/record.rs`, named by `connector.record.record-table`.
 
 | Key | Doc |
 | --- | --- |

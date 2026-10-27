@@ -149,7 +149,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_core::store::declare::AvailableTime`
 
-The struct at `crates/contextful-core/src/store/declare.rs:49`, named by `store.available-time.declaration`.
+The struct at `crates/contextful-core/src/store/declare.rs`, named by `store.available-time.declaration`.
 
 | Key | Doc |
 | --- | --- |
@@ -161,7 +161,7 @@ The struct at `crates/contextful-core/src/store/declare.rs:49`, named by `store.
 
 ### `contextful_core::store::declare::SnapshotDecl`
 
-The struct at `crates/contextful-core/src/store/declare.rs:81`, named by `store.snapshot.capture`.
+The struct at `crates/contextful-core/src/store/declare.rs`, named by `store.snapshot.capture`.
 
 | Key | Doc |
 | --- | --- |
@@ -173,7 +173,7 @@ The struct at `crates/contextful-core/src/store/declare.rs:81`, named by `store.
 
 ### `contextful_core::store::declare::TableDecl`
 
-The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store.declare.table-block`, `store.declare.erasure-metadata`, `run.model.restricted-input`, `run.publish.disclosure-digest`.
+The struct at `crates/contextful-core/src/store/declare.rs`, named by `store.declare.table-block`, `store.declare.erasure-metadata`, `run.model.restricted-input`, `run.publish.disclosure-digest`.
 
 | Key | Doc |
 | --- | --- |
@@ -214,7 +214,7 @@ The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store
 
 ### `contextful_core::store::index::IndexBlock`
 
-The struct at `crates/contextful-core/src/store/index.rs:191`, named by `store.index.declaration`.
+The struct at `crates/contextful-core/src/store/index.rs`, named by `store.index.declaration`.
 
 | Key | Doc |
 | --- | --- |
@@ -230,7 +230,7 @@ The struct at `crates/contextful-core/src/store/index.rs:191`, named by `store.i
 
 ### `contextful_core::store::sync::Tombstone`
 
-The struct at `crates/contextful-core/src/store/sync.rs:345`, named by `store.merge.tombstone-signed`.
+The struct at `crates/contextful-core/src/store/sync.rs`, named by `store.merge.tombstone-signed`.
 
 | Key | Doc |
 | --- | --- |

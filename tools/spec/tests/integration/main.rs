@@ -47,10 +47,13 @@ impl Scratch {
         // Each pointed-at type's own item, so no other definition in its file (an error variant,
         // a bound constant) enters the scratch as a source site.
         let mut items: std::collections::BTreeMap<String, Vec<String>> = Default::default();
-        for record in lock["types"].as_object().into_iter().flat_map(|t| t.values()) {
+        for (path, record) in lock["types"].as_object().into_iter().flatten() {
             let file = record["file"].as_str().unwrap().to_string();
             let text = std::fs::read_to_string(live.join(&file)).unwrap();
-            items.entry(file.clone()).or_default().push(item_at(&text, record["line"].as_u64().unwrap() as usize));
+            let (kind, name) = (record["kind"].as_str().unwrap(), path.rsplit("::").next().unwrap());
+            let keyword = regex::Regex::new(&format!(r"^.*\b{kind}\s+{name}\b")).unwrap();
+            let line = text.lines().position(|l| keyword.is_match(l)).unwrap_or_else(|| panic!("no {kind} {name} in {file}")) + 1;
+            items.entry(file.clone()).or_default().push(item_at(&text, line));
             let package = Path::new(&file).ancestors().find(|p| live.join(p).join("Cargo.toml").is_file()).unwrap();
             let manifest = package.join("Cargo.toml");
             s.write(&manifest.to_string_lossy(), &std::fs::read_to_string(live.join(&manifest)).unwrap());

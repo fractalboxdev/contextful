@@ -10,12 +10,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::OnceLock;
 
-/// One pointed type in the lock file: where it is defined, its members, and the clauses
+/// One pointed type in the lock file: the file defining it, its members, and the clauses
 /// pointing at it.
 #[derive(Serialize, Clone, Debug)]
 pub struct TypeRecord {
     pub file: String,
-    pub line: usize,
     pub kind: &'static str,
     pub members: Vec<Member>,
     pub clauses: Vec<String>,
@@ -98,9 +97,7 @@ fn resolve(c: &Corpus, path: &str) -> Option<TypeRecord> {
         for item in &file.items {
             if let Some((kind, ident, members)) = shape(item) {
                 if ident == *name {
-                    let keyword = regex::Regex::new(&format!(r"(?m)^.*\b{kind}\s+{ident}\b")).ok()?;
-                    let line = keyword.find(&text).map_or(0, |m| text[..m.start()].lines().count() + 1);
-                    return Some(TypeRecord { file: site.file.clone(), line, kind, members, clauses: Vec::new() });
+                    return Some(TypeRecord { file: site.file.clone(), kind, members, clauses: Vec::new() });
                 }
             }
         }
