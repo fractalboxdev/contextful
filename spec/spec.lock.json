@@ -54670,7 +54670,7 @@
         "kind": "test",
         "path": "tools/spec/tests/integration/rationale.rs",
         "name": "each_adr_section_lists_the_clauses_citing_it_in_the_card_and_the_lock",
-        "line": 269,
+        "line": 282,
         "verdict": "performed",
         "proved": false
       }

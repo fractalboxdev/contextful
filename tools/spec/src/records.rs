@@ -142,8 +142,11 @@ fn candidates<'a>(cl: &Clause, adr: &'a [(String, BTreeSet<String>)]) -> Vec<&'a
 /// `contextful-spec why-migrate <A-id>...`: rewrite each bare citation of a named ADR
 /// whose clause one section alone names, and print the rest per contract.
 pub fn migrate(c: &Corpus, ids: &[String]) -> Result<()> {
-    let mut rewrites: BTreeMap<String, Vec<(usize, String, String)>> = BTreeMap::new();
+    // Each clause's Why as written and its citations after every rewrite so far, keyed by
+    // file and line, so two named ADRs on one Why rewrite it in turn.
+    let mut rewrites: BTreeMap<(String, usize), (String, Vec<String>)> = BTreeMap::new();
     let mut unresolved: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut total = 0;
     for id in ids {
         let Some(d) = c.records().find(|d| record_id(&d.rel).as_deref() == Some(id.as_str())) else { bail!("why-migrate: `{id}` names no contract ADR") };
         let adr: Vec<(String, BTreeSet<String>)> =
@@ -155,8 +158,11 @@ pub fn migrate(c: &Corpus, ids: &[String]) -> Result<()> {
             }
             match candidates(cl, &adr).as_slice() {
                 [one] => {
-                    let why = cited.iter().map(|w| if w == id { format!("{id}#{one}") } else { w.clone() }).collect::<Vec<_>>().join(", ");
-                    rewrites.entry(cl.file.clone()).or_default().push((cl.line, cl.why.clone(), why));
+                    let (_, current) = rewrites.entry((cl.file.clone(), cl.line)).or_insert_with(|| (cl.why.clone(), cited));
+                    for w in current.iter_mut().filter(|w| *w == id) {
+                        *w = format!("{id}#{one}");
+                        total += 1;
+                    }
                 }
                 many => {
                     let names = if many.is_empty() { "no section".to_string() } else { many.iter().map(|s| format!("#{s}")).collect::<Vec<_>>().join(" ") };
@@ -165,22 +171,24 @@ pub fn migrate(c: &Corpus, ids: &[String]) -> Result<()> {
             }
         }
     }
-    let mut total = 0;
-    for (rel, edits) in &rewrites {
-        let path = c.root.join(rel);
-        let text = std::fs::read_to_string(&path)?;
-        let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
-        for (line, old, new) in edits {
-            // the Why sits on the line after its item
-            let why = &mut lines[*line];
-            let want = format!("  *{old}*");
-            if *why != want {
-                bail!("why-migrate: {rel}:{} is not `{want}`", line + 1);
-            }
-            *why = format!("  *{new}*");
-            total += 1;
+    // Every file is rewritten in memory first, so a line that no longer matches leaves the
+    // corpus untouched.
+    let mut files: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for ((rel, line), (old, new)) in &rewrites {
+        if !files.contains_key(rel) {
+            let text = std::fs::read_to_string(c.root.join(rel))?;
+            files.insert(rel.clone(), text.lines().map(str::to_string).collect());
         }
-        std::fs::write(&path, lines.join("\n") + "\n")?;
+        let lines = files.get_mut(rel).expect("read above");
+        // the Why sits on the line after its item
+        let want = format!("  *{old}*");
+        match lines.get_mut(*line) {
+            Some(why) if *why == want => *why = format!("  *{}*", new.join(", ")),
+            _ => bail!("why-migrate: {rel}:{} is not `{want}`", line + 1),
+        }
+    }
+    for (rel, lines) in &files {
+        std::fs::write(c.root.join(rel), lines.join("\n") + "\n")?;
     }
     println!("rewrote {total} citations");
     for (contract, rest) in &unresolved {
