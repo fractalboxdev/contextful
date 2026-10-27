@@ -1,6 +1,6 @@
 //! A table's compaction lease renewed by the process holding it.
 
-use crate::support::{at, bucket, node};
+use crate::support::{at, bucket, node, Script, Scripted};
 use contextful_core::store::lease::{BucketLease, TTL_SECS};
 use contextful_core::store::object::ObjectStore;
 use contextful_core::store::StoreError;
@@ -42,6 +42,39 @@ fn a_holder_renews_its_lease_while_its_work_runs_and_stops_after() {
     let (_, after) = object(b.as_ref());
     std::thread::sleep(Duration::from_millis(200));
     assert_eq!(object(b.as_ref()).1, after, "renewal stops once the work returns");
+    a.syncer.release("filings").unwrap();
+}
+
+/// A renewal the bucket fails is retried on the next tick while the lease has not expired.
+#[test]
+fn a_holder_retries_a_failed_renewal_on_the_next_tick() {
+    use contextful_core::store::object::{Condition, ObjectError};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let failed = Arc::new(AtomicUsize::new(0));
+    let failing = failed.clone();
+    let script = Script {
+        on_put: Some(Box::new(move |key, condition| {
+            let renewal = key == KEY && matches!(condition, Condition::IfMatch(_));
+            (renewal && failing.fetch_add(1, Ordering::SeqCst) == 0).then(|| Err(ObjectError::Unavailable("one dropped renewal".into())))
+        })),
+        ..Script::default()
+    };
+    let b: Arc<dyn ObjectStore> = Arc::new(Scripted { inner: inner.clone(), script });
+    let a = node("ingest-a", b, "");
+    let start = at("2030-01-01T01:00:00Z");
+    let held = a.syncer.acquire("filings", start).unwrap();
+    let (_, first_etag) = object(inner.as_ref());
+
+    let (renewed, etag) = a.syncer.renewing("filings", &held, start, Duration::from_millis(40), || {
+        std::thread::sleep(Duration::from_millis(300));
+        object(inner.as_ref())
+    });
+    assert!(failed.load(Ordering::SeqCst) >= 2, "the failed renewal was retried");
+    assert_ne!(etag, first_etag, "a renewal after the failure replaced the object");
+    assert_eq!((renewed.holder.as_deref(), renewed.fence), (Some("ingest-a"), held.lease.fence));
     a.syncer.release("filings").unwrap();
 }
 
