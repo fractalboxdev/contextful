@@ -1,5 +1,5 @@
 /** The results one measurement run holds, the issue table and the ledger records they render to. */
-import { quantile, type HydrationLog, type Summary } from "../src/plan.ts";
+import type { HydrationLog, Summary } from "../src/plan.ts";
 
 export type FixtureFacts = { name: string; prefix: string; runs: number; rows: number; objects: number; landed_bytes: number; parquet_bytes: number };
 export type Hydration = { ready_ms: number; hydrated_ms: number; log: HydrationLog | null };
@@ -29,7 +29,12 @@ export const HYDRATE_LEDGER_FIXTURE = "1gb-8k";
 
 export type LedgerRecord = { id: string; value: number; n: number; seed: number; run: { processor: string; nproc: number; memory_limit: null } };
 
-const median = (xs: number[]) => quantile(xs, 0.5);
+/** The middle value, or the mean of the two middle values of an even count. */
+function median(xs: number[]): number {
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 const ms = (x: number) => `${Math.round(x)} ms`;
 const s = (x: number) => `${(x / 1000).toFixed(1)} s`;
 const mb = (x: number) => `${(x / 1e6).toFixed(1)} MB`;
@@ -52,7 +57,7 @@ export function renderTable(results: Results): string {
     const pulled = log?.objects != null ? `; ${log.objects} objects and ${log.pointers} pointers pulled` : "";
     const mapped = log?.bytes != null ? `; ${log.files} files, ${mb(log.bytes)} mapped` : "";
     rows.push(["Start to `/health?ready=hydrated`", fixtureCell(results, h.fixture),
-      `median ${s(wall)} over ${h.runs.length} (ready ${ms(median(h.runs.map((x) => x.ready_ms)))})${pulled}${mapped}`]);
+      `median ${s(wall)} over ${h.runs.length} (${h.runs.map((x) => s(x.hydrated_ms)).join(", ")}; ready ${ms(median(h.runs.map((x) => x.ready_ms)))})${pulled}${mapped}`]);
   }
   for (const l of results.lazy) {
     const boot = median(l.runs.map((x) => x.boot_ms));

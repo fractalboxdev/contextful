@@ -52,7 +52,7 @@ The builder writes `fixtures.json` and an issuer key pair to `--out`, which defa
 
    Set `--sleep-after-secs` to the deployed `QUERY_SLEEP_AFTER`.
 
-`measure` writes `results.json`, `results.md` (the issue's measurement table) and one record each for `container-cold-start-wall`, `container-hydrate-wall` and `container-first-read-after-idle` (see [`evals/ledger.toml`](../../evals/ledger.toml)). Records go under `records/`, or under `$CONTEXTFUL_MEASURE_DIR` when it is set. `--sections ready,hydrate,lazy,warm,idle` selects which measurements run. `--starts`, `--hydrate-runs` and `--warm` set the sample counts.
+`measure` writes `results.json`, `results.md` (the issue's measurement table) and one record each for `container-cold-start-wall`, `container-hydrate-wall` and `container-first-read-after-idle` (see [`evals/ledger.toml`](../../evals/ledger.toml)). Records go under `records/`, or under `$CONTEXTFUL_MEASURE_DIR` when it is set. `--sections ready,hydrate,lazy,warm,idle` selects which measurements run. `--starts`, `--hydrate-runs` and `--warm` set the sample counts. `--merge` keeps the sections an earlier `results.json` holds and replaces only those selected. Each section saves its results when it ends. A section that fails is listed under the table, and the sections after it still run.
 
 | Section | What `measure` does |
 | --- | --- |

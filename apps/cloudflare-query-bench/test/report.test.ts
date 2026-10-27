@@ -22,7 +22,7 @@ const results: Results = {
 test("the table fills one row per measured section", () => {
   const table = renderTable(results);
   assert.match(table, /\| Container start to `\/health` ready \| Empty disk \| p50 1200 ms, p99 2400 ms over 2 starts/);
-  assert.match(table, /median 500\.0 s over 2 \(ready 1300 ms\); 8000 objects and 1 pointers pulled; 3998 files, 1000\.0 MB mapped/);
+  assert.match(table, /median 550\.0 s over 2 \(600\.0 s, 500\.0 s; ready 1400 ms\); 8000 objects and 1 pointers pulled; 3998 files, 1000\.0 MB mapped/);
   assert.match(table, /time to first read 48\.0 s .* 10 ms per part over 3998 parts/);
   assert.match(table, /610\.0 s end to end through the routing Worker, 600 request\(s\), sleepAfter 300 s/);
   assert.doesNotMatch(table, /Warm read/);
@@ -31,7 +31,7 @@ test("the table fills one row per measured section", () => {
 test("the three trend entries take the ready p50, the 1gb-8k hydration median and the idle read", () => {
   assert.deepEqual(ledgerRecords(results, 7).map((r) => [r.id, r.value, r.n, r.seed]), [
     ["container-cold-start-wall", 1_200, 2, 7],
-    ["container-hydrate-wall", 500_000, 2, 7],
+    ["container-hydrate-wall", 550_000, 2, 7],
     ["container-first-read-after-idle", 610_000, 1, 7],
   ]);
   assert.deepEqual(ledgerRecords({ ...results, ready: null, hydrate: [], idle: null }, 7), []);
