@@ -1,0 +1,7 @@
+2026-10-27T07:43:24Z
+{"at": "2026-10-27T08:13:58Z", "client_s": 4.24, "ms": 3608, "status": 200, "metrics": {"r2_requests_count": 7, "files_scanned": 6, "bytes_scanned": 1866586, "cache_hits": 0}}
+{"at": "2026-10-27T08:14:02Z", "client_s": 3.29, "ms": 3099, "status": 200, "metrics": {"r2_requests_count": 7, "files_scanned": 6, "bytes_scanned": 1864643, "cache_hits": 2}}
+{"at": "2026-10-27T08:14:05Z", "client_s": 3.3, "ms": 2645, "status": 200, "metrics": {"r2_requests_count": 7, "files_scanned": 6, "bytes_scanned": 1861470, "cache_hits": 2}}
+{"at": "2026-10-27T08:14:08Z", "client_s": 3.1, "ms": 2598, "status": 200, "metrics": {"r2_requests_count": 7, "files_scanned": 6, "bytes_scanned": 1687579, "cache_hits": 2}}
+{"at": "2026-10-27T08:14:33Z", "client_s": 24.5, "ms": 24411, "status": 200, "metrics": {"r2_requests_count": 12003, "files_scanned": 4005, "bytes_scanned": 41240725, "cache_hits": 0}}
+{"at": "2026-10-27T08:14:42Z", "client_s": 9.47, "ms": 8993, "status": 200, "metrics": {"r2_requests_count": 12003, "files_scanned": 4005, "bytes_scanned": 41240725, "cache_hits": 4}}
