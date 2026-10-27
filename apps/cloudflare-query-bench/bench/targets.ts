@@ -37,10 +37,25 @@ export class CloudflareTarget implements Target {
     });
   }
 
+  /**
+   * A start or probe, retried on a dropped connection or a `503`: both are idempotent, and a
+   * Durable Object resets its connections when its container is destroyed.
+   */
   private async json<T>(path: string, body: unknown): Promise<T> {
-    const answer = await this.post(path, JSON.stringify(body));
-    if (!answer.ok) throw new Error(`${path} answered ${answer.status}: ${await answer.text()}`);
-    return answer.json() as Promise<T>;
+    for (let attempt = 1; ; attempt++) {
+      let failure: string;
+      try {
+        const answer = await this.post(path, JSON.stringify(body));
+        if (answer.ok) return answer.json() as Promise<T>;
+        failure = `${path} answered ${answer.status}: ${await answer.text()}`;
+        if (answer.status !== 503) throw new Error(failure);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith(path)) throw error;
+        failure = `${path}: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      if (attempt >= 5) throw new Error(failure);
+      await sleep(1000 * attempt);
+    }
   }
 
   async begin(request: StartRequest) {

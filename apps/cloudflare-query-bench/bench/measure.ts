@@ -10,7 +10,7 @@
  * `--out` as results.json, results.md and one ledger record per filled trend entry under
  * records/ (or $CONTEXTFUL_MEASURE_DIR when set).
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { join, resolve } from "node:path";
 import { DAYS, dayOf, DIM_TABLE, FIXTURES, IDLE_FIXTURE, QUERIES, queryCall, summarize, TABLE, WARM_FIXTURE, ZONE } from "../src/plan.ts";
@@ -91,10 +91,20 @@ async function hydrated(prefix: string, lazy: boolean): Promise<Hydration> {
   return { ready_ms: ready.elapsed_ms, hydrated_ms: done.elapsed_ms, log: done.log };
 }
 
-const results: Results = {
+const fresh: Results = {
   target: kind, runner, sleep_after_secs: sleepAfterSecs, fixtures: manifest.fixtures,
   ready: null, hydrate: [], lazy: [], idle: null, warm: null, failures: [],
 };
+// `--merge` keeps the sections an earlier run of this target recorded and replaces those selected now.
+const earlier = join(out, "results.json");
+const results: Results = args.has("merge") && existsSync(earlier)
+  ? { ...(JSON.parse(readFileSync(earlier, "utf8")) as Results), fixtures: manifest.fixtures }
+  : fresh;
+for (const name of sections) {
+  if (name === "ready" || name === "idle" || name === "warm") results[name] = null;
+  if (name === "hydrate" || name === "lazy") results[name] = [];
+}
+results.failures = results.failures.filter((f) => !sections.has(f.section));
 const log = (line: string) => console.error(`[${new Date().toISOString()}] ${line}`);
 
 /** Write what the run holds so far; a later failure keeps every finished section. */

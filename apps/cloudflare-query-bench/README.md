@@ -12,6 +12,8 @@ The Worker answers three `POST` routes. Each requires `Authorization: Bearer <BE
 
 A `null` prefix starts the Container with no `[sync]` block, which measures readiness on an empty disk. The Container sleeps once `QUERY_SLEEP_AFTER` passes without a request.
 
+The container application uses the `durable_object` scheduling policy. Its image is listed under `images`, and each start requests that image at the `QUERY_INSTANCE_TYPE` instance type (default `standard-1`). `@cloudflare/containers` passes neither the image nor the instance type to the runtime, so `QueryBenchContainer` adds both to every start.
+
 ## Fixtures
 
 `npm run fixtures` lands four stores and pushes each to its own prefix under `--prefix-root`:
@@ -23,7 +25,7 @@ A `null` prefix starts the Container with no `[sync]` block, which measures read
 | `1gb-1k` | 1 GB | 1,000 |
 | `1gb-8k` | 1 GB | 8,000 |
 
-Each store holds `events` (`id`, `k`, `day`, `v`, `pad`) and the 1,000-row dimension table `dims` (`k`, `name`). `id` ascends across runs, `k` is `id % 1000`, and the runs spread in order over 100 `day` values, so all of a run's rows share one day. Each landed run adds two objects, a Parquet part and its run manifest. One push adds seven more: run state, the bucket and generation manifests, the `events` schema, and the `dims` run and schema. Folds add a few objects on top of these, so `fixtures.json` records the object count the push reported (1,017 for a 1k fixture). Rows carry 768 seeded random bytes as base64, so Parquet compresses them little. The builder lands a 2,000-row calibration run, measures its Parquet bytes per row, and sizes every run from that figure. All rows derive from seed `0x5eed0733`, so a rebuild reproduces them.
+Each store holds `events` (`id`, `k`, `day`, `v`, `pad`) and the 1,000-row dimension table `dims` (`k`, `name`). `id` ascends across runs, `k` is `id % 1000`, and the runs spread in order over 100 `day` values, so all of a run's rows share one day. Each landed run adds two objects, a Parquet part and its run manifest. One push adds seven more: run state, the bucket and generation manifests, the `events` schema, and the `dims` run and schema. Folds add a few objects on top of these, so `fixtures.json` records the object count the push reported (1,017 for a 1k fixture). Rows carry 768 seeded random bytes as base64, so Parquet compresses them little. The builder lands a 2,000-row calibration run, measures its Parquet bytes per row, and sizes every run from that figure. The 100 MB and 1 GB targets are landed bytes. Folding also writes snapshot parts next to the run parts, so a store's total Parquet is 2.5 to 3.8 times its landed bytes. `fixtures.json` records both. All rows derive from seed `0x5eed0733`, so a rebuild reproduces them.
 
 The 8k fixtures land about 4,000 runs each. Landing slows as the table's run count grows, so one 8k fixture takes tens of minutes to build. `--fixtures 100mb-1k,1gb-1k` builds a subset.
 
@@ -41,7 +43,7 @@ The builder writes `fixtures.json` and an issuer key pair to `--out`, which defa
      npm run fixtures -- --prefix-root bench-<date>
    ```
 
-4. Copy `wrangler.example.jsonc` into an operator overlay that names the account and a route. Set the six required secrets with `wrangler secret put`, and set `CORPUS_R2_ENDPOINT` to the same `r2://<account-id>` used in step 3. Then deploy with `wrangler deploy --config <overlay>`. The account needs Workers Paid with Containers enabled.
+4. Copy `wrangler.example.jsonc` into an operator overlay that names the account and a route. Set the six required secrets with `wrangler secret put`, and set `CORPUS_R2_ENDPOINT` to the same `r2://<account-id>` used in step 3. Then deploy with `wrangler deploy --config <overlay>`. The account needs Workers Paid with Containers enabled. `wrangler secret bulk <file.json>` sets all six secrets at once.
 5. Measure:
 
    ```sh
