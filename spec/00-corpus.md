@@ -245,7 +245,7 @@ The commands that write tags, rewrite revisions and list the clauses a test file
   *because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev*
 - `slice-file` — `contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.
   *because a reviewer of a test reads what it claims to demonstrate*
-- `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.
+- `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage logs it from a built binary.
   *because an edited test can stop demonstrating its clause while every pin still computes performed*
 
 ### milestones

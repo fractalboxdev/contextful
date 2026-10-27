@@ -880,7 +880,7 @@
       "operation": "state",
       "subject": "slice-diff",
       "kind": "behavior",
-      "statement": "`contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.",
+      "statement": "`contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage logs it from a built binary.",
       "why": "because an edited test can stop demonstrating its clause while every pin still computes performed",
       "file": "spec/00-corpus.md",
       "line": 248,

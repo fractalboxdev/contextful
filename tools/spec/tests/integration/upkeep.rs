@@ -116,7 +116,7 @@ fn git(s: &Scratch, args: &[&str]) {
     assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
 }
 
-// spec: corpus.state.slice-diff@f46eee8e
+// spec: corpus.state.slice-diff@fc464d78
 #[test]
 fn slice_diff_lists_the_clauses_whose_tagged_tests_the_change_edits() {
     let s = Scratch::copy();

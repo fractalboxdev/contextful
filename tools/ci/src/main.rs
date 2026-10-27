@@ -1419,19 +1419,26 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
 
 /// Print `contextful-spec slice --diff <base>` into the gate log: each clause whose tagged
 /// test the change edits, for the author to confirm it still holds (`corpus.state.slice-diff`).
-/// A tree without a corpus prints nothing, and a failed listing warns without deciding the stage.
+/// The listing runs the `contextful-spec` built beside this binary and builds nothing; a
+/// tree without a corpus or a target without that binary prints none, and a failed listing
+/// warns without deciding the stage.
 fn reached_clauses(root: &Path, base: &str) {
     if !root.join("spec/spec.lock.json").is_file() {
         return;
     }
-    let args = ["run", "--locked", "-q", "-p", "contextful-spec", "--", "slice", "--diff", base];
-    match Command::new("cargo").args(args).current_dir(root).output() {
+    let built = std::env::current_exe().ok().map(|exe| exe.with_file_name(format!("contextful-spec{}", std::env::consts::EXE_SUFFIX)));
+    let Some(spec) = built.filter(|p| p.is_file()) else {
+        eprintln!("test-first: no contextful-spec built beside contextful-ci; no clause listing");
+        return;
+    };
+    let args = ["slice", "--diff", base];
+    match Command::new(&spec).args(args).current_dir(root).output() {
         Ok(out) if out.status.success() => {
             eprintln!("test-first: confirm each clause below still holds for its edited test");
             eprint!("{}", String::from_utf8_lossy(&out.stdout));
         }
-        Ok(out) => eprintln!("test-first: `cargo {}` exited {}; no clause listing", args.join(" "), out.status.code().unwrap_or(-1)),
-        Err(e) => eprintln!("test-first: `cargo {}` did not start ({e}); no clause listing", args.join(" ")),
+        Ok(out) => eprintln!("test-first: `contextful-spec {}` exited {}; no clause listing", args.join(" "), out.status.code().unwrap_or(-1)),
+        Err(e) => eprintln!("test-first: `contextful-spec {}` did not start ({e}); no clause listing", args.join(" ")),
     }
 }
 
