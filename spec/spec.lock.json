@@ -30547,17 +30547,6 @@
       "line": 56
     },
     {
-      "id": "assurance.gate.part-budget",
-      "contract": "assurance",
-      "operation": "gate",
-      "subject": "part-budget",
-      "kind": "behavior",
-      "statement": "Every part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.",
-      "why": "A-assurance#gate-parts-run",
-      "file": "spec/83-gate.md",
-      "line": 58
-    },
-    {
       "id": "assurance.gate.pins-stage",
       "contract": "assurance",
       "operation": "gate",
@@ -30566,7 +30555,7 @@
       "statement": "The pins stage resolves every pinned artifact identity a run depends on before any compilation.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 60
+      "line": 58
     },
     {
       "id": "assurance.gate.evaluate-stage",
@@ -30577,7 +30566,7 @@
       "statement": "The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 61
+      "line": 59
     },
     {
       "id": "assurance.gate.schema-stage",
@@ -30588,7 +30577,7 @@
       "statement": "The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 62
+      "line": 60
     },
     {
       "id": "assurance.gate.secret-ciphertext",
@@ -30599,7 +30588,7 @@
       "statement": "In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key.",
       "why": "because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked",
       "file": "spec/83-gate.md",
-      "line": 63
+      "line": 61
     },
     {
       "id": "assurance.gate.secret-scope",
@@ -30610,7 +30599,7 @@
       "statement": "In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file whose block — the assignments above it, up to the first blank line — opens with no comment carrying text raises `SecretScopeMissing`, naming file and key.",
       "why": "because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches",
       "file": "spec/83-gate.md",
-      "line": 65
+      "line": 63
     },
     {
       "id": "assurance.gate.formal-stage",
@@ -30621,7 +30610,7 @@
       "statement": "The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}}, the protocol differential over 10000 generated cases on both lease paths, and {{assurance.model.journal-check}}; a non-zero exit from any reds the run.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 67
+      "line": 65
     },
     {
       "id": "assurance.gate.typescript-surfaces",
@@ -30632,7 +30621,7 @@
       "statement": "The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 69
+      "line": 67
     },
     {
       "id": "assurance.gate.native-test-files",
@@ -30643,7 +30632,7 @@
       "statement": "The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.",
       "why": "because a package script can omit a pinned test while reporting success",
       "file": "spec/83-gate.md",
-      "line": 70
+      "line": 68
     },
     {
       "id": "assurance.gate.surface-check-failed",
@@ -30654,7 +30643,7 @@
       "statement": "A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 72
+      "line": 70
     },
     {
       "id": "assurance.gate.affected-parts",
@@ -30665,7 +30654,7 @@
       "statement": "`contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 79,
+      "line": 77,
       "group": "affected parts"
     },
     {
@@ -30677,7 +30666,7 @@
       "statement": "A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 81,
+      "line": 79,
       "group": "affected parts"
     },
     {
@@ -30689,7 +30678,7 @@
       "statement": "A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 83,
+      "line": 81,
       "group": "affected parts"
     },
     {
@@ -30701,7 +30690,7 @@
       "statement": "A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.",
       "why": "because those stages read the file directly, apart from any clause pin",
       "file": "spec/83-gate.md",
-      "line": 85,
+      "line": 83,
       "group": "affected parts"
     },
     {
@@ -30713,7 +30702,7 @@
       "statement": "A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.",
       "why": "because the evaluate stage refuses a ledger entry naming a clause the lock lacks",
       "file": "spec/83-gate.md",
-      "line": 87,
+      "line": 85,
       "group": "affected parts"
     },
     {
@@ -30725,7 +30714,7 @@
       "statement": "An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.",
       "why": "because a pin the listing cannot place runs on a part the listing cannot name",
       "file": "spec/83-gate.md",
-      "line": 89,
+      "line": 87,
       "group": "affected parts"
     },
     {
@@ -30737,7 +30726,7 @@
       "statement": "A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 91,
+      "line": 89,
       "group": "affected parts"
     },
     {
@@ -30749,7 +30738,7 @@
       "statement": "A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 93,
+      "line": 91,
       "group": "affected parts"
     },
     {
@@ -30761,7 +30750,7 @@
       "statement": "The crate-graph stage holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.",
       "why": "P5",
       "file": "spec/83-gate.md",
-      "line": 100,
+      "line": 98,
       "group": "dependency rules"
     },
     {
@@ -30773,7 +30762,7 @@
       "statement": "The crate-graph stage resolves every graph `--locked` against the committed `Cargo.lock`, so a lock behind its manifests, or one rewritten before the stage starts, fails the stage before any rule runs; the stage never rewrites it.",
       "why": "because a rule held over a graph the lock file does not record passes a build that resolves another",
       "file": "spec/83-gate.md",
-      "line": 102,
+      "line": 100,
       "group": "dependency rules"
     },
     {
@@ -30785,7 +30774,7 @@
       "statement": "Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function.",
       "why": "P5",
       "file": "spec/83-gate.md",
-      "line": 104,
+      "line": 102,
       "group": "dependency rules"
     },
     {
@@ -30797,7 +30786,7 @@
       "statement": "The crate-graph stage runs pinned cargo-deny `check bans` over each profile's resolved graph, denying every crate a profile-wide dependency refusal names; a hit raises that refusal's error, naming the profile and the path.",
       "why": "A-assurance#profile-graphs-answer",
       "file": "spec/83-gate.md",
-      "line": 106,
+      "line": 104,
       "group": "dependency rules"
     },
     {
@@ -30809,7 +30798,7 @@
       "statement": "A profile's graph is the binary resolved with default features off and the profile's feature on, across every target, excluding development dependencies; the stage prints each profile the binary declares no feature for.",
       "why": "A-assurance#profile-graphs-answer",
       "file": "spec/83-gate.md",
-      "line": 108,
+      "line": 106,
       "group": "dependency rules"
     },
     {
@@ -30821,7 +30810,7 @@
       "statement": "`deny.toml` holds one `[bans]` entry per crate or feature a profile-wide dependency refusal names, its reason that refusal's clause id; an entry missing or extra raises `DenyListDrift`, naming it.",
       "why": "because a refusal whose crate the list omits passes every profile graph linking it",
       "file": "spec/83-gate.md",
-      "line": 110,
+      "line": 108,
       "group": "dependency rules"
     },
     {
@@ -30833,7 +30822,7 @@
       "statement": "An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site.",
       "why": "because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record",
       "file": "spec/83-gate.md",
-      "line": 112,
+      "line": 110,
       "group": "dependency rules"
     },
     {
@@ -30845,20 +30834,8 @@
       "statement": "A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.",
       "why": "P1",
       "file": "spec/83-gate.md",
-      "line": 114,
+      "line": 112,
       "group": "dependency rules"
-    },
-    {
-      "id": "assurance.gate.container",
-      "contract": "assurance",
-      "operation": "gate",
-      "subject": "container",
-      "kind": "limit",
-      "statement": "The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.",
-      "why": "A-assurance#gate-parts-run",
-      "file": "spec/83-gate.md",
-      "line": 121,
-      "group": "footprint"
     },
     {
       "id": "assurance.gate.parallel-jobs",
@@ -30866,10 +30843,10 @@
       "operation": "gate",
       "subject": "parallel-jobs",
       "kind": "limit",
-      "statement": "Parallel build jobs number the memory ceiling divided by 3 GiB.",
-      "why": "",
+      "statement": "A footprint build's parallel job count is its build memory — the cgroup memory ceiling, else the physical or container-engine memory — divided by 3 GiB, at least one and at most the processor count.",
+      "why": "because one optimized C++ unit of the SQL engine peaks near 3 GiB",
       "file": "spec/83-gate.md",
-      "line": 123,
+      "line": 119,
       "group": "footprint"
     },
     {
@@ -30881,7 +30858,7 @@
       "statement": "A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 124,
+      "line": 121,
       "group": "footprint"
     },
     {
@@ -30893,7 +30870,7 @@
       "statement": "The edge profile compresses to at most 50 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 126,
+      "line": 123,
       "group": "footprint"
     },
     {
@@ -30905,7 +30882,7 @@
       "statement": "The full profile compresses to at most 150 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 127,
+      "line": 124,
       "group": "footprint"
     },
     {
@@ -30917,7 +30894,7 @@
       "statement": "The control profile compresses to at most 60 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 128,
+      "line": 125,
       "group": "footprint"
     },
     {
@@ -30929,7 +30906,7 @@
       "statement": "Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 129,
+      "line": 126,
       "group": "footprint"
     },
     {
@@ -30941,7 +30918,7 @@
       "statement": "The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.",
       "why": "because one link-time-optimized release build of the full profile fills most of one stage's wall clock",
       "file": "spec/83-gate.md",
-      "line": 131,
+      "line": 128,
       "group": "footprint"
     },
     {
@@ -30953,7 +30930,7 @@
       "statement": "An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 133,
+      "line": 130,
       "group": "footprint"
     },
     {
@@ -30965,7 +30942,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 144
+      "line": 141
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -30976,7 +30953,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 145,
+      "line": 142,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -30990,7 +30967,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 147,
+      "line": 144,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -31004,7 +30981,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry decides nothing, and `contextful-ci measure` runs the gate tier alone unless `--tier` names `trend`, `scheduled` or `all`.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 148
+      "line": 145
     },
     {
       "id": "assurance.measure.judged-tier",
@@ -31015,7 +30992,7 @@
       "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
       "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
       "file": "spec/83-gate.md",
-      "line": 149
+      "line": 146
     },
     {
       "id": "assurance.measure.count-first",
@@ -31026,7 +31003,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/83-gate.md",
-      "line": 151
+      "line": 148
     },
     {
       "id": "assurance.measure.record",
@@ -31037,7 +31014,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 153
+      "line": 150
     },
     {
       "id": "assurance.measure.seeded",
@@ -31048,7 +31025,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/83-gate.md",
-      "line": 155
+      "line": 152
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -31059,7 +31036,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/83-gate.md",
-      "line": 157
+      "line": 154
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -31070,7 +31047,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 159
+      "line": 156
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -31081,7 +31058,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 160
+      "line": 157
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -31092,7 +31069,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 161
+      "line": 158
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -31103,7 +31080,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 163,
+      "line": 160,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -31117,7 +31094,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 165,
+      "line": 162,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -31131,7 +31108,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 166
+      "line": 163
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -31142,7 +31119,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 167
+      "line": 164
     },
     {
       "id": "assurance.measure.threshold-cost",
@@ -31153,7 +31130,7 @@
       "statement": "A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.",
       "why": "because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded",
       "file": "spec/83-gate.md",
-      "line": 168
+      "line": 165
     },
     {
       "id": "assurance.measure.history",
@@ -31164,7 +31141,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 170
+      "line": 167
     },
     {
       "id": "assurance.measure.run-report",
@@ -31175,7 +31152,7 @@
       "statement": "`contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — with an integer run id, and reads back every earlier note whatever its run id's JSON type.",
       "why": "because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline",
       "file": "spec/83-gate.md",
-      "line": 172,
+      "line": 169,
       "scenarios": [
         "WHEN the baseline note's run id is the text `contextful-measures_2026-10-14` and the run's is `42`, THEN the report writes `42` and its annotation names that text run id as its baseline."
       ]
@@ -31189,7 +31166,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 174
+      "line": 171
     },
     {
       "id": "assurance.release.version",
@@ -31200,7 +31177,7 @@
       "statement": "A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 188,
+      "line": 185,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -31214,7 +31191,7 @@
       "statement": "A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 190,
+      "line": 187,
       "scenarios": [
         "WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`."
       ]
@@ -31228,7 +31205,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 192
+      "line": 189
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -31239,7 +31216,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/83-gate.md",
-      "line": 194
+      "line": 191
     },
     {
       "id": "assurance.release.off-branch",
@@ -31250,7 +31227,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 196
+      "line": 193
     },
     {
       "id": "assurance.release.version-regressed",
@@ -31261,7 +31238,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 198,
+      "line": 195,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -31275,7 +31252,7 @@
       "statement": "A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 200,
+      "line": 197,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`."
       ]
@@ -31289,7 +31266,7 @@
       "statement": "A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`",
       "why": "because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits",
       "file": "spec/83-gate.md",
-      "line": 202
+      "line": 199
     },
     {
       "id": "assurance.release.workspace-version",
@@ -31300,7 +31277,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 204
+      "line": 201
     },
     {
       "id": "assurance.release.gate-failed",
@@ -31311,7 +31288,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 206
+      "line": 203
     },
     {
       "id": "assurance.release.release-tag-version",
@@ -31322,7 +31299,7 @@
       "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
       "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
       "file": "spec/83-gate.md",
-      "line": 208
+      "line": 205
     }
   ],
   "owns": {
@@ -31569,7 +31546,7 @@
     "assurance.differential-test": "The executable reference models, the case generators, the minimized counterexample corpus and the command running them.",
     "assurance.evaluate": "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge.",
     "assurance.forecast": "Probability forecasts over consumer-declared outcomes: freeze instant, settlement, lead time, imputation, coverage, reference baselines and separate scoring tracks. Prediction-market baselines belong to an explicitly selected profile ({{topology.bound-application.domain-neutral}}).",
-    "assurance.gate": "Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.",
+    "assurance.gate": "Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, build jobs, free disk, footprint budgets and surface checks.",
     "assurance.measure": "The target ledger: each tracked target, the clause it serves, how it is measured and its record per commit.",
     "assurance.model": "The Lean policy package and the Lean protocol state machine, their pins, and the definitions theorems and checks range over.",
     "assurance.prove": "The theorem inventory: layer composition, placement, the evidence floor, the proof targets over the authority mapping, and the mediation relation over statement execution.",
@@ -31853,10 +31830,6 @@
     ],
     "A-assurance#feature-runs-formal": [
       "assurance.gate.nightly-tier"
-    ],
-    "A-assurance#gate-parts-run": [
-      "assurance.gate.part-budget",
-      "assurance.gate.container"
     ],
     "A-assurance#gate-repair-evidence": [
       "assurance.test.base-evidence",
@@ -35969,10 +35942,6 @@
       "assurance.gate.cli-shard-map"
     ],
     [
-      "assurance.gate.part-budget",
-      "assurance.gate.container"
-    ],
-    [
       "assurance.gate.formal-stage",
       "assurance.audit-assumptions.check-command"
     ],
@@ -38551,27 +38520,6 @@
             "gloss": "Estimated test wall clock of one CLI shard in the gate container, its cold compile excluded.",
             "const": "tools/ci/src/shards.rs::BUDGET_SECS"
           },
-          "assurance-container-disk": {
-            "clause": "assurance.gate.container",
-            "value": 18,
-            "unit": "GiB",
-            "basis": "chosen",
-            "gloss": "Usable disk available to the gate container."
-          },
-          "assurance-container-memory": {
-            "clause": "assurance.gate.container",
-            "value": 12,
-            "unit": "GiB",
-            "basis": "chosen",
-            "gloss": "Memory available to the gate container."
-          },
-          "assurance-container-wall-clock": {
-            "clause": "assurance.gate.container",
-            "value": 45,
-            "unit": "min",
-            "basis": "chosen",
-            "gloss": "Wall clock available to one gate stage, the sandbox execution cap."
-          },
           "assurance-control-compressed": {
             "clause": "assurance.gate.control-budget",
             "value": 60,
@@ -38683,7 +38631,8 @@
             "value": 3,
             "unit": "GiB",
             "basis": "chosen",
-            "gloss": "Memory budgeted per parallel build job."
+            "gloss": "Memory budgeted per parallel build job.",
+            "const": "tools/ci/src/jobs.rs::JOB_MEMORY"
           },
           "assurance-precision-floor": {
             "clause": "assurance.evaluate.precision-floor",
@@ -46616,6 +46565,16 @@
         "proved": false
       }
     ],
+    "assurance.gate.parallel-jobs": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/footprint.rs",
+        "name": "parallel_jobs_number_the_build_memory_divided_by_three_gib",
+        "line": 48,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "assurance.gate.pins-stage": [
       {
         "kind": "test",
@@ -47758,6 +47717,16 @@
         "proved": false
       }
     ],
+    "assurance.test.base-evidence": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/test_first.rs",
+        "name": "assertion_compile_and_bound_failures_report_apart",
+        "line": 323,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "assurance.test.base-run-bound": [
       {
         "kind": "test",
@@ -47773,7 +47742,7 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/test_first.rs",
         "name": "an_unloadable_base_fails_the_stage_instead_of_reading_red",
-        "line": 323,
+        "line": 359,
         "verdict": "performed",
         "proved": false
       }
@@ -55271,7 +55240,7 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/test_first.rs",
         "name": "the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log",
-        "line": 421,
+        "line": 457,
         "verdict": "performed",
         "proved": false
       },
@@ -71618,6 +71587,16 @@
         "proved": false
       }
     ],
+    "topology.bound-application.domain-neutral": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/domain.rs",
+        "name": "sector_vocabulary_appears_only_where_a_profile_connector_or_consumer_supplies_it",
+        "line": 116,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "topology.bound-application.restated-case": [
       {
         "kind": "test",
@@ -72293,7 +72272,7 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/domain.rs",
         "name": "the_domain_crate_performs_no_io_and_links_into_every_profile",
-        "line": 38,
+        "line": 39,
         "verdict": "performed",
         "proved": false
       }

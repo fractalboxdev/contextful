@@ -10,7 +10,7 @@ owns:
 # The gate and the release tag
 
 How `contextful-ci` checks a change and cuts a release: typed subcommands, the gate's stages
-in run order, its parts, folds and shards, the container's ceilings and footprint budgets,
+in run order, its parts, folds and shards, its build jobs and footprint budgets,
 the target ledger the evaluate stage reads, and the signed release tag with the local
 packaging that follows it. Each operation keeps its `assurance` clause ids.
 
@@ -31,7 +31,7 @@ Typed subcommands over compiled binaries, and the boundary shell keeps.
 
 ## gate
 
-Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
+Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, build jobs, free disk, footprint budgets and surface checks.
 
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, unwired, budget — all of both tiers when none is named, else the named subset, which `--plan` prints.
   *A-assurance#stage-subset-runs*
@@ -55,8 +55,6 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because one fold check replaces a check per member, and one run reports every member's verdict*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
-- `part-budget` — Every part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.
-  *A-assurance#gate-parts-run*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
 - `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
 - `schema-stage` — The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.
@@ -118,9 +116,8 @@ The crate-graph stage holds the dependency graph and runtime source to their rul
 
 Build resources and each profile's artifact size stay within their bounds.
 
-- `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.
-  *A-assurance#gate-parts-run*
-- `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
+- `parallel-jobs` — A footprint build's parallel job count is its build memory — the cgroup memory ceiling, else the physical or container-engine memory — divided by 3 GiB, at least one and at most the processor count.
+  *because one optimized C++ unit of the SQL engine peaks near 3 GiB*
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
 - `edge-budget` — The edge profile compresses to at most 50 MiB.

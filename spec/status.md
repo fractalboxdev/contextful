@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 18 | 343 | 76 | 24 | 4 | 339 | 1 | 0 | 339 |
+| `assurance` | 4 | 18 | 341 | 76 | 23 | 4 | 341 | 1 | 0 | 341 |
 | `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 290 |
 | `connector` | 3 | 19 | 347 | 83 | 23 | 14 | 318 | 2 | 0 | 318 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `run` | 3 | 29 | 566 | 128 | 49 | 19 | 560 | 4 | 0 | 560 |
 | `store` | 6 | 20 | 310 | 67 | 23 | 13 | 310 | 13 | 0 | 310 |
 | `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 191 | 0 | 0 | 191 |
-| `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 91 | 0 | 0 | 91 |
-| **total** | 27 | 178 | 2753 | 695 | 235 | 84 | 2687 | 24 | 0 | |
+| `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
+| **total** | 27 | 178 | 2751 | 695 | 234 | 84 | 2690 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
+| 0 — The test-first gate | 2 | 21 | 21 | passing | closed |
 | 1 — The authority core | 14 | 260 | 260 | passing | closed |
 | 2 — The store | 9 | 177 | 177 | passing | closed |
 | 3 — The run path | 12 | 293 | 293 | passing | closed |
@@ -37,11 +37,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 86 | 86 | passing | closed |
 | 8 — Accountability | 5 | 93 | 93 | passing | closed |
 | 9 — Visibility | 6 | 49 | 49 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 119 | 118 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 119 | 119 | passing | closed |
 | 11 — The derive tier | 7 | 96 | 96 | passing | closed |
 | 12 — The operator console | 12 | 64 | 64 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 176 | 173 | passing | closed |
+| 14 — Assurance | 7 | 174 | 174 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 67 | 67 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 13 | 13 | passing | closed |

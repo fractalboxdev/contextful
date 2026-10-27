@@ -114,12 +114,12 @@ corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 
 [ceiling]
 registry-committed-sites = 0
 anatomy-long-lists = 0
-clause-unowned = 5
+clause-unowned = 0
 why-unscoped = 0
 term-first-use = 0
 
 [ceiling.contract-words]
-assurance = 10258
+assurance = 10236
 authority = 7667
 connector = 10126
 corpus = 5091
@@ -131,7 +131,7 @@ surface = 6243
 topology = 2642
 
 [ceiling.adr-words]
-A-assurance = 2892
+A-assurance = 2795
 A-authority = 2061
 A-connector = 1790
 A-corpus = 229
