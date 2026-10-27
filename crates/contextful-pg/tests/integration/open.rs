@@ -30,6 +30,7 @@ fn a_remote_database_cannot_disable_authenticated_transport() {
     assert!(!error.message.contains("canary-secret"), "{error}");
 }
 
+// spec: topology.coordinate.postgres-transport@2811fc15
 #[test]
 fn remote_host_addresses_cannot_hide_behind_absent_or_local_host_names() {
     for connection in [

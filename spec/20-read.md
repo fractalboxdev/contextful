@@ -65,13 +65,13 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `connection-views` — Each session connection creates or replaces one view per manifest table, scanning {{store.reconcile.explicit-file-list}}. Statements reuse these views under {{read.cache.session-pool}}. No view directory exists on disk.
 - `declaration-set` — The face registers the tables of {{store.declare.declaration-set}}, so a `primary_key` a pipeline file declares reaches {{store.declare.dedup-view}} on the operator verb and the tool server alike.
 - `engine` — Every profile serving reads links an embedded columnar SQL engine that reads Parquet with standard SQL. External processes read the same files without that embedded engine.
-  *A-topology*
+  *A-topology#build-profiles*
 - `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. Reading that table returns an empty result rather than a missing-relation fault.
   *P4*
 - `bare-name` — In caller statements, templates, ranking queries and file previews, a bare table name resolves to the caller's registered relation. That relation carries the caller's restriction.
   *P5*
 - `tool-set` — The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve`, `memory.recall` and `memory.explain` as its closed tool set.
-  *A-read*
+  *A-read#pooled-engine-reuses*
 - `bound-arguments` — Except `memory.recall`, `memory.explain` and `context.subscribe`, read tools, including templates, accept `as_of` and `valid_as_of` and echo {{store.bound-time.echo}}. {{store.bound-time.valid-as-of}} applies only to tables the read touches.
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
@@ -88,7 +88,7 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `column-hints` — A table's `column_hints` map supplies optional per-column hints; `context.describe` includes each hint only with a column the session registers.
   *because a hint for an absent column describes a relation the registered schema cannot query*
 - `describe-zone` — `context.describe` reports the session zone as `session_zone`, and per table, listed or described, `zone_admitted`: whether the table's effective allow-set admits that zone.
-  *A-read*
+  *A-read#read-surface-admits*
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.
   *because a published number and a delivered guarantee cannot disagree when one derives from the other*
 - `budget-arguments` — Every read tool but `context.subscribe`, which {{read.subscribe.overrun}} bounds, accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.
@@ -99,35 +99,40 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `file-listing` — `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.
   *P5*
 - `file-preview-target` — `context.file` resolves a path to its `(table, run_id)` and reads it through that table's registered relation. A snapshot part, a traversal, an absolute path or a ledger file raises `FilePreviewNotATable`.
-  *A-read*
+  *A-read#read-surface-admits*
 - `ledger-relation` — Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls.
 - `scoped-ledger` — The child relation registers on the owner read alone: a credential carrying no tenant scope, over a table carrying no row policy. Naming a closed ledger raises `LedgerNotTenantScoped`, stating what closed the relation.
-  *A-read*
+  *A-read#read-surface-admits*
 - `no-tenant-ledger` — No tenant-scoped projection of a request ledger registers; {{read.register.scoped-ledger}} is the ledger's one read path.
   *because ledger rows carry no tenant column, and a projection filtering on a dimension its rows lack discloses every tenant's calls*
 - `lexicon-surface` — The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.
 - `reserved-relation` — The engine's reserved table namespaces register like any other relation, with no privileged path underneath.
   *P5*
+
+### HTTP transport
+
+`contextful serve --http` admits each request, bounds its connections and drains on stop.
+
 - `network-transport` — `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` serves MCP Streamable HTTP at `POST /mcp`. The stdio tool server answers each request's single JSON-RPC message as `application/json`.
-  *A-read*
+  *A-read#networked-read-transport*
 - `concurrent-statements` — Requests on any number of connections run concurrently. Each statement uses its own engine connection under {{read.cache.pool-connections}} and delays no other request.
-  *A-read*
+  *A-read#pooled-engine-reuses*
 - `serve-declaration` — A serve with no `--audience`, or no positive `--max-in-flight`, raises `ServeDeclarationMissing` naming the flag and binds no listener; neither ships a default.
   *P3*
 - `past-ceiling` — A request arriving while the ceiling's count of requests is in flight answers `503` with a `Retry-After` of 1 s and admits nothing.
-  *A-read*
+  *A-read#networked-read-transport*
 - `connection-ceiling` — An accepted connection holds a slot until the server writes its response. With all slots held, the server answers {{read.register.past-ceiling}} before parsing the request and starts no thread.
   *because a request head arrives before admission, and a slot taken only after reading it lets an unadmitted caller hold one thread per connection*
 - `per-request-admission` — Each request carries `Authorization: Bearer <credential>`, or `DPoP <credential>` with a `DPoP` proof header. The listener admits each credential under {{authority.verify.possession-binding}} and {{authority.verify.network-bearer}} and restricts reads to that credential's grants.
-  *A-read*
+  *A-read#networked-read-transport*
 - `credential-missing` — A request carrying no `Authorization` credential raises `HttpCredentialMissing` with `401` and reads no row.
-  *A-read*
+  *A-read#networked-read-transport*
 - `admission-refused` — A request its admission refuses answers `401` carrying the refusal's identifier, except a full nonce cache, which answers `503` under {{authority.verify.nonce-cache}}.
-  *A-read*
+  *A-read#networked-read-transport*
 - `per-request-revocation` — The server re-reads `--denylist` for each request and rejects a revoked credential on the next request without restarting. An unreadable denylist returns `503` and admits nothing.
-  *A-read*
+  *A-read#networked-read-transport*
 - `stateless-session` — A notification answers `202` with no body. The face holds no protocol session and opens no server stream: a `GET` or `DELETE` on `/mcp` answers `405`, any other path `404`.
-  *A-read*
+  *A-read#networked-read-transport*
 - `request-body` — For a request body over 1 MiB, the server returns `413` and stops reading the body.
   *because the listener reads the body before admission, and an unbounded body lets an unadmitted caller hold memory*
 - `health` — `GET /health` answers `200` with the build identity of {{read.embed.build-identity}}, admitting no credential and reading no row.
@@ -146,18 +151,18 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 SQL validation, allowed relations, operator statements and template arguments.
 
 - `single-read-only-statement` — Admitted text parses to exactly one read-only SELECT. Attach, copy, install, load, pragma, set, any schema change, any data modification and a piggybacked second statement raise `StatementNotReadOnly`.
-  *A-read*
+  *A-read#read-surface-admits*
 - `engine-own-parse` — The guard checks the syntax tree serialized by the SQL engine. The tree determines whether the statement is read-only; no keyword blocklist determines admission.
   *because guard and executor cannot disagree about what a text means when they share one parse*
 - `relation-allowlist` — Every base relation names a view registered for this caller or a common table expression the statement declares. A bare file path is a base relation and falls under this rule.
-  *A-read*
+  *A-read#read-surface-admits*
 - `whole-tree-walk` — The guard checks the entire tree, including select-list subqueries, union arms and pivot sources. Common-table-expression names resolve only within their declaring scope and nested scopes.
 - `unregistered-relation` — The guard rejects an unregistered base relation under {{authority.refuse.ungranted-table}}. The error echoes the requested name and no relation belonging to another caller.
-  *A-read*
+  *A-read#read-surface-admits*
 - `table-function` — A table function anywhere in the tree, and a schema-qualified reach into a system catalog, raise `TableFunctionRefused`.
-  *A-read*
+  *A-read#read-surface-admits*
 - `statement-provenance` — Local operator statements, template bodies and engine-composed reads execute without caller-SQL validation. The guard validates capability-token callers' SQL. No network interface exposes raw operator execution.
-  *A-read*
+  *A-read#read-surface-admits*
 - `quoted-identifiers` — Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression.
 - `template-declaration` — A template declares an identifier, one SQL statement, positional parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling.
 - `template-reserved-parameter` — Manifest validation rejects template parameters named `as_of`, `valid_as_of`, `zone` or `pin`. Every template tool reserves those names for read bounds, zone and build pins.
@@ -165,35 +170,12 @@ SQL validation, allowed relations, operator statements and template arguments.
 - `available-reserved-parameter` — Manifest validation rejects `available_as_of` template parameters under {{read.guard.template-reserved-parameter}}. Every template tool reserves that name for the availability bound.
   *because a parameter sharing a read argument's name hides that bound from the template tool*
 - `template-relation-shape` — Manifest validation and server startup raise `TemplateNamesForeignRelation` for template SQL naming anything except store tables as plain identifiers. Template identifiers starting with `context.`, `corpus.` or `memory.` also raise that error.
-  *A-read*
+  *A-read#read-surface-admits*
 - `template-binding` — A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.
-  *A-read*
+  *A-read#read-surface-admits*
 - `query-binding` — `context.query` binds `$name` or contiguous `$1`…`$n` from `parameters` typed under {{read.guard.template-declaration}}, without coercion. Positional `?`, missing, unused, untyped or mismatched parameters raise `QueryParameterRejected` before execution. Bound values pass {{authority.refuse.scope-guard}}.
   *because a value bound to a placeholder reaches no parser, and the tenant guard decides a bound value as it decides a literal*
 - `startup-time-check` — Template checks are caller-independent and run once at startup; a request pays nothing for them.
-
-Admission of one statement, by provenance, and of one template:
-
-```mermaid
-flowchart LR
-  OPR(["operator"]) -->|"raw statement"| EXEC["executor"]
-  TOK(["token caller"]) -->|"statement text"| ONE{"one read-only SELECT?"}
-  ONE -->|"no: StatementNotReadOnly"| TOK
-  ONE -->|"yes"| TF{"reaches a table function?"}
-  TF -->|"yes: TableFunctionRefused"| TOK
-  TF -->|"no"| REL{"every relation registered?"}
-  REL -->|"no: ungranted table"| TOK
-  REL -->|"yes"| PAR{"parameters match placeholders?"}
-  PAR -->|"no: QueryParameterRejected"| TOK
-  PAR -->|"yes"| EXEC
-  OPR -->|"authors at startup"| TPL["query template"]
-  TPL -->|"checked once"| START{"names store tables only?"}
-  START -->|"no: TemplateNamesForeignRelation"| OPR
-  START -->|"yes"| BIND{"arguments match parameters?"}
-  TOK -->|"template arguments"| BIND
-  BIND -->|"no: TemplateArgumentRejected"| TOK
-  BIND -->|"yes"| EXEC
-```
 
 ## respond
 
@@ -210,9 +192,9 @@ Response fields, cell encoding, row and byte limits, truncation and diagnostic m
   *P4*
 - `cell-encoding` — SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; a union is its text form.
 - `bytes-and-vectors` — The serializer encodes binary as padded base64. Fixed-size float arrays, including vector columns, become JSON arrays whose elements use float-cell encoding.
-  *A-store*
+  *A-store#binary-fixed-size*
 - `nested-values` — Lists encode as JSON arrays. Structs and maps encode as JSON objects keyed by field name or key text. Each item, field or value uses cell encoding.
-  *A-store*
+  *A-store#struct-list-map*
 - `wide-number-shape` — SQL type alone determines JSON encoding. Integers up to 32 bits, finite floats and decimals up to 15 digits encode as numbers. Wider integers and decimals encode as exact decimal strings.
   *because a wire type that varies with the values on one page breaks a typed client on the next*
 - `type-is-the-cell` — The response carries no separate type list. Each cell's JSON type declares its type.
@@ -226,20 +208,20 @@ Response fields, cell encoding, row and byte limits, truncation and diagnostic m
 - `internals-opt-in` — With `internals: true`, every read tool and HTTP response includes a separate object containing executed SQL, engine name, applied limit, row count and elapsed milliseconds. Otherwise, the response omits that object.
 - `query-internals-parameters` — Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.
 - `duration-ceiling` — Under {{authority.grant.duration-ceiling}}, the engine interrupts the statement's connection at its deadline. `ReadDurationExceeded` names the ceiling, source and elapsed milliseconds. The response contains no rows; other statements continue running.
-  *A-read*
+  *A-read#statement-owns-deadline*
 - `byte-ceiling` — Under {{authority.grant.byte-ceiling}}, the serialized response includes only whole rows within the selected ceiling. An envelope or first row exceeding that ceiling raises `ReadResponseTooLarge` and returns no rows.
-  *A-read*
+  *A-read#statement-owns-deadline*
 - `truncation-cause` — A truncated response carries `contextful.truncation` with `by`, `ceiling` and `source`: `rows` admits grant, table, request, template or face; `bytes` admits grant, table or request.
 - `truncation-tie` — If both ceilings cut the same next row, bytes takes precedence. Equal ceilings within one dimension choose the first eligible source: grant, table, request, template, face.
   *because one cut needs one deterministic cause for a client to branch on*
 - `operator-metadata` — Operator table metadata includes column count and backing files. A row count comes from a count query rather than a stored field.
   *P3*
 - `restriction-block` — The restriction block includes session zone, incognito flag and an entry per touched relation excluded or column-masked by zone: `table`, `excluded`, `rows_dropped`, `columns_masked`. Reads withholding no touched relation omit the block.
-  *A-read*
+  *A-read#zone-withheld-relation*
 - `in-band-error` — On the tool protocol a refusal arrives in-band, as a protocol error object or a result flagged as an error under transport success.
   *P2*
 - `paths-stay-inside` — An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.
-  *A-read*
+  *A-read#read-surface-admits*
 
 ## query
 
@@ -271,15 +253,15 @@ The operator's raw statement verb on the command line: its arguments, the relati
 Resolution of one stored citation through the caller's registered relation, including the authenticated distinction between an erased source and an absent version.
 
 - `call` — `context.reference` accepts one table, run identifier and row sequence. `contextful context reference` uses the same resolver under Read admission, returning {{read.respond.one-projection}} without selecting a filesystem path.
-  *A-read*
+  *A-read#result-reused-under*
 - `admission` — Resolution applies {{read.guard.unregistered-relation}}, the caller's registered row and column restrictions, and {{read.respond.duration-ceiling}}, {{read.respond.byte-ceiling}} and {{disclosure.record.read-entry}} before publishing its verdict.
-  *A-read*
+  *A-read#read-surface-admits*
 - `erased-verdict` — An admitted reference in the independently verified cumulative erasure index returns `available: false` and `reason: erased`. An absent reference outside that index returns `reason: missing` without source payload.
-  *A-read*
+  *A-read#result-reused-under*
 - `index-visibility` — A tenant-scoped, row-policy-restricted, zone-excluded or column-masked caller receives an unreadable verdict before erasure-index access; only the owner metadata eligibility of {{read.register.scoped-ledger}} admits an erased verdict.
-  *A-read*
+  *A-read#read-surface-admits*
 - `frontier` — Before resolution and response publication, the resolver validates the same signed store frontier. The frontier's erasure index binds store identity and cumulative reference versions through {{disclosure.erase.store-binding}}.
-  *A-read*
+  *A-read#result-reused-under*
 
 ## retrieve
 
@@ -288,8 +270,6 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
 - `ranked-call` — `corpus.retrieve({prefix, tables?, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns ranked rows across item and artifact genres under `prefix` and `tables`, each with a snippet and provenance, composing the query surface and memory recall, storing nothing.
 - `table-list` — Retrieval queries session relations matching both `tables` and `prefix`. Names outside the session raise `RetrieveTableUnavailable`, listing every unavailable name in input order. Absent and ungranted tables receive identical errors under {{authority.filter-rows.default-deny}}.
   *because one identical refusal for an absent and an ungranted table confirms neither exists, and a silently skipped typo answers a different question*
-- `rerank-argument` — The ranked call also takes `query_embedding_model?`, naming the model behind `query_embedding`, and `rerank_with?`, naming the reranker {{read.rank.rerank}} applies.
-  *because a caller-supplied vector and a reranked order are each meaningful only with the model that produced them*
 - `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
 - `content-tokens` — The tokenizer lowercases query text and splits at non-alphanumeric characters. The tokenizer removes stop tokens, keeps non-ASCII runs of two or more characters, and deduplicates tokens in order.
 - `token-length-floor` — An ASCII run shorter than 2 chars leaves the content-token set.
@@ -314,51 +294,35 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
 - `since` — `since` is the inclusive lower bound of the question's timeframe over the publication instant {{read.retrieve.engine-resolved-date}} resolves; the anchor is `as_of`, else the read's clock. A date-only value means midnight UTC, and omitting `since` leaves every row in window.
 - `filter-budget` — A filter holds at most 32 conditions, each membership list at most 256 entries, and its serialized JSON, `kinds` included, at most 16 KiB.
 - `filter-budget-refusal` — Before building per-table queries, retrieval checks the entire filter's budget. An oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.
-  *A-read*
+  *A-read#restricted-sidecar-probe*
 - `row-key-dedup` — Ranked reads keep only the newest ingestion per `(table, row key)`. If that version misses the relevance floor, no older copy substitutes. The key uses the declared content-hash column, otherwise null; projected values supply no digest.
 - `row-key-under-mask` — For content-hash columns masked by `drop`, `truncate`, `bucket`, `range` or any combine, every row key is null. Masking by `hash` or `tokenize` alone uses the digest as key.
   *because a mask merging distinct hashes lets a reader's grants decide which rows a table holds*
 - `row-key-stays-internal` — The row key is absent from the outer projection.
 - `dedup-is-gated` — The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.
 - `excluded-arm` — An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.
-  *A-read*
+  *A-read#restricted-sidecar-probe*
 - `snippet` — A snippet concatenates up to three text columns, using `retrieve.text` when declared. Label-priority columns, such as title, summary, description and thesis, come first; prose-worthy columns follow in schema order.
 - `identifiers-never-snippet` — Snippets exclude content hashes, URLs, identifiers and instant-valued columns.
+
+### index sidecars
+
+Vector and full-text sidecars add candidates that rejoin through the caller's relation.
+
 - `sidecar-generates-candidates` — Vector probes use query embeddings; full-text probes use content tokens. Each probe adds its top results to the recency window and rejoins through {{authority.compose.vector-arm}}. Per-row scores equal exact-scan scores.
   *P5*
 - `fulltext-probe` — Full-text probes rank the entire snapshot by BM25 with one should-clause per content token. Tokens split by the sidecar tokenizer match resulting terms at consecutive positions. ASCII word tokens match plurals under {{read.retrieve.script-split-matching}}.
   *because a term outside the recency window is found only by a probe that reads every row's postings*
 - `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
 - `adaptive-over-fetch` — The probe runs at most 4 rounds in total, doubling its size while readable rows fall below the requested limit. The retrieval block reports any remaining shortfall.
-  *A-read*
+  *A-read#restricted-sidecar-probe*
 - `sidecar-size-cap` — A vector sidecar exceeding 64 MiB resident memory stays unloaded; retrieval uses an exact scan. Resident memory includes each graph node's 4 B probe mark and, for sealed sidecars, the graph file.
-  *A-store*
+  *A-store#sidecar-memory-mapped*
 - `fulltext-sealed-cap` — A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
-  *A-store*
+  *A-store#sidecar-memory-mapped*
 - `sidecar-falls-back` — Retrieval uses an exact scan for missing snapshots, missing matching sidecars, masked or zone-withheld identifiers or indexed columns, classed text columns, dimension or manifest mismatches, or unreadable dumps.
   *P4*
 - `gain-never-loss` — For each reader, accelerated retrieval returns a superset of the exact scan's rows. Different readers querying one snapshot may receive different rows.
-
-Candidate generation for one ranked read:
-
-```mermaid
-flowchart LR
-  CALLER(["token caller"]) -->|"query and filter"| BUD{"inside the filter budget?"}
-  BUD -->|"no: FilterBudgetExceeded"| CALLER
-  BUD -->|"yes, one arm per table"| COL{"table has the filter column?"}
-  COL -->|"no"| DROPPED["dropped arm"]
-  COL -->|"yes"| SC{"sidecar preconditions hold?"}
-  SC -->|"yes, probe"| SIDE[("index sidecar")]
-  SC -->|"no, scan exactly"| TBL[("table parts")]
-  subgraph AUTHC["authority"]
-    REJ["composed restriction"]
-  end
-  SIDE -->|"candidate rows"| REJ
-  REJ -->|"permitted rows"| WIN["recency window"]
-  TBL -->|"exact rows"| WIN
-  WIN -->|"above relevance floor"| DEDUP["row-key deduplicator"]
-  DEDUP -->|"unique candidates"| RANK["ranker"]
-```
 
 #### Scenarios
 
@@ -372,7 +336,7 @@ unsettled: Does predicate-aware graph traversal replace {{read.retrieve.adaptive
 
 ## rank
 
-Candidate ordering by vector and lexical scores, timeframe, optional reranking and reported confidence.
+Candidate ordering by vector and lexical scores, timeframe and reported confidence.
 
 - `three-legs` — Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.
 - `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`. Weights are 60 percent and 40 percent. `rrf` maps BM25 rank `r` to `61 / (60 + r)`. Absent documents score zero per leg; identifiers break ties.
@@ -391,45 +355,18 @@ Candidate ordering by vector and lexical scores, timeframe, optional reranking a
 - `absent-block` — Non-ranked statements and builds without a ranker omit the retrieval block. An absent block differs from a block reporting zero matches.
   *P2*
 - `degradation-not-error` — Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.
-  *A-topology*
+  *A-topology#build-profiles*
 - `fallback-counts-tokens` — Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
 - `caller-embedding` — A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.
-  *A-topology*
+  *A-topology#build-profiles*
 - `lexical-index-cache` — The opened full-text sidecar cache holds at most 64 entries in FIFO order, keyed by table, snapshot, path and key-version fingerprint. Repeated reads reuse sidecars; a different snapshot requires opening another.
 - `widened-window-statistics` — Lexical term statistics use the widened candidate window. Accelerated retrieval may therefore order rows differently from the exact scan.
 - `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
-  *A-read*
-- `reranker-admission` — A reranker joins the declared set only when it meets {{read.rank.calibration-gate}} against fused order.
-  *A-read*
-- `rerank` — With `rerank_with`, reranking takes the first 50 rows admitted by authority in {{read.rank.question-window-is-a-tier}} order and reorders by score within tiers before `limit`. Later rows retain order. The retrieval block names the reranker and build.
-  *A-read*
-- `rerank-input` — A reranker scores each candidate independently using only its masked {{read.retrieve.snippet}}. The reranker reads no raw cells.
-  *because a listwise prompt lets one poisoned candidate promote itself*
-- `rerank-absent` — A `rerank_with` naming no reranker in the set {{read.rank.reranker-admission}} admits raises `ReadRerankerAbsent`.
-  *because a silent fallback to fused order hides a ranking change*
-- `rerank-horizon` — Under a horizon, a reranker declaring a checkpoint family scores with the checkpoint {{read.horizon.embedder-route}} selects, and a remote reranker's call passes {{read.horizon.egress-hook}}.
-  *A-read*
-- `rerank-cutoff` — Under a horizon, a named reranker without a checkpoint whose post-training cutoff precedes that horizon raises `ReadRerankerBeyondHorizon` instead of scoring. Rerankers declaring no checkpoint family have no such checkpoint.
-  *because a trained reranker can order rows by events it learned after the horizon*
-
-Vector and lexical scoring, fallback ranking and optional reranking:
-
-```mermaid
-flowchart LR
-  C["candidate set"] -->|"cosine, weight 0.6"| FU["score fusion"]
-  C -->|"query terms"| L{"lexical backend linked?"}
-  L -->|"yes"| B["BM25 backend"]
-  L -->|"no"| TF["token fallback"]
-  B -->|"BM25, weight 0.4"| FU
-  FU -->|"fused scores"| ORD["window-first ordering"]
-  TF -->|"token scores"| ORD
-  ORD -->|"ordered rows"| RR{"rerank_with named?"}
-  RR -->|"no"| OUT(["token caller"])
-  RR -->|"yes, 50 rows pre-limit"| RER["pointwise reranker"]
-  RER -->|"retrieval block"| OUT
-```
+  *A-read#reciprocal-rank-calibrates*
 
 unsettled: Does a convex combination over min-max-normalized scores, its weight fitted per domain on settled judgments, replace {{read.rank.fusion}}? owner: read-path affects: read.rank
+
+unsettled: Does the read face admit a pointwise reranker, and does one whose every checkpoint postdates the horizon refuse to score under it? owner: read-path affects: read.rank
 
 ## cache
 
@@ -440,26 +377,23 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 - `warming-read` — A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.
   *because a container ready before hydration completes otherwise answers a read from a partial snapshot set*
 - `miss-wait` — Under {{store.pull.lazy-parts}}, each absent part has a 30 s acquisition deadline covering manifest lookup, GET attempts and backoff sleeps. Expiry raises `ReadPartUnavailable`, naming the part.
-  *A-store*
+  *A-store#cold-store-boots*
 - `result-key` — Result keys include token id, revocation epoch, grants, subject, session zone and incognito state. Keys also include touched relations and files, bounds, statement, parameter values and applied row ceiling.
-  *A-read*
-- `reranker-key` — A reranked result's key adds the reranker's identity and build to {{read.cache.result-key}}.
-  *because a new reranker build orders the same rows differently under an otherwise unchanged key*
+  *A-read#result-reused-under*
 - `cache-is-opt-in` — Results enter the cache only if every touched table declares `result_cache` with a time to live and none declares `private = true`. Entries expire at the shortest declared time to live.
-  *A-read*
+  *A-read#result-reused-under*
 - `volatile-bypasses` — Statements execute uncached if they call functions the engine marks inconsistent across queries, including `now()`, `current_timestamp` and `random()`. Macros calling these functions also bypass caching.
   *because such a call answers differently under an unchanged key, and a hit returns its first answer frozen until the entry expires*
 - `frontier-invalidates` — Commits, folds and request-ledger appends change a touched table's read frontier: its snapshot and runs. Earlier cache entries stop matching. Statements executing during a fold read under {{store.fold.non-blocking}}.
   *P4*
 - `budget` — The result cache stays within its process's declared byte budget and evicts the least recently used entry first. Without a declared budget, the server caches nothing.
-  *A-read*
+  *A-read#result-reused-under*
 - `hit-identical` — Cache hits return responses byte-identical to the original miss, including the restriction block. With `internals: true`, diagnostic metadata reports `cache` as `hit` or `miss`.
   *because a reused answer differing from a computed one is a second projection a caller must reconcile*
-- `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
 - `session-pool` — `Face` reuses sessions and connections while the key matches: admitted authority, token id, revocation epoch, request zone, bounds, pin map and table set. Each granted table contributes schema digest, pointer, run set and ledger files.
-  *A-read*
+  *A-read#result-reused-under*
 - `change-misses` — Committed runs, snapshots, schema edits, new tables, request-ledger files and tokens with different ids or epochs cause pool misses. The next statement reads the changed state through a new connection.
-  *A-read*
+  *A-read#result-reused-under*
 - `pool-entries` — The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.
   *because connections hold memory per authority, and an entry under a superseded store state is never hit again*
 - `pool-connections` — One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.
@@ -492,21 +426,19 @@ Embedding implementations, stored model identifiers, query-model checks, build i
 - `default-embedder` — The default embedding implementation deterministically hashes token term frequencies into an L2-normalized vector. This implementation performs no I/O and requires no download, key or network call.
 - `default-embedder-reach` — The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.
 - `model-identifier` — Every stored vector uses a {{store.reconcile.binary-and-vector}} column beside `embedding_model`, which names the producing model. Rows alone determine index identity and provenance.
-- `query-model` — A ranked call whose `query_embedding_model` differs from the `embedding_model` beside the vectors it scores raises `ReadEmbeddingModelMismatch`, naming both models.
-  *because cosine across two models compares unrelated spaces*
 - `build-identity` — The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output.
   *P3*
 - `required-face` — Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.
-  *A-topology*
+  *A-topology#build-profiles*
 - `absent-read-backend` — Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.
-  *A-topology*
+  *A-topology#build-profiles*
 
 ## as-of-join
 
 Point-in-time `ASOF JOIN` statements and templates that match rows by their availability timestamps.
 
 - `per-row-bound` — Per equality key, `ASOF JOIN` selects the right row with latest declared availability at or before the driving instant named by the inequality. If given, `max_age` bounds that row's valid-time `from`.
-  *A-read*
+  *A-read#join-matches-availability*
 - `horizon-caps-row` — Under `available_as_of`, each driving row's instant is the earlier of the instant its inequality names and `available_as_of`, so no right row past the bound joins.
 - `join-undeclared` — An `ASOF JOIN` whose right relation declares no `available_time` refuses as {{store.available-time.undeclared}} does, naming the table, whether or not the read carries `available_as_of`.
   *because joining on valid time picks a restatement published after the event*
@@ -527,18 +459,16 @@ Reads under {{authority.grant.horizon}}: default time bounds, rejected arguments
   *because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate*
 - `recall-horizon` — Under a horizon, {{read.recall.keyed}} defaults absent `observed_at` to that horizon and reads claims at the same `available_as_of`. A table without declared availability time raises {{store.available-time.undeclared}}.
   *because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it*
-- `traverse-horizon` — Under a horizon, {{read.traverse.call}} defaults an absent `observed_at` to the horizon.
-  *because an edge live at the call's instant otherwise answers a walk the horizon dates earlier*
 - `engine-stamps` — Under a horizon, responses omit `_ingested_at` and `_commit_seq` but retain citation fields `_run_id` and `_row_seq`. `context.describe` computes row count, size, lexicon and example values from the horizon-bounded relation.
-  *A-read*
+  *because load stamps date a row's arrival and reveal the present under a past horizon, while `_run_id` and `_row_seq` cite a row without ordering rows in time*
 - `late-columns` — A column's first merge sets `schema.json`'s `first_landed_at` once to the batch's earliest availability instant, otherwise commit instant. Columns with `first_landed_at` after the horizon are absent from registered schemas and describe payloads.
-  *A-store*
+  *A-store#column-records-commit*
 - `egress-hook` — Under a horizon, a pre-send hook rejects requests to every host except the configured model endpoint. Rejection follows {{connector.meter.hook-refusal}} with reason `horizon`.
   *because one attachment point already sees every egress, so a per-tool list restates it*
 - `local-rank` — Under a horizon, `corpus.retrieve` ranks stored rows through local indexes; search sources read their pinned {{store.snapshot.capture}} corpus. Live search reaches no host through {{read.horizon.egress-hook}}.
   *because a live result order postdates the snapshot, and filtering it afterwards keeps the order*
 - `rank-statistics` — Under a horizon, sidecar probes return only entries available at or before that horizon. Full-text scoring derives document count, average length and document frequency solely from those entries.
-  *A-read*
+  *A-read#sidecar-serves-past*
 - `embedder-route` — Under a horizon, an embedder declaring a checkpoint family selects its newest checkpoint whose {{connector.infer.cutoffs}} post-training cutoff precedes that horizon. The response names the selected checkpoint.
   *because an embedder trained after the horizon places documents by later events*
 - `build-resolution` — Under a horizon, model tables select the newest build whose {{run.model.build-horizon}} is at or before the credential's horizon. If none qualifies, resolution raises `ReadNoBuildWithinHorizon`, naming the table.
@@ -561,7 +491,7 @@ Committed-run notifications, durable replay, resume positions, queue limits and 
   *because an in-process hub ties every reader to the landing process and loses its state on restart*
 - `after-commit` — Subscriptions notify only runs committed under {{store.lay-out.uncommitted-run}}. Runs without manifests and logged runs absent from their node's commit log produce no notification.
   *P4*
-- `notification` — A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.
+- `notification` — A notification is {{type:contextful_core::read::subscribe::Notification}}; its `frontier` is the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.
 - `frontier-covers-run` — A read of the table bounded `as_of` a notification's frontier covers the notified run's files.
   *P4*
 - `commit-order` — Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.
@@ -652,19 +582,4 @@ max_rows   = 500
     "properties": { "since": { "type": "string", "format": "date-time" }, "region": { "type": "string" } },
     "required": ["since", "region"] },
   "limits": { "max_rows": 500 } }
-```
-
-The path one ranked read takes:
-
-```mermaid
-flowchart LR
-  CALLER(["token caller"]) -->|"tool call or SQL"| GRD["statement guard"]
-  OPR(["operator"]) -->|"raw SQL"| REG["view registry"]
-  GRD -->|"admitted statement"| REG
-  REG -->|"registered relations"| GEN["candidate generator"]
-  GEN -->|"sidecar probe"| SIDE[("index sidecar")]
-  SIDE -->|"candidate rows"| RESTR["composed restriction"]
-  RESTR -->|"permitted rows"| FUSE["three-leg fusion"]
-  FUSE -->|"top-K rows"| PROJ["response projection"]
-  PROJ -->|"one response"| CALLER
 ```

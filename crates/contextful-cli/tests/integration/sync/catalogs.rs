@@ -70,10 +70,10 @@ fn a_store_holds_its_canonical_tree_beside_two_disposable_catalogs() {
     assert_eq!(count(a.path()), before);
 }
 
-/// `machine.sqlite` holds the machine's journal, cursor cache, leases and run-row cache. Sync excludes the database;
-/// pull preserves it. Rebuild refills run rows from {{run.record.reserved-table}} only when no run row exists, and
-/// rebuilds nothing else.
-// spec: store.lay-out.machine-catalog@fddd8a62
+/// `machine.sqlite` holds the machine's journal, cursor cache, leases and run-row cache; sync excludes it and pull
+/// preserves it. Rebuild refills run rows from {{run.record.reserved-table}} only when none exists, and rebuilds
+/// nothing else.
+// spec: store.lay-out.machine-catalog@02519c71
 #[test]
 fn the_machine_catalog_stays_on_its_machine_through_push_pull_and_rebuild() {
     let bucket = tempfile::tempdir().unwrap();
@@ -135,9 +135,9 @@ fn a_compaction_stamps_its_lease_fence_into_the_snapshot_manifest_and_the_pointe
     assert_eq!(pushed["fence"], 2, "{pushed}");
 }
 
-/// A pipeline's committed position is its newest commit-log cursor when leased, or its highest run-manifest cursor
-/// otherwise. `machine.sqlite` caches that position.
-// spec: store.lay-out.cursor-in-commit@141eb04b
+/// A pipeline's committed position is its newest commit-log cursor when leased, else its highest run-manifest
+/// cursor; `machine.sqlite` caches it.
+// spec: store.lay-out.cursor-in-commit@f3c4cdae
 #[test]
 fn a_lost_machine_catalog_resumes_from_the_cursor_inside_the_newest_commit() {
     let bucket = tempfile::tempdir().unwrap();

@@ -79,6 +79,7 @@ fn vendor_hits(server: &Server) -> usize {
 
 /// The declaration names the quota, the class every request reserves under, and the headers the report forwards;
 /// a header it does not name stays home.
+// spec: connector.meter.limiter-declaration@fb907310
 #[test]
 fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
     let _env = proxy_env();
@@ -95,7 +96,7 @@ fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
 
 /// The engine's shared client reserves ahead of each outbound request, a followed hop included, so one call
 /// following one redirect spends two permits.
-// spec: connector.meter.reservation-point@d6f1791b
+// spec: connector.meter.reservation-point@2c3f1188
 #[test]
 fn each_outbound_request_spends_one_permit() {
     let _env = proxy_env();
@@ -208,6 +209,7 @@ fn the_report_carries_the_accounting_the_responses_and_the_run() {
 
 /// A failing report endpoint is retried under backoff up to three attempts when the run finishes; one that never
 /// takes the report is recorded in the audit and fails no request.
+// spec: connector.meter.report-delivery@c35c8270
 #[test]
 fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
     let _env = proxy_env();
@@ -386,7 +388,7 @@ fn an_unresolved_limiter_token_is_named_as_such() {
 }
 
 /// A request the allowlist refuses fails with `SecretUnpermittedRequest` before any acquire.
-// spec: connector.meter.allowlist-precedence@0634050f
+// spec: connector.meter.hook-composition@dbf571aa
 #[test]
 fn a_refused_request_never_reaches_the_limiter() {
     let _env = proxy_env();

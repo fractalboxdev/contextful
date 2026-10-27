@@ -41,7 +41,7 @@ pub struct CallRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<serde_json::Value>,
     /// The endpoint's token counts for the call, where it reports `usage`
-    /// (`connector.infer.usage`).
+    /// (`connector.infer.logprobs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
 }

@@ -264,3 +264,69 @@ referenced_by = [{ table = "research/notes", column = "citation" }]
     assert!(audit.contains(receipt["subject_hash"].as_str().unwrap()), "{audit}");
     assert!(!audit.contains(subject));
 }
+
+/// A face holding the chain under the issuer key copies, at start, each signed root its
+/// `[sync]` bucket lacks to `<prefix>/<project>/audit/roots/<segment>.json`, byte for byte.
+// spec: disclosure.attest.root-replication@82344430
+#[test]
+fn a_face_holding_the_chain_replicates_its_signed_roots_at_start() {
+    use std::io::BufRead;
+    struct Listener(std::process::Child);
+    impl Drop for Listener {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n");
+    p.write("notes.jsonl", &json!({ "note_id": "n1" }).to_string());
+    ok(&p.run(&cf, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    // One entry per segment, so the first read closes segment 1.
+    p.write(".contextful/audit/header.json", &json!({ "format": 1, "digest": "sha256", "segment_entries": 1 }).to_string());
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = ok(&p.run(
+        &cf,
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://ada@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "research/*", "--ttl", "3600"],
+    ));
+    let mut s = Session::spawn(&cf, &["mcp", "--project", "research", "--public-key", &public, "--audience", AUD], &p.root, &[("CONTEXTFUL_TOKEN", &token)]);
+    let call = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } });
+    let answer: Value = serde_json::from_str(&s.exchange(&call.to_string())).unwrap();
+    assert_ne!(answer["result"]["isError"], json!(true), "{answer}");
+    assert!(s.close().success());
+    // The roots are signed before any bucket is declared, so the bucket lacks them.
+    ok(&p.run(&cf, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]));
+    let local = std::fs::read_to_string(p.root.join(".contextful/audit/segments/000001.root.json")).expect("anchor signs the closed segment's root");
+
+    let bucket = tempfile::tempdir().unwrap();
+    p.write(
+        ".contextful/context/research/config.toml",
+        &format!("[node]\nid = \"face-a\"\n\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display()),
+    );
+    let mut child = std::process::Command::new(&cf)
+        .args(["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--issuer-key", ".contextful/issuer.seed"])
+        .current_dir(&p.root)
+        .env_remove("CARGO_TARGET_DIR")
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut err = std::io::BufReader::new(child.stderr.take().unwrap());
+    let _listener = Listener(child);
+    let mut startup = String::new();
+    loop {
+        let mut line = String::new();
+        assert!(err.read_line(&mut line).unwrap() > 0, "the face never listened: {startup}");
+        startup.push_str(&line);
+        if line.starts_with("listening on http://") {
+            break;
+        }
+    }
+    let replicated = bucket.path().join("context-team/team/research/audit/roots/000001.json");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !replicated.is_file() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(std::fs::read_to_string(&replicated).ok(), Some(local), "the face replicated no root: {startup}");
+}

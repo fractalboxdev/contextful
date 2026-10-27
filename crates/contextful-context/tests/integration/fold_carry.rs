@@ -27,9 +27,9 @@ fn events(prefix: &str, days: &[&str], n: usize) -> Value {
     Value::Array((0..n).map(|i| json!({ "id": format!("{prefix}-{i}"), "day": days[i % days.len()] })).collect())
 }
 
-/// For append tables, a pass writes unfolded rows as one delta part per affected partition. The pass rewrites only
-/// parts affected by replacement or retention, referencing every other part in its origin snapshot.
-// spec: store.fold.carry-by-reference@d752f24b
+/// For append tables, a pass writes unfolded rows as one delta part per affected partition and rewrites only parts
+/// replacement or retention touches, referencing every other part in its origin snapshot.
+// spec: store.fold.carry-by-reference@7aa145de
 #[test]
 fn a_pass_carries_every_part_its_runs_do_not_reach_by_reference() {
     let f = Fixture::new();
@@ -97,9 +97,9 @@ fn a_restated_key_rewrites_only_the_part_holding_it() {
     assert!(first.parts.iter().all(|p| p.origin.is_none()));
 }
 
-/// In each written partition, a size tier spans row counts between consecutive powers of 4. The pass merges 4 parts
-/// from one tier into one part, repeating until every tier holds fewer than 4 parts.
-// spec: store.fold.tiered-merge@800bb2ff
+/// In each written partition a size tier spans row counts between consecutive powers of 4, and a pass merges 4
+/// parts of one tier into one part until every tier holds fewer than 4 parts.
+// spec: store.fold.tiered-merge@885c9da3
 #[test]
 fn four_parts_of_one_tier_merge_into_one() {
     assert_eq!(FOLD_MERGE_FANOUT, 4);
@@ -126,9 +126,9 @@ fn four_parts_of_one_tier_merge_into_one() {
     assert_eq!(held, sorted, "{}", path.display());
 }
 
-/// Collection keeps parts and sidecar segments referenced by retained snapshots until no retained snapshot names those
-/// files. Collection removes the rest of the collected snapshot's directory, including its manifest.
-// spec: store.fold.reference-retention@3d179260
+/// Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the
+/// collected snapshot's directory, manifest included.
+// spec: store.fold.reference-retention@b270725a
 #[test]
 fn collection_keeps_a_part_a_retained_snapshot_carries() {
     let f = Fixture::new();

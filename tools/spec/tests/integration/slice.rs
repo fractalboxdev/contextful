@@ -34,9 +34,9 @@ fn an_operation_slice_carries_the_records_its_rows_cite_and_the_errors_they_own(
     let s = Scratch::copy();
     let v = slice(&s, "store.reconcile");
     let records: BTreeSet<&str> = v["records"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap()).collect();
-    assert!(records.contains("A-store"), "{records:?}");
-    let a_store = v["records"].as_array().unwrap().iter().find(|r| r["id"] == "A-store").unwrap();
-    assert!(a_store["text"].as_str().unwrap().starts_with("# A-store"));
+    assert!(records.iter().any(|id| id.starts_with("A-store#")), "{records:?}");
+    let a_store = v["records"].as_array().unwrap().iter().find(|r| r["id"].as_str().unwrap().starts_with("A-store#")).unwrap();
+    assert!(a_store["text"].as_str().unwrap().starts_with("## "));
     let errors: BTreeSet<&str> = v["errors"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
     assert!(errors.contains("StoreSchemaIncompatible"), "{errors:?}");
     assert!(!errors.contains("StoreUnknownTable"), "{errors:?}");
@@ -112,4 +112,32 @@ fn an_unknown_target_exits_non_zero_naming_it() {
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(err.contains(target), "{target}: {err}");
     }
+}
+
+#[test]
+fn a_slice_renders_each_group_heading_with_its_lede() {
+    let s = Scratch::copy();
+    let body = s.read("spec/10-store.md");
+    let at = body.find("\n- `lost-pointer` — ").unwrap();
+    s.write("spec/10-store.md", &format!("{}\n\n### collection\n\nA pass that loses its pointer, and the staging it leaves behind.\n{}", &body[..at], &body[at..]));
+    let v = slice(&s, "store.fold");
+    let row = v["clauses"].as_array().unwrap().iter().find(|r| r["id"] == "store.fold.lost-pointer").unwrap();
+    assert_eq!(row["group"], "collection");
+    assert_eq!(v["groups"]["store.fold.collection"], "A pass that loses its pointer, and the staging it leaves behind.");
+    let out = s.cmd(&["slice", "store.fold"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("### `store.fold` · collection\n\nA pass that loses its pointer, and the staging it leaves behind.\n"), "{text}");
+}
+
+#[test]
+fn a_group_heading_holding_a_dot_keeps_its_operation_and_lede() {
+    let s = Scratch::copy();
+    let body = s.read("spec/10-store.md");
+    let at = body.find("\n- `lost-pointer` — ").unwrap();
+    s.write("spec/10-store.md", &format!("{}\n\n### v1.2 collection\n\nA pass that loses its pointer, and the staging it leaves behind.\n{}", &body[..at], &body[at..]));
+    let v = slice(&s, "store.fold");
+    assert_eq!(v["groups"]["store.fold.v1.2 collection"], "A pass that loses its pointer, and the staging it leaves behind.");
+    let out = s.cmd(&["slice", "store.fold"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("### `store.fold` · v1.2 collection\n\nA pass that loses its pointer, and the staging it leaves behind.\n"), "{text}");
 }

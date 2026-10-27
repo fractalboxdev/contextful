@@ -6,6 +6,10 @@
 
 <!-- The clause ids this change adds, rewords or pins, e.g. `assurance.gate.secret-scope`. -->
 
+`contextful-spec slice --diff origin/main` lists each clause whose tagged test this change
+edits. Confirm each listed clause still holds: yes / no. A reworded clause runs
+`contextful-spec retag <clause>`; record the count of tags it rewrote.
+
 ## Boundary questions
 
 Answer each yes or no. A yes names the site, and the change either routes it through the

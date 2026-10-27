@@ -329,9 +329,9 @@ fn ids_of(r: &Response, key: &str) -> Vec<String> {
     ids
 }
 
-/// If the current snapshot lacks a declared sidecar or records different `id_column` or builder parameters, a pass
-/// builds the sidecar over those rows. The pass publishes a separate snapshot even without a landed run.
-// spec: store.index.declared-unbuilt@da66ffcb
+/// A pass builds a declared sidecar the current snapshot lacks, or records with other `id_column` or builder
+/// parameters, over those rows, publishing a new snapshot even without a landed run.
+// spec: store.index.declared-unbuilt@d5b87055
 #[test]
 fn a_pass_builds_a_sidecar_declared_over_rows_already_landed() {
     use contextful_core::store::fold::FoldOutcome;

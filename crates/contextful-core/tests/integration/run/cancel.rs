@@ -40,7 +40,7 @@ fn a_stop_needs_execute_over_the_recorded_pipeline_and_names_none() {
 }
 
 /// Marking an already-marked row overwrites it with the newer request.
-// spec: run.cancel.re-mark@d92c0b5b
+// spec: run.cancel.catalog-channel@2af406f9
 #[test]
 fn a_second_mark_overwrites_the_first() {
     let mut r = row("run-1", "2030-01-01T00:00:00Z");
@@ -52,6 +52,7 @@ fn a_second_mark_overwrites_the_first() {
     assert_eq!(stop.reason.as_deref(), Some("second"));
 }
 
+// spec: run.cancel.two-grains@900d4d25
 #[test]
 fn only_an_in_flight_row_accepts_a_mark_and_scopes_read_by_grain() {
     assert_eq!(POLL_INTERVAL_MS, 500);

@@ -117,6 +117,7 @@ pub(crate) fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
     ask(server, 7, "tools/call", json!({ "name": tool, "arguments": arguments }))
 }
 
+// spec: read.reference.admission@43ac1aea
 #[test]
 fn reference_dispatch_is_read_admitted_bounded_and_audited() {
     let fixture = fixture();

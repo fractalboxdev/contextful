@@ -46,6 +46,9 @@ pub struct LimitEntry {
     pub basis: String,
     #[serde(default)]
     pub gloss: String,
+    /// The Rust const holding the bound, as `<file>::<NAME>` (`corpus.state.limit-const`).
+    #[serde(default, rename = "const", skip_serializing_if = "Option::is_none")]
+    pub constant: Option<String>,
 }
 
 impl LimitEntry {
@@ -59,6 +62,17 @@ impl LimitEntry {
     }
 }
 
+/// A `[term]` entry (`corpus.registry.term`): the clause defining the term, its gloss, and
+/// the spellings it replaces.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TermEntry {
+    pub clause: String,
+    #[serde(default)]
+    pub gloss: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub avoid: Vec<String>,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct Fragment {
     #[serde(default)]
@@ -67,6 +81,11 @@ pub struct Fragment {
     pub error: BTreeMap<String, ErrorEntry>,
     #[serde(default)]
     pub limit: BTreeMap<String, LimitEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub term: BTreeMap<String, TermEntry>,
+    /// Ratchets (`corpus.registry.ceiling`): a count, or a table of counts by name.
+    #[serde(default, skip_serializing)]
+    pub ceiling: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -147,6 +166,7 @@ pub enum Role {
     Record,
     Plan,
     Guide,
+    Topic,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -178,6 +198,9 @@ pub struct Clause {
     pub why: String,
     pub file: String,
     pub line: usize,
+    /// The `### <group>` heading the item sits under; no segment of the id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// Examples from the operation's `#### Scenarios` list: a WHEN/THEN sentence or a fixture path.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub scenarios: Vec<String>,
@@ -204,6 +227,8 @@ pub struct Doc {
     pub clauses: Vec<Clause>,
     /// Each `## <operation>` section's opening paragraph, by operation name.
     pub ledes: BTreeMap<String, String>,
+    /// Each `### <group>` heading's opening paragraph, keyed `<operation>.<group>`.
+    pub groups: BTreeMap<String, String>,
 }
 
 impl Doc {
@@ -275,10 +300,13 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         }
     }
     let mut fence = false;
-    // the `## ` section in force, and whether a `###`+ heading sits between it and the line
+    // the `## ` section in force, its `### ` group, and whether a `####`+ heading sits
+    // between them and the line
     let mut section: Option<String> = None;
+    let mut group: Option<String> = None;
     let mut sub = false;
     let mut ledes: BTreeMap<String, String> = BTreeMap::new();
+    let mut groups: BTreeMap<String, String> = BTreeMap::new();
     // 0: no lede pending, 1: heading seen, 2: inside the lede paragraph
     let mut lede = 0u8;
     let at_operation = |section: &Option<String>, sub: bool| {
@@ -299,9 +327,14 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
             kinds[i] = LineKind::Heading;
             if let Some(h) = l.strip_prefix("## ") {
                 section = Some(h.trim().to_string());
+                group = None;
                 sub = false;
             } else if l.starts_with("# ") {
                 section = None;
+                group = None;
+                sub = false;
+            } else if let Some(h) = l.strip_prefix("### ").filter(|_| at_operation(&section, false)) {
+                group = Some(h.trim().to_string());
                 sub = false;
             } else {
                 sub = true;
@@ -323,6 +356,7 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
                         why: String::new(),
                         file: rel.to_string(),
                         line: i + 1,
+                        group: group.clone(),
                         scenarios: Vec::new(),
                     });
                 }
@@ -340,12 +374,16 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         } else {
             kinds[i] = LineKind::Prose;
         }
-        // an operation's lede is the first paragraph after its heading, when prose
+        // an operation's or a group's lede is the first paragraph after its heading, when prose
         lede = match (lede, kinds[i]) {
-            (_, LineKind::Heading) if l.starts_with("## ") && at_operation(&section, sub) => 1,
+            (_, LineKind::Heading) if (l.starts_with("## ") || l.starts_with("### ")) && at_operation(&section, sub) => 1,
             (1, LineKind::Blank) => 1,
             (1 | 2, LineKind::Prose) => {
-                let e = ledes.entry(section.clone().unwrap_or_default()).or_default();
+                let op = section.clone().unwrap_or_default();
+                let e = match &group {
+                    Some(g) => groups.entry(format!("{op}.{g}")).or_default(),
+                    None => ledes.entry(op).or_default(),
+                };
                 if !e.is_empty() {
                     e.push(' ');
                 }
@@ -356,7 +394,9 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         };
         i += 1;
     }
-    Doc { rel: rel.to_string(), role, lines, kinds, contract, owns, clauses, ledes }
+    // a `### ` heading holding no clause item is after-list prose, not a group
+    groups.retain(|key, _| clauses.iter().any(|cl| cl.group.as_ref().is_some_and(|g| *key == format!("{}.{g}", cl.operation))));
+    Doc { rel: rel.to_string(), role, lines, kinds, contract, owns, clauses, ledes, groups }
 }
 
 // ---------------------------------------------------------------- corpus
@@ -412,6 +452,20 @@ impl Corpus {
         for rel in guides {
             let text = std::fs::read_to_string(root.join(&rel))?;
             docs.push(parse(&rel, Role::Guide, &text));
+        }
+        let mut topics: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(spec.join("topics")) {
+            for e in rd {
+                let p = e?.path();
+                if p.extension().map(|x| x == "md").unwrap_or(false) {
+                    topics.push(format!("spec/topics/{}", p.file_name().unwrap().to_string_lossy()));
+                }
+            }
+        }
+        topics.sort();
+        for rel in topics {
+            let text = std::fs::read_to_string(root.join(&rel))?;
+            docs.push(parse(&rel, Role::Topic, &text));
         }
         if let Ok(text) = std::fs::read_to_string(spec.join("roadmap.md")) {
             docs.push(parse("spec/roadmap.md", Role::Plan, &text));
@@ -503,6 +557,20 @@ impl Corpus {
             .collect()
     }
 
+    /// Every group's lede, keyed `<contract>.<operation>.<group>`.
+    pub fn group_ledes(&self) -> BTreeMap<String, &str> {
+        self.contracts()
+            .flat_map(|d| {
+                let c = d.contract.clone().unwrap_or_default();
+                d.groups.iter().map(move |(key, t)| (format!("{c}.{key}"), t.as_str()))
+            })
+            .collect()
+    }
+
+    pub fn topics(&self) -> impl Iterator<Item = &Doc> {
+        self.docs.iter().filter(|d| d.role == Role::Topic)
+    }
+
     pub fn records(&self) -> impl Iterator<Item = &Doc> {
         self.docs.iter().filter(|d| d.role == Role::Record)
     }
@@ -559,8 +627,21 @@ pub fn strip_pointers(s: &str, with: &str) -> String {
     out
 }
 
-/// Every `{{id}}` in a string.
+/// Every `{{id}}` clause pointer in a string; a `{{type:<path>}}` pointer is no clause pointer.
 pub fn pointers(s: &str) -> Vec<String> {
+    spans(s).into_iter().filter(|p| !p.starts_with(TYPE_POINTER)).collect()
+}
+
+/// The prefix of a `{{type:<rust path>}}` pointer (`corpus.reference.type-pointer`).
+pub const TYPE_POINTER: &str = "type:";
+
+/// The path of every `{{type:<path>}}` pointer in a string.
+pub fn type_pointers(s: &str) -> Vec<String> {
+    spans(s).into_iter().filter_map(|p| p.strip_prefix(TYPE_POINTER).map(|t| t.trim().to_string())).collect()
+}
+
+/// The text inside every `{{...}}` span.
+fn spans(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = s;
     while let Some(a) = rest.find("{{") {

@@ -19,7 +19,7 @@ use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{
-    self, commit, Commit, Directory, Freshness, GrantLine, GrantRow, GrantsRead, Governed, MemberRow, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock,
+    self, commit, Commit, Directory, Freshness, GrantRow, GrantsRead, Governed, MemberRow, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock,
     SweepKind, Tombstone,
 };
 use contextful_core::identify::{IdentityLink, LinkMethod, NormalizedSubject};
@@ -162,16 +162,6 @@ pub fn state(store: &Store, source: &str) -> Result<SourceState> {
     }
     links.sort_by(|a, b| (&a.source_principal, &a.on_behalf_of, a.method.as_str()).cmp(&(&b.source_principal, &b.on_behalf_of, b.method.as_str())));
     Ok(SourceState { resources, grants, members, links, freshness: Some(fresh) })
-}
-
-/// The identity links of `source`'s current run (`authority.identify.directory-link`).
-pub fn identity_links(store: &Store, source: &str) -> Result<Vec<IdentityLink>> {
-    Ok(state(store, source)?.links)
-}
-
-/// The group memberships of `source`'s current run.
-pub fn group_members(store: &Store, source: &str) -> Result<Vec<MemberRow>> {
-    Ok(state(store, source)?.members)
 }
 
 /// The resource ids of `source` on which a current grant reaches `subject` through the
@@ -378,37 +368,6 @@ fn batches(source: &str, c: &Commit, now: Instant) -> Vec<(&'static str, Batch)>
             },
         ),
     ]
-}
-
-/// Run one sweep of `block`'s source from a `--grants` read; see [`sweep`].
-#[allow(clippy::too_many_arguments)]
-pub fn sweep_grants(
-    store: &Store,
-    at: &Landing,
-    block: &SweepBlock,
-    bindings: &[Binding],
-    kind: SweepKind,
-    grants: Vec<GrantLine>,
-    began_at: Instant,
-    committed_at: Instant,
-) -> Result<Commit> {
-    sweep_run(store, at, block, bindings, kind, grants, None, began_at, committed_at)
-}
-
-/// [`sweep_read`] over grant lines alone, every governed resource read.
-#[allow(clippy::too_many_arguments)]
-pub fn sweep_run(
-    store: &Store,
-    at: &Landing,
-    block: &SweepBlock,
-    bindings: &[Binding],
-    kind: SweepKind,
-    grants: Vec<GrantLine>,
-    directory: Option<Directory>,
-    began_at: Instant,
-    committed_at: Instant,
-) -> Result<Commit> {
-    sweep_read(store, at, block, bindings, kind, GrantsRead { grants, ..GrantsRead::default() }, directory, began_at, committed_at)
 }
 
 /// The access tables holding only the current run's rows; `tombstones` and `freshness`

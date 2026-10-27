@@ -34,7 +34,7 @@ target = { op = "==", value = 0 }
 seed   = 0x5eed_0003
 
 [entry.guard-short-assignment]
-clause = "run.guard-secrets.mask-span"
+clause = "run.guard-secrets.mask-replacement"
 metric = "guard.short_assignment.masked_rate"
 kind   = "test"
 tier   = "gate"
@@ -227,7 +227,7 @@ method = { test = "contextful_memory::synthesize::a_synthesized_claim_lands_unde
 target = { op = "==", value = 0 }
 
 [entry.guest-without-jit]
-clause = "connector.package.native-verification"
+clause = "connector.package.interpreted-target"
 metric = "wasm.warm_compiles"
 kind   = "test"
 tier   = "gate"
@@ -235,7 +235,7 @@ method = { issue = 52 }
 target = { op = "==", value = 0 }
 
 [entry.guest-pulley-throughput]
-clause = "connector.package.native-verification"
+clause = "connector.package.interpreted-target"
 metric = "wasm.pulley_throughput_ratio"
 kind   = "bench"
 tier   = "trend"

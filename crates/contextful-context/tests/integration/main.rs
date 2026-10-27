@@ -12,6 +12,7 @@ mod erase;
 mod fold;
 mod fold_amplification;
 mod fold_carry;
+mod fold_model;
 mod fulltext_rebuild;
 mod index;
 mod init;

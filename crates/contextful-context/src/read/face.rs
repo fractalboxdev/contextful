@@ -538,7 +538,7 @@ impl Face {
     /// `base` with each column the table's adjustment lists multiplied, under
     /// `available_as_of`, by the product of the factor vintages available by the bound that
     /// agree on the factor table's key and take effect after the row's valid-time `from`
-    /// (`store.available-time.adjustment-factors`, `store.available-time.adjustment-join`).
+    /// (`store.available-time.adjustment-factors`).
     /// An unbounded read keeps raw values.
     fn adjusted(&self, decl: &TableDecl, base: String, bounds: Bounds) -> Result<String, ReadFault> {
         let (Some(adjustment), Some(_)) = (decl.available_time.as_ref().and_then(|a| a.adjustment.as_ref()), bounds.available_as_of) else { return Ok(base) };
@@ -1788,7 +1788,7 @@ fn under_horizon(decl: &TableDecl, mut base: String, columns: Vec<Column>, schem
 
 /// The bound arguments every read tool but `memory.recall` declares, and the vintage a
 /// vintage table resolves (`read.register.bound-arguments`,
-/// `read.register.available-bound-argument`, `store.available-time.vintage-first`).
+/// `read.register.available-bound-argument`, `store.available-time.vintage-rows`).
 fn bound_properties() -> [(String, Value); 4] {
     let instant = || json!({ "type": "string", "description": INSTANT_LITERAL });
     let vintage = json!({ "type": "string", "enum": ["latest", "first"], "description": "Which release of a vintage table answers per key: the latest the bounds admit, or the first." });

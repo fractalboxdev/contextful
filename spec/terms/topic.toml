@@ -1,0 +1,18 @@
+# Topic pages (`corpus.topic`): each entry names the page `spec/topics/<slug>.md`, its
+# title, and the clauses the page answers, each within one pointer step of the page.
+
+[topic.concurrent-writers]
+title = "Concurrent writers"
+answers = [
+  "topology.coordinate.primitive",
+  "topology.coordinate.fenced-commit",
+  "store.fold.pointer-commit",
+  "store.reserve.commit-wait",
+  "store.lease.held",
+  "store.lease.stale-fence",
+  "store.merge.retries",
+  "run.journal.entry-key",
+  "run.journal.claim-takeover",
+  "run.record.owner-lease",
+  "run.items.fence",
+]

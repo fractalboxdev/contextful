@@ -396,13 +396,6 @@ pub struct UnrecognizedEntry {
 }
 
 impl UnrecognizedEntry {
-    /// The entry the JSON text `json` spells, kept as written.
-    pub fn parse(json: &str) -> serde_json::Result<UnrecognizedEntry> {
-        let raw = serde_json::value::RawValue::from_string(json.to_string())?;
-        let fields = serde_json::from_str(raw.get())?;
-        Ok(UnrecognizedEntry { raw, fields })
-    }
-
     /// The field `key`, when the entry is an object carrying it.
     pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
         self.fields.get(key)

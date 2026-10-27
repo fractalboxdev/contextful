@@ -2,7 +2,7 @@
 //! bootstrap credential.
 
 use crate::support::{configure_proxy, proxy_env, name, Fixed, Response, Server, SetClock};
-use contextful_core::connector::lease::Scopes;
+use contextful_core::connector::lease::{Scopes, MINT_CALLS_PER_WINDOW};
 use contextful_core::connector::resolve::Provider;
 use contextful_core::run::FailureTag;
 use contextful_outbound::secrets::{assemble, LeaseProvider};
@@ -99,9 +99,9 @@ fn the_lease_backend_with_no_scope_refuses_at_assembly() {
     assert_eq!(mints(&server), 0);
 }
 
-/// The resolver holds a leased credential and its expiry together in memory for the run. The resolver evicts both at
-/// expiry. Neither enters a file, journal entry or audit record.
-// spec: connector.lease.lease@7dda27b9
+/// The resolver holds a credential lease's value and its expiry together in memory for the run. The resolver evicts
+/// both at expiry. Neither enters a file, journal entry or audit record.
+// spec: connector.lease.lease@e8e69dea
 #[test]
 fn a_lease_is_evicted_at_its_expiry_and_reminted() {
     let _env = proxy_env();
@@ -121,8 +121,9 @@ fn a_lease_is_evicted_at_its_expiry_and_reminted() {
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), before.len());
 }
 
-/// A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the lease's own expiry.
-// spec: connector.lease.cache-window@7c82033c
+/// A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's
+/// own expiry.
+// spec: connector.lease.cache-window@dfaf3b19
 #[test]
 fn a_leased_entry_retires_by_the_tighter_bound() {
     let _env = proxy_env();
@@ -140,9 +141,10 @@ fn a_leased_entry_retires_by_the_tighter_bound() {
     }
 }
 
-/// The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ "scope":
-/// "<lease scope>" }`.
-// spec: connector.lease.endpoint@421208bc
+/// The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{
+/// "scope": "<lease scope>" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch
+/// seconds or an RFC 3339 instant, at top level or under `lease`.
+// spec: connector.lease.endpoint@7e6dca49
 #[test]
 fn a_mint_is_a_bearer_post_naming_the_scope() {
     let _env = proxy_env();
@@ -230,7 +232,7 @@ fn server_and_transport_failures_are_transient_and_tried_once() {
 #[test]
 fn one_mint_per_name_per_window() {
     let _env = proxy_env();
-    assert_eq!(contextful_core::connector::lease::MINT_CALLS_PER_WINDOW, 1);
+    assert_eq!(MINT_CALLS_PER_WINDOW, 1);
     let server = leased(600);
     let clock = SetClock::new();
     let r = Arc::new(resolver(&server, "vendor-token,other-token", &clock));
@@ -240,18 +242,21 @@ fn one_mint_per_name_per_window() {
             s.spawn(move || {
                 for n in ["vendor-token", "other-token"] {
                     r.hydrate(&name(n)).unwrap();
+                    // A whole-value reference to a leased name shares the window too.
+                    assert_eq!(r.resolve(&name(n)).unwrap().reveal(), "leased-value");
                 }
             });
         }
     });
     clock.advance(200);
     r.hydrate(&name("vendor-token")).unwrap();
-    assert_eq!(mints(&server), 2, "one per declared name");
+    r.resolve(&name("vendor-token")).unwrap();
+    assert_eq!(mints(&server), 2 * MINT_CALLS_PER_WINDOW as usize, "one per declared name");
 }
 
-/// The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through
-/// adapters behind it.
-// spec: connector.lease.bootstrap-non-recursion@072ce297
+/// The engine authenticates to the mint endpoint with one standing `secret://` credential, hydrated only through the
+/// adapters the chain held before the lease provider joined.
+// spec: connector.lease.bootstrap-credential@e25e4b53
 #[test]
 fn the_mint_credential_comes_from_the_adapters_behind_the_provider() {
     let _env = proxy_env();
@@ -337,6 +342,7 @@ fn a_provider_named_localhost_mints_over_loopback() {
 }
 
 /// One mint call answers one scope: two leased names send two calls, each body naming one scope.
+// spec: connector.lease.scope-declaration@51bf16e8
 #[test]
 fn each_leased_name_mints_alone() {
     let _env = proxy_env();

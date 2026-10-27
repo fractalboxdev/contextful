@@ -266,8 +266,10 @@ fn success_retires_the_owner_and_the_next_fire_takes_a_fresh_execution() {
     assert_ne!(first.execution_id, second.execution_id);
 }
 
-/// Retiring an execution owner deletes its journal rows in the retiring transaction.
-// spec: run.journal.collection@3c4f3a13
+/// Retiring an execution owner deletes its journal rows in the retiring transaction; a journal
+/// store apart from the catalog deletes them after the catalog commits the retirement, and the next
+/// open under that scope repeats the delete.
+// spec: run.journal.collection@8142a7ac
 #[test]
 fn retirement_collects_the_executions_journal() {
     let rig = Rig::new();
@@ -286,6 +288,7 @@ fn retirement_collects_the_executions_journal() {
 
 /// At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced
 /// it before any replay.
+// spec: run.advance.cursor-bytes@6fb825ec
 // spec: run.own.marker-reconciles@a8a124be
 #[test]
 fn a_marker_the_catalog_missed_retires_its_owner_before_replay() {
@@ -923,8 +926,9 @@ impl Source for Polled {
 }
 
 /// A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary
-/// instant's rows on every poll.
-// spec: run.advance.inclusive-boundary@5a585ac1
+/// instant's rows on every poll, idempotently on a keyed table and accumulating in a keyless table's union
+/// view.
+// spec: run.advance.inclusive-boundary@656562c8
 #[test]
 fn every_poll_re_lands_the_boundary_instant() {
     let rig = Rig::new();
@@ -968,7 +972,7 @@ impl Source for Nested {
 
 /// An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock
 /// such as `/commit/committer/date` orders the stream and names its watermark.
-// spec: run.declare.incremental-pointer@d55d2b92
+// spec: run.declare.incremental-field@82b8102e
 #[test]
 fn a_pointer_clock_reads_a_nested_value_from_each_row() {
     let rig = Rig::new();
@@ -991,9 +995,10 @@ fn a_pointer_clock_reads_a_nested_value_from_each_row() {
     assert!(rig.run(&p, "1.0.0", "run-3", &mut source, &mut sink).map_or(true, |r| r.status != RunStatus::Success));
 }
 
-/// A `monotonic` position is concurrent-safe and commits the highest value observed. An `opaque-token` or
-/// `snapshot-id` position moves only under a single-writer lease. Last-write-wins governs no cursor.
-// spec: run.advance.concurrency-by-kind@b06ad45d
+/// A `monotonic` position is concurrent-safe and commits the highest value observed. A position of
+/// another {{type:contextful_core::run::advance::CursorKind}} moves only under a single-writer lease.
+/// Last-write-wins governs no cursor.
+// spec: run.advance.concurrency-by-kind@a9e47a03
 #[test]
 fn a_token_cursor_moves_under_one_writer_and_a_watermark_never_rewinds() {
     use contextful_core::coordinate::LeaseKey;
@@ -1056,7 +1061,7 @@ fn the_row_exists_before_the_first_pull() {
 }
 
 /// The engine measures row and byte counts at the destination rather than at the source.
-// spec: run.record.counts-at-destination@a65efad9
+// spec: run.record.skipped-count@575f9748
 #[test]
 fn counts_come_from_the_destination() {
     let rig = Rig::new();
@@ -1080,6 +1085,7 @@ fn a_component_connector_is_refused_on_a_build_without_a_component_host() {
 
 /// Builds that link a component host run component connectors: the full profile and container or worker deployments
 /// built from that profile.
+// spec: topology.compose.connector-pillar@ec7fb9ad
 // spec: topology.package.component-host@cb1c5d44
 #[test]
 fn a_component_connector_runs_on_an_engine_wiring_its_world() {
@@ -1132,9 +1138,9 @@ impl Source for Bodies {
     }
 }
 
-/// A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the
-/// run's pulls, replayed pulls included, beside the destination counts.
-// spec: run.record.skipped-count@849043a6
+/// The run row counts rows and bytes at the destination and sums each pull's optional `skipped` count of inputs
+/// the source declined to land whole, replayed pulls included.
+// spec: run.record.skipped-count@575f9748
 #[test]
 fn the_run_row_sums_the_skipped_count_of_every_pull() {
     let rig = Rig::new();
@@ -1278,6 +1284,7 @@ fn incompatible_pages() -> Pages {
     Pages::new(vec![vec![json!({"id":"seed","score":0})], vec![json!({"id":"one","score":1})], vec![json!({"id":"two","score":{"invalid":true}})]])
 }
 
+// spec: run.own.source-stage-schema@804e10a2
 #[test]
 fn source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor() {
     for protected in [false, true] {
@@ -1439,9 +1446,9 @@ impl Source for Opaque {
     }
 }
 
-/// A position is opaque bytes the connector owns, and its kind is a manifest fact the engine reads. Each table carries
-/// its own position.
-// spec: run.advance.cursor-bytes@888988bb
+/// A position is opaque bytes the connector owns, one per table, and its kind a manifest fact; the connector moves it
+/// only by committing through the engine, a recorded step that replays as a resolved read.
+// spec: run.advance.cursor-bytes@6fb825ec
 #[test]
 fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
     let for_table = |table: &str, cursor: &str| {
@@ -1474,7 +1481,7 @@ fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
 
 /// A delivered batch runs under the owner scope its batch key fixes: a resend under the key resumes that owner's
 /// recorded pull, and another key's batch runs under a fresh execution that leaves it pending.
-// spec: connector.source.receive-recorded@dd100cb0
+// spec: connector.source.receive-recorded@708ab628
 #[test]
 fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
     use contextful_core::run::own::OwnerScope;

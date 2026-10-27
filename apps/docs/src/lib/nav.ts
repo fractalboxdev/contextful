@@ -2,7 +2,7 @@ import { getCollection, type CollectionEntry } from "astro:content";
 import { collectionRoute, contractsByFile } from "./corpus.mjs";
 export { contractsByFile } from "./corpus.mjs";
 
-type Entry = CollectionEntry<"spec"> | CollectionEntry<"adr"> | CollectionEntry<"guide"> | CollectionEntry<"cards">;
+type Entry = CollectionEntry<"spec"> | CollectionEntry<"adr"> | CollectionEntry<"guide"> | CollectionEntry<"topics"> | CollectionEntry<"cards">;
 
 export interface NavItem {
   href: string;
@@ -54,11 +54,19 @@ export const companions = async (contract: string | undefined) => {
 
 const byRecordOrder = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
 
+const guideReadingOrder = new Map([
+  "topology", "store", "connector", "run", "read", "authority", "disclosure", "surface", "assurance", "corpus",
+].map((id, index) => [id, index]));
+
 export const navigation = async (): Promise<NavGroup[]> => {
   const spec = (await getCollection("spec")).sort((a, b) => a.id.localeCompare(b.id));
   const adr = (await getCollection("adr")).sort((a, b) => byRecordOrder(a.id, b.id));
-  const guides = (await getCollection("guide")).sort((a, b) => a.id.localeCompare(b.id));
+  const guides = (await getCollection("guide")).sort((a, b) =>
+    (guideReadingOrder.get(a.id) ?? guideReadingOrder.size) - (guideReadingOrder.get(b.id) ?? guideReadingOrder.size)
+    || a.id.localeCompare(b.id),
+  );
   const cards = (await getCollection("cards")).sort((a, b) => a.id.localeCompare(b.id));
+  const topics = (await getCollection("topics")).sort((a, b) => a.id.localeCompare(b.id));
   const contracts = contractsByFile();
   const item = (base: string) => (e: Entry): NavItem => ({ href: collectionRoute(base, e.id), label: titleOf(e) });
   const adrItem = (e: Entry): NavItem => ({
@@ -70,6 +78,7 @@ export const navigation = async (): Promise<NavGroup[]> => {
   const isContract = (e: Entry) => Boolean(e.data.contract) || contracts.has(e.id);
   const groups: NavGroup[] = [
     { label: "Guides", items: guides.map(item("guide")) },
+    { label: "Topics", items: topics.map(item("topics")) },
     {
       label: "Contracts",
       items: spec.filter(isContract).map((e) => ({ ...item("spec")(e), hint: e.id.split("-")[0] })),
@@ -79,7 +88,9 @@ export const navigation = async (): Promise<NavGroup[]> => {
       items: cards.map((e) => ({ href: collectionRoute("cards", e.id), label: titleOf(e).replace(/\s+—\s+card$/, "") })),
       collapsed: true,
     },
-    { label: "Plan", items: spec.filter((e) => !isContract(e) && e.id !== "targets").map(item("spec")) },
+    // The generated glossary, once spec/glossary.md exists, defines the corpus's terms.
+    { label: "Terms", items: spec.filter((e) => e.id === "glossary").map(item("spec")) },
+    { label: "Plan", items: spec.filter((e) => !isContract(e) && !["targets", "glossary"].includes(e.id)).map(item("spec")) },
     { label: "Principles", items: adr.filter((e) => /^P\d/.test(e.id)).map(adrItem) },
     { label: "Contract ADRs", items: adr.filter((e) => e.id.startsWith("A-")).map(adrItem) },
     { label: "Decision records", items: adr.filter((e) => /^D\d/.test(e.id)).map(adrItem), collapsed: true },

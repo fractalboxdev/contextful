@@ -2,248 +2,180 @@
 
 **Status:** accepted
 
-## The control document is CAS-versioned, validated per entry, and fails static
+## control-document-cas — The control document is CAS-versioned, validated per entry, and fails static
 
-One hand-edited control document arms every scheduled entry unattended. Admin edit validates and saves one store draft at the version it read; Admin apply rechecks ownership and validates before claiming that draft by compare-and-swap. A loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
+One hand-edited control document arms every scheduled entry unattended, so one bad entry or failed poll stops no unrelated schedule.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| CAS on an engine version, per-entry validation, fail-static poll *(chosen)* | — | A loser's edits land on a document they never read; an entry can sit unarmed with only a diagnostic; a silent control plane leaves an old cadence running. |
-| Last-write-wins on the pointer | Immutability | An applied version is superseded unobserved by one that never saw it. |
+| CAS on an engine version, per-entry validation, fail-static poll *(chosen)* | — | A loser's edits land on a document they never read; a silent control plane leaves an old cadence running. |
+| Last-write-wins on the pointer | Immutability | An applied version is superseded unobserved. |
 | A lock or lease in front of the document | Writer count under failure | An expiring lease admits an unordered second writer. |
-| Abort the reconcile on one bad entry | Blast radius | One typo stops every unrelated schedule. |
 | Arm empty, or fall back to local schedules, on a failed poll | Visibility of the failure | A transient error stops ingestion or runs an unapplied cadence while reporting healthy. |
 
-Consequences: entries authored as a chain run as one unit under the head entry's cadence; control-plane staleness is visible only in diagnostics.
+## configuration-reaches-engine — Configuration reaches only engine-named code and secrets
 
-## Configuration reaches only engine-named code and secrets
-
-Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate`, `synthesize`, `plan` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.reconcile` polls a control URL only on loopback, following no redirect and no proxy; any other host raises `ControlSourceNotLoopback`.
+Configuration selects among things the engine names, never code, a host command, a secret or a remote control source.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Closed job union, derived names, loopback control source *(chosen)* | — | Maintenance outside six kinds needs a release; renaming a store rotates its secret name; multi-host control waits on signed snapshots. |
+| Closed job union, derived names, loopback control source *(chosen)* | — | A new job kind needs a release; renaming a store rotates its secret name. |
 | A job carrying an argument vector, or a plugin registry of kinds | Trust boundary | A manifest writer gains arbitrary execution with the store's credentials and egress. |
-| Authored credential and binding names per entry | Reachable secrets | A runtime edit names any worker secret and sends it to a chosen host. |
+| Authored credential and binding names per entry | Reachable secrets | A runtime edit sends any worker secret to a chosen host. |
 | A remote control URL over TLS with a bearer | Content authenticity | The server, or anyone who compels or replays it, pins or rolls back the schedule set. |
 
-Consequences: adding a job kind is an exhaustive-match obligation at every dispatch site.
-Revisit: a remote control source carrying a bearer-authenticated read, TLS, and producer-side signing over `(version, content-hash)` verified before arming.
+Revisit: a remote control source with a bearer-authenticated read, TLS, and producer-side signing over `(version, content-hash)` verified before arming.
 
-## Answer surfaces read through server-chosen, grounded calls
+## answer-surfaces-read — Answer surfaces read through server-chosen, grounded calls
 
-The server decides every capability a turn exercises. `surface.ground` dispatches only tools the turn's packs admit, else `ConsoleToolNotAdmitted`; an organization-wide face registers no write tool, and a turn's one write is server-authored. `surface.ground` reaches conclusions only through recall. `surface.render` infers views server-side over a closed component union. `surface.speak` offers only answerable suggestions. `surface.brief` renders a greeting only within budget. `surface.publish-answer` delivers to the asker alone; posting is the asker's separate act.
+The server decides every capability a turn exercises, so an injected instruction finds no write tool to reach for.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Server-chosen calls, recall as the one door, server-built views *(chosen)* | — | A caller-initiated write needs another surface; no third-party component ships; a broken greeting shows only in spans. |
+| Server-chosen calls, recall as the one door, server-built views *(chosen)* | — | A caller-initiated write needs another surface; no third-party component ships. |
 | Client-named tools against an allowlist | The adversarial body | Arguments arrive unvalidated, so the weakest tool sets the boundary. |
 | Writes behind a reader confirmation | Who confirms | The steered reader confirms inside the steered answer. |
 | One generic query tool the model fills in | Enumerability | No audit can say what a turn can do. |
 | Memory exposed to the planner with a documented predicate | The checks | A predicate the model writes is one it can omit. |
 
-Consequences: an injected instruction finds no write tool to reach for.
+## query-admin-use — Query and Admin use separate verified page grants
 
-## Query and Admin use separate verified page grants
-
-The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate, with a distinct application audience per page. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
+Page admission and engine capability checks both stay necessary.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Cloudflare Access or Cognito managed login *(chosen)* | — | Cognito needs a user pool, group mapping and first-party session handling. |
-| One shared password for each page | Individual accountability | Two people become one subject in query grants and audit records. |
-| Self-managed operator passwords | Credential lifecycle | The console must own hashing, resets, lockout and recovery. |
+| Cloudflare Access or Cognito managed login *(chosen)* | — | Cognito needs a user pool, group mapping and first-party sessions. |
+| One shared password for each page | Individual accountability | Two people become one subject in grants and audit records. |
+| Self-managed operator passwords | Credential lifecycle | The console owns hashing, resets, lockout and recovery. |
 | Cloudflare Access only | Deployment portability | An organization without Cloudflare cannot host the console. |
 
-Consequences: page admission and engine capability checks both remain necessary; local shells use their own perimeter.
+## console-lives-beside — The console lives beside the engine and uses its public read face
 
-## The console lives beside the engine and uses its public read face
-
-`apps/console` contains the TypeScript server and Query and Admin pages; `packages/client` contains the four client shapes. The console calls stores through the public HTTP face and the operator's model endpoint. It owns presentation and turn orchestration; engine enforcement stays in the engine. The TypeScript surfaces gate builds both packages, and milestone acceptance drives the built engine beside the console server.
+The console owns presentation and turn orchestration; engine enforcement stays in the engine, so no console path implements a second read policy.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Separate TypeScript console and client library *(chosen)* | — | Two runtimes need a shared protocol and coordinated release. |
-| Embed the console in the Rust CLI | Browser delivery | The engine binary takes on page assets and model-facing session code. |
-| Let the browser call the engine directly | Credential custody | A page holds store credentials and bypasses the server's turn choices. |
+| The console embedded in the Rust CLI | Browser delivery | The engine binary carries page assets and model-facing session code. |
+| The browser calling the engine directly | Credential custody | A page holds store credentials and bypasses the server's turn choices. |
 
-Consequences: Query and Admin use the same store registry while retaining separate page grants; no console path implements a second read policy.
+## console-page-ships — Each console page ships as one prerendered, self-contained document
 
-## Each console page ships as one prerendered, self-contained document
-
-The Query and Admin pages are React components styled with Tailwind and shadcn/ui primitives. A build step renders each page to markup, bundles its hydrating script and compiled stylesheet, embeds the Geist face as a data URI, and writes one HTML document per page under `apps/console/client/dist/`. The server reads that document and serves it under `default-src 'none'`, adding only `font-src data:`; the console exposes no asset route.
+Each page is one HTML document served under `default-src 'none'` plus `font-src data:`, so the console exposes no asset route to gate.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Prerendered self-contained documents *(chosen)* | — | Each page response carries about 750 KiB under `no-store`. |
 | Hashed assets under gated asset routes | Route surface | Every asset route needs the page grant check and its own cache policy. |
-| Hand-written HTML strings in the server | Component reuse | Every widget is rebuilt by string concatenation, with no shared visual system. |
+| Hand-written HTML strings in the server | Component reuse | Every widget is rebuilt by string concatenation. |
 | A full-stack page framework | Server ownership | The framework's router replaces the server that verifies page grants. |
 
-Consequences: the package's `test` and `build` scripts build the client first; a server started without `client/dist/` fails its first page request.
+## turn-compatibility-preserves — Turn compatibility preserves the stored transcript and reader scope
 
-## Turn compatibility preserves the stored transcript and reader scope
-
-An explicit process owner flag needs a signed owner claim bound to the selected local store; it does not turn an ordinary or empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
+A transcript stays readable across client releases, and one accountable reader defines each answer.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Preserve subjects, scope and older views at their respective readers *(chosen)* | — | Recall does entity work, and a newer widget loses fidelity on an older client. |
-| Normalize subjects and components when writing | Reversibility | Old transcripts and learnings cannot recover their original labels or view shapes. |
-| Give the planner the overlay and room audience | Capability scope | Store-authored text and a composite principal can widen the turn without one accountable reader. |
+| Preserve subjects, scope and older views at their readers *(chosen)* | — | Recall does entity work; a newer widget loses fidelity on an older client. |
+| Normalize subjects and components when writing | Reversibility | Old transcripts cannot recover their original labels or view shapes. |
+| The overlay and room audience given to the planner | Capability scope | Store-authored text and a composite principal widen the turn. |
 
-Consequences: a transcript remains readable across client releases; shared posting remains an operator act.
+## store-driven-job — A store-driven job runs host-registered code per row over a pinned input
 
-## A store-driven job runs host-registered code per row over a pinned input
-
-**Status:** accepted; amends the configuration decision above: the fire union gains one fixed store-driven kind, and a job block still names no command.
-
-Context: every run opens against a connector plan, and no job kind takes store rows as its input, so per-row paid work over a snapshot has no resumable home. Criteria: configuration reaches only engine-named code; a resume never repeats a recorded call; a resume against changed input refuses.
-
-Decision: one store-driven kind joins the fire union. Its per-row body resolves only to compiled code the host registers, named by the manifest, never an argument vector. Its input is a statement read through `Face` under the job's grant at an `as_of` resolved once at open; statement and `as_of` join the plan hash, so `run.journal.plan-pin` holds a resume to them. `max_in_flight` is required, with no default.
+No other job kind takes store rows as input, so without this kind per-row paid work over a snapshot has no resumable home.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Fixed kind, registered body, pinned input *(chosen)* | — | A new body is a host release, and every dispatch site matches one more kind. |
+| Fixed kind, registered body, pinned input *(chosen)* | — | A new body is a host release; the operator states concurrency for every job. |
 | A body as an argument vector | Trust boundary | A manifest writer gains execution with the store's credentials and egress. |
-| Input re-read on each resume | Resume determinism | A fold or a later landing changes the row set mid-run. |
+| Input re-read on each resume | Resume determinism | A fold or later landing changes the row set mid-run. |
 | A default `max_in_flight` | Spend visibility | Paid concurrency rises with no line in the manifest. |
 
-Consequences: a job over store rows resumes without paying twice. The accepted cost: the operator states concurrency for every such job, and the closed union grows to seven kinds.
+## residency-divergence-detected — Residency divergence is detected at push, from the bucket manifest
 
-## Residency divergence is detected at push, from the bucket manifest
-
-**Status:** accepted
-
-Context: each site resolves its own `[residency]`, so two sites sharing a bucket can declare different allow-sets and each start cleanly under `surface.reside.region-mismatch`. Criteria: detection before a divergent write lands; no coordination service; no new artifact to keep consistent.
-
-Decision: every push writes its site's sorted allow-set into the bucket manifest it already commits by compare-and-set, and a push finding a differing set recorded by another site, or none of its own against a recorded one, raises `ResidencySitesDiverge` before its manifest commit.
+Each site resolves its own `[residency]`, so two sites sharing a bucket can each start cleanly with different allow-sets.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| The set rides the bucket manifest, checked at push *(chosen)* | — | A site that never pushes is never compared; a policy change starts at the site holding the record, which the refusal names. |
-| A separate policy object in the bucket | Consistency | A second object commits apart from the manifest and can disagree with it. |
-| Compare at startup by reading the bucket | Air-gapped operation | Startup then needs the bucket reachable, which `topology.coordinate.air-gap` forbids. |
+| The set rides the bucket manifest, checked at push *(chosen)* | — | A read-only site goes uncompared; a policy change starts at the recording site. |
+| A separate policy object in the bucket | Consistency | A second object commits apart from the manifest. |
+| A comparison at startup reading the bucket | Air-gapped operation | Startup needs the bucket, which `topology.coordinate.air-gap` forbids. |
 | A central registry of site policies | Coordination footprint | A service the tree does not ship holds the truth. |
 
-Consequences: a divergence surfaces on the first push after it arises, with both sites and both sets named. The accepted cost: a read-only site holding a different set goes undetected, and a policy change starts at the recording site, and every other site is refused until it adopts the new set.
+## workers-reach-orchestrator — Workers reach the orchestrator only through the awakeable route
 
-## Workers reach the orchestrator only through the awakeable route
-
-**Status:** accepted
-
-Context: a landing step runs on a remote worker, which reports liveness and outcome back to the operator plane. Criteria: no crossing beyond the three the topology names; a late result never overwrites its successor's; one pool bound per deployment.
-
-Decision: `surface.dispatch` submits each step to a worker's `POST /submit`, keyed by run, step and attempt. The worker heartbeats with a signed `GET /awake/:token` and posts its outcome with a signed `POST` there, the HMAC covering run, step, attempt and timestamp under one deployment key. The orchestrator signs each submission under the same key, and a worker calls back only to its configured relay. The relay fences attempt and skew, closed steps included; a lapse moves the step under the next attempt. The pool bound stays per deployment, one unit in flight per exclusion key.
+A remote worker reports liveness and outcome through no crossing beyond the three the topology names.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| The awakeable route, attempt-fenced and signed *(chosen)* | — | A worker needs a route back to the relay; one key signs every worker's messages. |
+| The awakeable route, attempt-fenced and signed *(chosen)* | — | A worker needs a route to the relay; one key signs every worker's messages. |
 | A worker-pull queue on the orchestrator | Crossing count | A fourth inbound surface with its own authentication. |
 | Unfenced callbacks, last writer wins | Successor safety | A partitioned worker's late result replaces its successor's. |
 | A pool bound per exclusion key | Concurrency cap | Adding pipelines raises concurrent pulls unseen. |
 
-Consequences: a silent worker costs one lapse before its step moves. The accepted cost: a worker that cannot reach the relay runs steps it cannot report.
+## synced-control-head — A synced control head carries an issuer-signed apply receipt
 
-## A synced control head carries an issuer-signed apply receipt
-
-**Status:** accepted
-
-Context: node-owned run states and local version numbers prove no admin apply. Criteria: authenticated content, air-gapped local use and ordered claims.
-
-Decision: a synced import or apply admits an admin capability and signs a receipt binding project, version, predecessor and snapshot digests before advancing its pointer. Push conditionally commits the receipt chain and one project-scoped head in the bucket manifest, refusing divergent heads. Pull leaves the local pointer untouched. The reconciler verifies the issuer signature against local key pins and validates the snapshot against local declarations before adoption. An installation without sync keeps unsigned applies local.
+Node-owned run states and local version numbers prove no admin apply. An installation without sync keeps unsigned applies local.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Signed receipt and project-scoped manifest head *(chosen)* | — | A synced apply needs an admin credential and signing port; replicas verify a chain before arming. |
-| Version in node run state | Authorship | Any node writer can claim a version, and two nodes can use the same number for different documents. |
-| Trust the bucket manifest's control entry | Content authenticity | A data writer can publish schedules without an admin apply. |
-| Replicate the local snapshot directory directly | Claim ordering | Independent local version counters collide, and a copied pointer carries no authorization proof. |
+| Signed receipt and project-scoped manifest head *(chosen)* | — | A synced apply needs an admin credential and signing port. |
+| Version in node run state | Authorship | Any node writer claims a version; two nodes reuse one number. |
+| The bucket manifest's control entry trusted as is | Content authenticity | A data writer publishes schedules without an admin apply. |
+| The local snapshot directory replicated directly | Claim ordering | Local version counters collide; a copied pointer carries no authorization. |
 
-Consequences: a cold node authenticates the bucket head. A bucket writer can replay an earlier signed head to a never-synced node; freshness needs an independent monotonic witness.
+Revisit: a bucket writer replays an earlier signed head to a never-synced node; freshness needs an independent monotonic witness.
 
+## native-model-builds — Native model builds share applied cadence and execution history
 
-## Native model builds share applied cadence and execution history
-
-The closed `build` job targets a declared SQL model. Applied control carries resolved SQL, contracts, tests and freshness declarations. A pipeline-only apply preserves these model definitions. A full apply versions them with the jobs and pipelines.
-
-A build job declaring `after` joins the named pipeline's existing dependent-run unit. The head owns cadence and exclusion; every pipeline step must succeed before the build runs. Independent scheduled builds consume committed inputs. Applied build jobs without captured model declarations require full reapply; no live draft substitutes for their missing plan. Job-to-job dependencies and SQL-inferred refresh are outside this contract.
-
-Native builds open the existing host execution scope and record starts and outcomes. The model publisher retains staging, contract checks, tests and pointer publication. Its guarded entry checks the execution stop boundary before persistent schema and pointer changes. Cooperative stop admission and model pointer CAS do not provide atomic cross-host fencing.
+Cooperative stop admission and model pointer CAS give no atomic cross-host fencing.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Applied model definitions in native cadence *(chosen)* | — | Each control version carries resolved SQL; source ordering is explicit. |
 | Standalone build over mutable files | Applied identity | Draft SQL changes the running schedule. |
-| Separate model scheduler | One execution home | Cadence, exclusion and restart history have two implementations. |
+| A separate model scheduler | One execution home | Cadence, exclusion and restart history have two implementations. |
 
+## applied-jobs-retain — Applied jobs retain structure and check current authority
 
-## Applied jobs retain structure and check current authority
-
-An applied job carries its input and output table contracts alongside resolved models.
-Standalone declarations occupy internal snapshot metadata; memory tables resolve from the
-current declaration. Pipeline-only changes preserve metadata from their expected version.
-Missing contract metadata requires a full apply rather than reconstruction from mutable files.
-
-The read face uses applied structure. Before an attempt opens, current table authority and
-model disclosure must agree with the applied definitions; writer admission still uses current
-policy. This check occurs at attempt startup, not continuously within a running attempt.
-
-The native execution pin includes executable declarations and output membership. A pending
-execution under changed structure refuses, including after reapply. Restoring its original
-contract permits replay; no automatic rewind repeats paid work. Hosts omitting the structural
-identity pin body, statement and `as_of` alone.
+Applied structure fixes what a job reads and lands; current authority still decides admission, checked once at attempt start, not throughout the attempt.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Captured structure and current-authority comparison *(chosen)* | — | Snapshots missing contracts need full apply; policy changes can refuse scheduled attempts. |
-| Resolve output contracts from live files | Replay identity | Unapplied edits alter deduplication, types and landing semantics. |
-| Replay entirely under historical authority | Revocation | An applied snapshot can retain access the current declaration removed. |
-| Rewind pending owners automatically | Recorded effects | A structural edit can repeat paid calls. |
+| Captured structure, current-authority comparison *(chosen)* | — | Snapshots missing contracts need full apply; policy changes can refuse attempts. |
+| Output contracts resolved from live files | Replay identity | Unapplied edits alter deduplication, types and landing. |
+| Replay entirely under historical authority | Revocation | A snapshot keeps access the current declaration removed. |
+| Pending owners rewound automatically | Recorded effects | A structural edit repeats paid calls. |
 
-## A delegated body is deploy-bound code reached in two modes
+## delegated-body-deploy — A delegated body is deploy-bound code reached in two modes
 
-**Status:** accepted; amends the store-driven decision above: a body resolves to registered code or a bound delegate.
-
-Context: a consumer whose domain code is not Rust has no body to register, so its paid work runs outside the journal and the run record. Criteria: deploy-bound code only; one request per attempt, recorded once; no inbound route for a Worker-class delegate.
-
-Decision: `surface.delegate` binds a name to a loopback or virtual-host URL in the daemon's configuration, never the applied manifest; a store-driven `body` names it. `call` mode holds one signed request open and records its response; `submit` mode is the worker protocol with heartbeat and callback. The envelope carries fence, idempotency key, version and pins; answers form a closed vocabulary.
+A consumer whose domain code is not Rust has no body to register, so without a delegate its paid work runs outside the journal.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Named delegate, two modes, closed outcomes *(chosen)* | — | A second body path; the operator binds each delegate per deployment. |
+| Named delegate, two modes, closed outcomes *(chosen)* | — | A second body path; a hanging `call` delegate holds its slot until timeout. |
 | Registered bodies only | Consumer reach | Domain code in another language runs outside the record. |
 | A URL in the manifest | Trust boundary | A manifest writer gains egress with the store's credentials. |
-| Submit mode alone | Worker-class delegates | No inbound route and a short post-response window: it cannot call back. |
-| Call mode alone | Long work | A model call outliving its connection has no home. |
+| One mode alone | Delegate classes | `submit` cannot reach a Worker-class delegate; `call` has no home for long work. |
 
-Consequences: a consumer's stage is an item of a run with its receipt, budget and fence; a hanging `call` delegate holds its slot until the timeout, and work it finishes after the timeout is paid again unless it dedups on the idempotency key.
+## due-units-admit — Due units admit by staleness, and a wake refills its freed slots
 
-## Due units admit by staleness, and a wake refills its freed slots
-
-Decision: `surface.dispatch.admission-order` breaks a tie on next fire by declared priority, then by the least recent of last run start and last dispatch, so overload misses rotate across a tied cohort. Priority orders only units due at one instant: a unit left pending keeps its earlier instant and outranks any priority at the next admission. The scheduler records each dispatch as a zero-second lease row in the catalog before the unit starts, and `surface.arm.next-fire-from-history` reads it, so a fresh process sees a unit that failed before its run row. `surface.dispatch.refill` admits a wake's pending units into slots freed before the answer, through the cadence lease.
+Overload misses rotate across a tied cohort.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Staleness tie-break, catalog dispatch record, refill inside the wake *(chosen)* | — | One catalog write per dispatch and one read per entry per lease acquisition; a fire ending its process after its record waits one interval. |
-| Name tie-break | Fairness under overload | Every miss lands on the name-last units of a tied slot. |
+| Staleness tie-break, catalog record, refill inside the wake *(chosen)* | — | One catalog write per dispatch; a unit due after evaluation waits for the next wake. |
+| Name tie-break | Fairness under overload | Every miss lands on the name-last units. |
 | Strict priority across due instants | Starvation | A busy high class holds the pool. |
 | Dispatch record in process memory | Fresh processes | A unit failing before its run row wins every cycle at pool 1. |
-| Refill from a fire's end path between wakes | Lease safety | A start after the lease lapsed runs beside another holder's chain. |
+| Refill from a fire's end path between wakes | Lease safety | A start after the lease lapsed runs beside another holder. |
 
-Consequences: a unit falling due after a wake's evaluation waits for the next wake; pool 1 with 20 s fires starts two units per wake; `pipeline serve --cycle` evaluates once and admits at most the pool.
-## Connections claim one version and share dispatch
+## connections-claim-version — Connections claim one version and share dispatch
 
-**Status:** accepted
-
-Context: one connection adds a pipeline and a due entry; a consent callback can retry while other connections mutate the same control document.
-
-Decision: `surface.connection.create` claims the binding through the versioned control pointer. `surface.connection.schedule-scale` shares the existing bounded dispatcher and its durable due history.
+A consent callback can retry while other connections mutate the same control document.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Versioned connection claim and shared dispatch *(chosen)* | — | Each connection adds a control entry and a due-history record. |
-| One scheduler thread per connection | Capacity | Thread count grows with the tenant count. |
-| Unversioned connection map | Concurrent edits | Retried callbacks overwrite a different declaration. |
-
-Consequences: the tenant route has its own authority check; the operator-only `/control/*` routes keep their Admin grant.
+| One scheduler thread per connection | Capacity | Thread count grows with tenant count. |
+| An unversioned connection map | Concurrent edits | Retried callbacks overwrite a different declaration. |

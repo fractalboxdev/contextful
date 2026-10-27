@@ -54,6 +54,7 @@ fn counted<'a>(runs: &'a AtomicUsize, value: &'a [u8]) -> impl FnMut(&dyn contex
     }
 }
 
+// spec: run.journal.current-owner@f671cc63
 #[test]
 fn a_superseded_execution_refuses_provider_dispatch_and_cursor_publication() {
     let rig = Rig::new();
@@ -217,6 +218,7 @@ fn the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution() {
 /// The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner
 /// keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host
 /// supplies.
+// spec: run.own.execution-owner@94e2a0d4
 // spec: run.own.host-scope@41bc251a
 #[test]
 fn every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row() {

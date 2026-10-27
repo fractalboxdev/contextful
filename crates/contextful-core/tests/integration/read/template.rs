@@ -88,7 +88,7 @@ fn arguments_bind_strictly_by_declared_type() {
         t[0].bind(&args(json!({ "region": "emea", "since": "2026-01-01T00:00:00Z" }))).unwrap(),
         [Bound::Timestamp(at("2026-01-01T00:00:00Z")), Bound::Text("emea".into())],
     );
-    rejected(t[0].bind(&args(json!({ "region": "emea" }))), "`since` is missing");
+    assert!(matches!(t[0].bind(&args(json!({ "region": "emea" }))), Err(ReadError::TemplateArgumentRejected(why)) if why.contains("`since` is missing")));
     rejected(t[0].bind(&args(json!({ "region": "emea", "since": "2026-01-01T00:00:00Z", "limit": 5 }))), "`limit`");
     rejected(t[0].bind(&args(json!({ "region": "emea", "since": "yesterday" }))), "`since`");
     // No coercion: a numeral string is not an integer, an integral float is not an integer, 1 is not a boolean.

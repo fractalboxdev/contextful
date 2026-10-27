@@ -25,8 +25,6 @@ principal-secrets  = {}
 ConnectorDriveFilesInvalid = { clause = "connector.drive-picks.file-selection-invalid", gloss = "An empty, repeated or mixed individual-file selection." }
 ConnectorDriveFileRejected = { clause = "connector.drive-picks.file-access", gloss = "A selected id is inaccessible or is not a file." }
 ConnectorDriveDomainRejected = { clause = "connector.drive-domain-auth.domain-boundary", gloss = "A delegated subject lies outside the approved Workspace domain." }
-ConnectorWidenUnresolved = { clause = "connector.widen.unresolved", gloss = "A grant comparison establishes neither inclusion nor a replayed widening witness." }
-ConnectorWidenApprovalRequired = { clause = "connector.widen.approval-required", gloss = "Additional connector access lacks approval bound to both manifests." }
 ConnectorConfigRejected         = { clause = "connector.import.config-shape", gloss = "A forwarded guest configuration value of the wrong type, above its size bound, or carrying a reference." }
 ConnectorConfigUnclaimed        = { clause = "connector.import.config-unclaimed", gloss = "A guest configuration table declared against a guest exporting no configuration interface." }
 ConnectorUndeclaredAccess       = { clause = "connector.declare-capability.undeclared-access", gloss = "Host access a connector reaches for that its manifest does not list." }
@@ -34,16 +32,12 @@ ConnectorAllowlistRejected      = { clause = "connector.declare-capability.allow
 ConnectorScopeExceeded          = { clause = "connector.declare-capability.scope-exceeded", gloss = "A granted scope outside the manifest's declared expectation." }
 ConnectorScopeUnverified        = { clause = "connector.declare-capability.scope-unverified", gloss = "A scope probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII." }
 ConnectorScopeProbeRejected     = { clause = "connector.declare-capability.probe-shape", gloss = "A scope probe declaring a scopes header that is empty or not an HTTP field name." }
-ConnectorBindingUnsupported     = { clause = "connector.declare-capability.binding-unsupported", gloss = "An environment binding on a key the connector does not read." }
-ConnectorBindingUnbound         = { clause = "connector.declare-capability.binding-unbound", gloss = "An environment binding not supplied, or supplied off its declared shape." }
 ConnectorQuotaUnbound           = { clause = "connector.meter.quota-unbound", gloss = "A declared limiter quota with no operator binding." }
 ConnectorLimiterBindingRejected = { clause = "connector.meter.binding-transport", gloss = "A non-HTTPS limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a secret reference." }
 ConnectorForwardRejected        = { clause = "connector.meter.forward-credential", gloss = "A limiter declaration forwarding a credential-bearing response header." }
 ConnectorLimiterUnreadable      = { clause = "connector.meter.unreadable-answer", gloss = "A limiter response the engine cannot parse." }
 ConnectorUnmetered              = { clause = "connector.meter.unmetered-request", gloss = "A vendor request without a granted reservation under a declared limiter." }
 ConnectorEgressRefused          = { clause = "connector.meter.hook-refusal", gloss = "An outbound hop the pre-send hook refused before name resolution." }
-ConnectorGrantMissing           = { clause = "connector.meter.built-in-grant-absent", gloss = "A compiled-in vendor-reaching source built without a limiter grant." }
-ConnectorGrantUnhonorable       = { clause = "connector.meter.grant-unhonorable", gloss = "A limiter grant on a source bypassing the mediated client." }
 ConnectorRemoteUnpinned         = { clause = "connector.package.remote-unpinned", gloss = "A remote artifact reference with no 64-hex content pin." }
 ConnectorOciReferenceInvalid    = { clause = "connector.package.oci-reference", gloss = "An OCI reference with an empty registry, repository or selector." }
 ConnectorOciArtifactUnsupported = { clause = "connector.package.oci-component-layer", gloss = "An OCI manifest that is not schema 2 with exactly one WebAssembly component layer." }
@@ -53,11 +47,9 @@ ConnectorArtifactFetchFailed    = { clause = "connector.package.remote-fetch-fai
 ConnectorInsecureArtifact       = { clause = "connector.package.insecure-artifact", gloss = "A connector artifact referenced over plain HTTP." }
 ConnectorDigestMismatch         = { clause = "connector.package.digest-mismatch", gloss = "Resolved artifact bytes whose re-hash differs from the pin." }
 ConnectorLocalUnpinned          = { clause = "connector.package.local-unpinned", gloss = "An unpinned local artifact under a set pin requirement." }
-ConnectorPostureUndeclared      = { clause = "connector.package.posture-undeclared", gloss = "A manifest carrying neither a digest nor both template markers." }
 ConnectorPositionOwned          = { clause = "connector.package.component-position", gloss = "An `incremental` field declared beside a component source, whose position the guest owns." }
 ConnectorManifestRejected       = { clause = "connector.package.manifest-keys", gloss = "A component source with no manifest, or a manifest carrying an unread key or a value off its shape." }
 ConnectorHostPinRefused         = { clause = "connector.package.host-built-pin", gloss = "A pin written from a host-toolchain build." }
-ConnectorHotReload              = { clause = "connector.package.live-reresolution", gloss = "Re-resolving or reloading a connector a journaled run holds live." }
 ConnectorFormatKeyRejected      = { clause = "connector.source.format-key-mismatch", gloss = "A record path, pagination shape or decode key the chosen format does not read." }
 ConnectorEncodingInvalid        = { clause = "connector.source.declared-encoding", gloss = "A delimited body invalid under its declared encoding." }
 ConnectorClockColumnRejected    = { clause = "connector.source.clock-column-spelling", gloss = "A delimited clock column neither RFC 3339 nor a fixed-width digit stamp." }
@@ -67,7 +59,7 @@ ConnectorTableUnmatched         = { clause = "connector.source.table-unmatched",
 ConnectorPlaceholderUnbound     = { clause = "connector.source.placeholder-unbound", gloss = "A URL or bound-column placeholder with no table pattern to bind it." }
 ConnectorBoundColumnOccupied    = { clause = "connector.source.bound-column-occupied", gloss = "A fetched row already carrying a column the source binds from the table name." }
 ConnectorConditionalRejected    = { clause = "connector.source.conditional-rejected", gloss = "A conditional read beside a pagination shape or a declared incremental field." }
-ConnectorPointerAmbiguous       = { clause = "connector.source.pointer-ambiguity", gloss = "Both expansion pointer forms on one block." }
+ConnectorPointerAmbiguous       = { clause = "connector.source.pagination-ambiguity", gloss = "Both expansion pointer forms on one block." }
 ConnectorExpansionFailed        = { clause = "connector.source.follow-up-failure", gloss = "A failed expansion follow-up, failing the whole read." }
 ConnectorTemplateRejected       = { clause = "connector.source.template-shape", gloss = "A pointer template with no placeholder, or one binding into the URL authority." }
 ConnectorPointerColumnMissing   = { clause = "connector.source.pointer-column-missing", gloss = "An expansion placeholder naming a column the rows lack as a scalar." }
@@ -85,7 +77,6 @@ ConnectorImageHeaderUnreadable  = { clause = "connector.source.image-header", gl
 ConnectorQuotabilityMismatch    = { clause = "connector.source.marker-body-pairing", gloss = "An image body and its quotability marker not null together." }
 ConnectorProviderOriginRejected = { clause = "connector.source.provider-origin", gloss = "A search call to a non-TLS transport or a host other than the provider's." }
 ConnectorObjectAddressRejected  = { clause = "connector.source.object-address", gloss = "An object source declaring both or neither of a key and a prefix." }
-ConnectorTwinApiSource          = { clause = "connector.source.twin-api", gloss = "A source reading through an API licensed beyond any individual user's view." }
 ConnectorDriveRootsInvalid      = { clause = "connector.source.drive-root-set", gloss = "An empty, oversized, repeated or ambiguous Drive root selection." }
 ConnectorDriveRootRejected      = { clause = "connector.source.drive-root-validation", gloss = "A selected Drive root that does not exist or lies outside the declared Shared Drive." }
 ConnectorDriveModeUnknown       = { clause = "connector.source.drive-mode", gloss = "A Drive capture mode other than bytes-and-pages or metadata-only." }
@@ -98,9 +89,6 @@ SecretMalformedTemplate         = { clause = "connector.reference.malformed-plac
 SecretMaterialInDeclaration     = { clause = "connector.reference.material-in-a-declaration", gloss = "A credential-shaped literal where a reference belongs." }
 SecretNameShadowed              = { clause = "connector.resolve.shadowed-name", gloss = "A logical name answered by two assembled adapters." }
 SecretUnresolvedReference       = { clause = "connector.resolve.unresolved-name", gloss = "A logical name no assembled adapter answers." }
-SecretInlineCredential          = { clause = "connector.resolve.inline-outside-development", gloss = "Plaintext material bound at a call site outside development." }
-SecretForwardingBroker          = { clause = "connector.resolve.forwarding-sidecar", gloss = "A sidecar forwarding a stored long-lived credential." }
-SecretProviderKnowHowInBackend  = { clause = "connector.resolve.know-how-in-an-adapter", gloss = "An adapter exposing a provider-specific exchange, refresh or lifetime entry point." }
 SecretLeaseScopesEmpty          = { clause = "connector.lease.empty-scope-set", gloss = "The lease backend selected with no scope declared." }
 SecretMalformedLease            = { clause = "connector.lease.malformed-lease", gloss = "A lease with no expiry, or one already past on arrival." }
 SecretLeaseScopeUnknown         = { clause = "connector.lease.unknown-scope", gloss = "The mint endpoint answering `404` for a declared scope." }
@@ -123,11 +111,11 @@ InferHostedToolUnderHorizon = { clause = "connector.infer.hosted-tools", gloss =
 connector-drive-file-selection = { clause = "connector.drive-picks.file-selection-limit", value = 128, unit = "entries", basis = "chosen", gloss = "Individual selected file ids in one Drive source." }
 connector-attribution-entries   = { clause = "connector.export.attribution-budget", value = 512, unit = "entries", basis = "chosen", gloss = "Partition values one failure attribution returns per session." }
 connector-attribution-value     = { clause = "connector.export.attribution-budget", value = 512, unit = "B", basis = "chosen", gloss = "Bytes in one attributed partition value." }
-connector-guest-config          = { clause = "connector.import.config-shape", value = 64, unit = "KiB", basis = "chosen", gloss = "Serialized guest configuration table." }
+connector-guest-config          = { clause = "connector.import.config-shape", value = 64, unit = "KiB", basis = "chosen", gloss = "Serialized guest configuration table.", const = "crates/contextful-core/src/connector/package.rs::GUEST_CONFIG_BYTES" }
 connector-memory-default        = { clause = "connector.package.linear-memory", value = 256, unit = "MiB", basis = "chosen", gloss = "Default linear memory per connector instance." }
 connector-memory-ceiling        = { clause = "connector.package.linear-memory", value = 2, unit = "GiB", basis = "chosen", gloss = "Ceiling a per-connector override raises linear memory to." }
 connector-fence-token           = { clause = "connector.infer.marker-derivation", value = 16, unit = "B", basis = "chosen", gloss = "Content digest carried by every marker of one fenced call." }
-connector-fence-label           = { clause = "connector.infer.label-hygiene", value = 200, unit = "chars", basis = "chosen", gloss = "Provenance label on one data-block marker." }
+connector-fence-label           = { clause = "connector.infer.label-hygiene", value = 200, unit = "chars", basis = "chosen", gloss = "Provenance label on one data-block marker.", const = "crates/contextful-core/src/connector/infer.rs::LABEL_CHARS" }
 connector-limiter-call          = { clause = "connector.meter.acquire-call", value = 5, unit = "s", basis = "chosen", gloss = "Wall clock one limiter call takes at most." }
 connector-read-deadline         = { clause = "connector.package.call-deadline", value = 30, unit = "s", basis = "chosen", gloss = "Wall-clock deadline on one read call." }
 connector-discovery-deadline    = { clause = "connector.package.call-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall-clock deadline on one discovery call." }
@@ -135,23 +123,34 @@ connector-deadline-granularity  = { clause = "connector.package.call-deadline", 
 connector-session-log           = { clause = "connector.package.session-budget", value = 1, unit = "MiB", basis = "chosen", gloss = "Logging budget per connector session." }
 connector-in-flight             = { clause = "connector.package.session-budget", value = 8, unit = "requests", basis = "chosen", gloss = "Outbound requests one session holds open at once." }
 connector-request-body          = { clause = "connector.package.request-body", value = 8, unit = "MiB", basis = "chosen", gloss = "Outbound request body one guest request carries." }
-connector-walk-pages            = { clause = "connector.source.page-cap", value = 1000, unit = "requests", basis = "chosen", gloss = "Requests one paginated walk issues, under a watermark since its clock last strictly advanced." }
-connector-drive-roots           = { clause = "connector.source.drive-root-set", value = 16, unit = "entries", basis = "chosen", gloss = "Distinct selected folder roots in one Drive source." }
-connector-drive-file-bytes      = { clause = "connector.source.drive-file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Default body bytes one drive file carries before it is skipped." }
-connector-document-chunk        = { clause = "connector.source.heading-threshold", value = 8192, unit = "B", basis = "chosen", gloss = "Note body bytes past which a note lands one row per heading section." }
-connector-document-file-bytes   = { clause = "connector.source.file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Bytes one file under a `file` root carries before the walk declines it." }
+connector-walk-pages            = { clause = "connector.source.page-cap", value = 1000, unit = "requests", basis = "chosen", gloss = "Requests one paginated walk issues, under a watermark since its clock last strictly advanced.", const = "crates/contextful-connectors/src/http.rs::PAGE_CAP" }
+connector-drive-roots           = { clause = "connector.source.drive-root-set", value = 16, unit = "entries", basis = "chosen", gloss = "Distinct selected folder roots in one Drive source.", const = "crates/contextful-connectors/src/drive.rs::MAX_ROOTS" }
+connector-drive-file-bytes      = { clause = "connector.source.drive-file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Default body bytes one drive file carries before it is skipped.", const = "crates/contextful-connectors/src/drive.rs::MAX_FILE_BYTES" }
+connector-document-chunk        = { clause = "connector.source.heading-threshold", value = 8192, unit = "B", basis = "chosen", gloss = "Note body bytes past which a note lands one row per heading section.", const = "crates/contextful-connectors/src/file.rs::CHUNK_BYTES" }
+connector-document-file-bytes   = { clause = "connector.source.file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Bytes one file under a `file` root carries before the walk declines it.", const = "crates/contextful-connectors/src/file.rs::MAX_FILE_BYTES" }
 connector-expansion-follow-ups  = { clause = "connector.source.expansion-budget", value = 200, unit = "requests", basis = "chosen", gloss = "Follow-up requests one expanding read issues." }
 connector-expansion-buffer      = { clause = "connector.source.expansion-budget", value = 256, unit = "MiB", basis = "chosen", gloss = "Buffered expansion document bytes in one read." }
 connector-expansion-elapsed     = { clause = "connector.source.expansion-budget", value = 600, unit = "s", basis = "chosen", gloss = "Elapsed time one expanding read takes." }
-connector-object-expansion      = { clause = "connector.source.object-expansion", value = 256, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes of one object an object source reads." }
-connector-office-decompression  = { clause = "connector.source.decompression-budget", value = 64, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes across one multi-part office read." }
-connector-worksheet-text        = { clause = "connector.source.worksheet-landing", value = 64, unit = "MiB", basis = "chosen", gloss = "Cell text, keys and entry charges one worksheet read holds." }
-connector-worksheet-entry       = { clause = "connector.source.worksheet-landing", value = 32, unit = "B", basis = "chosen", gloss = "Charge for each shared string and stored cell beside its text." }
-connector-worksheet-rows        = { clause = "connector.source.worksheet-landing", value = 1048576, unit = "rows", basis = "chosen", gloss = "Rows landed from one worksheet." }
-connector-secret-name           = { clause = "connector.reference.reference-scheme", value = 128, unit = "chars", basis = "chosen", gloss = "Longest logical credential name." }
-connector-resolve-cache         = { clause = "connector.resolve.cache-ttl", value = 300, unit = "s", basis = "chosen", gloss = "Longest life of a hydrated value in a resolver cache." }
-connector-lease-retire-share    = { clause = "connector.lease.retirement-margin", value = 10, unit = "percent", basis = "chosen", gloss = "Share of a lease window a cached entry retires early." }
+connector-object-expansion      = { clause = "connector.source.object-expansion", value = 256, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes of one object an object source reads.", const = "crates/contextful-connectors/src/body.rs::EXPANSION_CEILING" }
+connector-office-decompression  = { clause = "connector.source.decompression-budget", value = 64, unit = "MiB", basis = "chosen", gloss = "Decompressed bytes across one multi-part office read.", const = "crates/contextful-decode/src/ooxml.rs::INFLATE_BUDGET" }
+connector-worksheet-text        = { clause = "connector.source.worksheet-landing", value = 64, unit = "MiB", basis = "chosen", gloss = "Cell text, keys and entry charges one worksheet read holds.", const = "crates/contextful-decode/src/workbook.rs::TEXT_BUDGET" }
+connector-worksheet-entry       = { clause = "connector.source.worksheet-landing", value = 32, unit = "B", basis = "chosen", gloss = "Charge for each shared string and stored cell beside its text.", const = "crates/contextful-decode/src/workbook.rs::ENTRY_CHARGE" }
+connector-worksheet-rows        = { clause = "connector.source.worksheet-landing", value = 1048576, unit = "rows", basis = "chosen", gloss = "Rows landed from one worksheet.", const = "crates/contextful-decode/src/workbook.rs::ROW_CAP" }
+connector-secret-name           = { clause = "connector.reference.reference-scheme", value = 128, unit = "chars", basis = "chosen", gloss = "Longest logical credential name.", const = "crates/contextful-core/src/connector/reference.rs::NAME_MAX" }
+connector-resolve-cache         = { clause = "connector.resolve.cache-ttl", value = 300, unit = "s", basis = "chosen", gloss = "Longest life of a hydrated value in a resolver cache.", const = "crates/contextful-core/src/connector/lease.rs::CACHE_TTL_SECS" }
+connector-lease-retire-share    = { clause = "connector.lease.retirement-margin", value = 10, unit = "percent", basis = "chosen", gloss = "Share of a lease window a cached entry retires early.", const = "crates/contextful-core/src/connector/lease.rs::RETIRE_SHARE_PERCENT" }
 connector-lease-retire-cap      = { clause = "connector.lease.retirement-margin", value = 30, unit = "s", basis = "chosen", gloss = "Ceiling on the early-retirement margin." }
 connector-lease-vendor-requests = { clause = "connector.lease.vendor-requests-on-failure", value = 0, unit = "requests", basis = "chosen", gloss = "Vendor requests on an expired lease whose provider is unreachable." }
-connector-lease-mint-calls      = { clause = "connector.lease.calls-per-resolver", value = 1, unit = "calls", basis = "chosen", gloss = "Mint calls per resolver per declared name per lease window." }
-connector-record-expiry-warning = { clause = "connector.record.expiry-warning", value = 30, unit = "d", basis = "chosen", gloss = "Window within which the inventory marks an expiring credential." }
+connector-lease-mint-calls      = { clause = "connector.lease.calls-per-resolver", value = 1, unit = "calls", basis = "chosen", const = "crates/contextful-core/src/connector/lease.rs::MINT_CALLS_PER_WINDOW", gloss = "Mint calls per resolver per declared name per lease window." }
+connector-record-expiry-warning = { clause = "connector.record.expiry-warning", value = 30, unit = "d", basis = "chosen", gloss = "Window within which the inventory marks an expiring credential.", const = "crates/contextful-core/src/connector/record.rs::EXPIRY_WARNING_DAYS" }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"credential lease"     = { clause = "connector.lease.lease", gloss = "A short-lived credential minted per scope and held in memory with its expiry; it never enters a file.", avoid = ["secret lease"] }
+"data boundary marker" = { clause = "connector.infer.data-fence", gloss = "One of the paired markers enclosing an ingested value in a model prompt, carrying its provenance label.", avoid = ["data fence", "prompt fence"] }
+"provenance label"     = { clause = "connector.infer.provenance-order", gloss = "The trust label a model input carries: `operator`, `ingested:first-party` or `ingested:third-party`." }
+"credential reference" = { clause = "connector.reference.reference-scheme", gloss = "A `secret://<name>` value naming a credential by logical name, never by storage path." }
+"provider chain"       = { clause = "connector.resolve.provider-chain", gloss = "The ordered adapters a reference resolves through, first answer winning." }
+"hydration"            = { clause = "connector.resolve.hydration-is-just-in-time", gloss = "Resolving a credential reference to material when a request is built, never at declaration." }
+"mint credential"      = { clause = "connector.lease.bootstrap-credential", gloss = "The one standing credential the engine presents to the mint endpoint to obtain credential leases." }
+"manifest posture"     = { clause = "connector.package.manifest-posture", gloss = "Whether a connector manifest is adopted, carrying a digest, or a template carrying a pin requirement." }

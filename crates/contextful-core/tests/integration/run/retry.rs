@@ -18,10 +18,9 @@ fn failed_tag(d: &Decision) -> Option<FailureTag> {
     }
 }
 
-/// One tagged failure type crosses every port: `Transient`, `Permanent`, `SchemaIncompatible`, `AuthExpired`,
-/// `RateLimited`, `Config`, `Storage`, `UnknownConnector`, `SecretNotFound` and `Canceled`. A caller branches on
-/// the tag, never on a message.
-// spec: run.retry.failure-taxonomy@309d838f
+/// One tagged failure type, {{type:contextful_core::run::failure::FailureTag}}, crosses every port. A caller
+/// branches on the tag, never on a message.
+// spec: run.retry.failure-taxonomy@606e3d94
 #[test]
 fn ten_tags_cross_every_port_and_the_decision_reads_the_tag_alone() {
     let names: Vec<&str> = FailureTag::ALL.iter().map(|t| t.name()).collect();

@@ -375,7 +375,7 @@ fn a_compound_key_assignment_is_masked_keeping_its_key() {
 
 /// The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge
 /// under the higher-priority pattern.
-// spec: run.guard-secrets.mask-span@0e3495ed
+// spec: run.guard-secrets.mask-replacement@583f6046
 #[test]
 fn only_the_matched_range_is_replaced_and_overlaps_merge() {
     assert_eq!(mask("before AKIAIOSFODNN7EXAMPLE after").unwrap(), format!("before {MARKER} after"));
@@ -392,9 +392,10 @@ fn only_the_matched_range_is_replaced_and_overlaps_merge() {
     assert_eq!(mask("nothing to see"), None);
 }
 
-/// The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment
-/// keeps its `key=` prefix.
-// spec: run.guard-secrets.mask-replacement@26befa44
+/// The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform, over only the matched
+/// byte ranges widened to character boundaries; overlapping spans merge under the higher-priority pattern, and an
+/// assignment keeps its `key=` prefix.
+// spec: run.guard-secrets.mask-replacement@583f6046
 #[test]
 fn the_marker_is_fixed_and_an_assignment_keeps_its_key() {
     assert_eq!(MARKER, "[REDACTED:secret]");
@@ -442,6 +443,8 @@ fn encoded_or_split_credentials_pass_through() {
     assert_eq!(counts.keys().collect::<Vec<_>>(), ["nested"]);
 }
 
+// spec: run.guard-secrets.llm-candidate@54cf14a6
+// spec: run.guard-secrets.llm-admission@7d358783
 #[test]
 fn llm_candidates_preserve_natural_identifiers_and_mask_known_provider_families() {
     for slug in [

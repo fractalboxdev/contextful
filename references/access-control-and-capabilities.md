@@ -119,9 +119,9 @@ Cloud." *NDSS*, 2014. <https://research.google/pubs/pub41892/>
 
 - **Priority:** must-read
 - **Informs:** `authority.profile`, `authority.attenuate`, `authority.verify`
-- **Question:** Which chain format supports N-hop attenuation? Offline attenuation by
+- **Question:** Which chain format supports attenuation to depth N? Offline attenuation by
   appended caveats is the model the delegation profile implements; a wire envelope
-  with room for one attenuation segment cannot carry a grandchild, so the design
+  with room for one attenuation segment carries no grandchild, so the design
   either adopts the library's chain format or specifies an N-block grammar with a
   depth limit. The caveat-discharge analysis also explains why the profile refuses
   third-party blocks.
@@ -133,7 +133,7 @@ Biscuit authors. "Biscuit authorization token specification."
 
 - **Priority:** should-read
 - **Informs:** `authority.profile`, `authority.attenuate`, `authority.verify`
-- **Question:** Which Biscuit revision does a profile version pin? Appended blocks
+- **Question:** Which Biscuit revision does a profile version name? Appended blocks
   that only narrow, authorizer-supplied reserved facts and an evaluator under
   iteration ceilings are Biscuit semantics; the profile version names the upstream
   specification revision it depends on.
@@ -177,7 +177,7 @@ using WebAssembly." *USENIX Security*, 2022.
 - **Question:** What sits in the trusted computing base when a component boundary is
   the isolation? Wasm isolation is as strong as the runtime and compiler enforcing
   it; the paper names what the scope claim's trusted-dependency list includes, and
-  whether a compiled-in native sibling can share the component's trust level.
+  whether a compiled-in native sibling shares the component's trust level.
 
 ### The WebAssembly Component Model
 

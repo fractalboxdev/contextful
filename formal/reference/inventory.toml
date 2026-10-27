@@ -1,0 +1,30 @@
+# Required constants of the reference package: the narrowing decision's theorems, each
+# bound to the differential test that runs the decision against the engine, matched by
+# `contextful formal check --root formal/reference`.
+
+[constant."Reference.narrow_ok_iff_includedIn"]
+module    = "Reference.Narrowing"
+statement = "∀ (parent : List Authority.Grant) (pe : Nat) (child : List Authority.Grant) (ce : Option Nat), (Reference.narrow parent pe child ce).verdict = \"admitted\" ↔ (∀ (c : Authority.Grant), c ∈ child → ∃ p, p ∈ parent ∧ c.includedIn p = true) ∧ ∀ (e : Nat), ce = some e → e ≤ pe"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::attenuate; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
+negative  = """
+Leaves open: subject derivation and incognito, which the narrowing case does not decode; the duration and byte ceilings; that the decoded grants are the grants the credential carries; that admission repeats the check on every hop.
+"""
+
+[constant."Reference.narrow_widens_nearest"]
+module    = "Reference.Narrowing"
+statement = "∀ (parent : List Authority.Grant) (pe : Nat) (child : List Authority.Grant) (ce : Option Nat), (∃ c, c ∈ child ∧ ∀ (p : Authority.Grant), p ∈ parent → (c.widened p).isEmpty = false) → ∃ c, c ∈ child ∧ Reference.narrow parent pe child ce = Reference.Decision.refused \"AttenuationWidens\" (some (Reference.dimensionName (Reference.nearestDimension c parent))) ∧ (parent = [] → Reference.nearestDimension c parent = Authority.Dimension.actions) ∧ ∀ (q : Authority.Grant), q ∈ parent → ∃ p, p ∈ parent ∧ Reference.nearestDimension c parent ∈ c.widened p ∧ (c.widened p).length ≤ (c.widened q).length"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::attenuate; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
+negative  = """
+Leaves open: which of several equally near parent grants a refusal names beyond the first, which the theorem fixes only through the decision's definition; the message text beside the dimension.
+"""
+
+[constant."Reference.narrowing_every_dimension_every_hop"]
+module    = "Reference.Narrowing"
+statement = "(∀ (parent : List Authority.Grant) (pe : Nat) (child : List Authority.Grant) (ce : Option Nat), (Reference.narrow parent pe child ce).verdict = \"admitted\" ↔ (∀ (c : Authority.Grant), c ∈ child → ∃ p, p ∈ parent ∧ c.includedIn p = true) ∧ ∀ (e : Nat), ce = some e → e ≤ pe) ∧ ∀ (hops : List (List Authority.Grant)) (root gs : List Authority.Grant), Authority.checkChain root hops = some gs → ∀ (r : Authority.Request), (gs.any fun g => g.permits r) = true → (root.any fun g => g.permits r) = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::check_chain; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
+negative  = """
+Leaves open: subject derivation, incognito and the duration and byte ceilings; that admission checks every hop of the chain it verified; credential bytes and block chaining, which the delegation library owns.
+"""

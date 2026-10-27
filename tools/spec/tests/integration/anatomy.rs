@@ -113,3 +113,76 @@ fn a_contract_file_over_nine_hundred_lines_is_an_anatomy_finding() {
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("901 lines exceed 900"), "{found:?}");
 }
+
+/// Put a `### <group>` heading and `lede` before the item of `## <operation>` with subject `subject`.
+fn group_before(s: &Scratch, subject: &str, group: &str, lede: &str) {
+    let body = s.read(STORE);
+    let row = format!("\n- `{subject}` — ");
+    let at = body.find(&row).unwrap_or_else(|| panic!("no `{subject}` item"));
+    s.write(STORE, &format!("{}\n\n### {group}\n\n{lede}\n{}", &body[..at], &body[at..]));
+}
+
+fn lock_row(lock: &serde_json::Value, id: &str) -> serde_json::Value {
+    lock["clauses"].as_array().unwrap().iter().find(|c| c["id"] == id).cloned().unwrap_or_else(|| panic!("no clause `{id}`"))
+}
+
+// spec: corpus.anatomy.group@a39ff2b4
+#[test]
+fn a_group_heading_splits_a_list_without_changing_an_id() {
+    let s = Scratch::copy();
+    let before = s.clauses_of("store.fold");
+    group_before(&s, "lost-pointer", "collection", "A pass that loses its pointer, and the staging it leaves behind.");
+    assert!(codes(&s.lint("anatomy"), "SpecAnatomy").is_empty(), "{:?}", s.lint("anatomy"));
+    let lock = lock(&s);
+    assert_eq!(s.clauses_of("store.fold"), before);
+    assert_eq!(lock_row(&lock, "store.fold.lost-pointer")["group"], "collection");
+    assert_eq!(lock_row(&lock, "store.fold.supersedes")["group"], "collection");
+    assert!(lock_row(&lock, "store.fold.triggers").get("group").is_none());
+    assert_eq!(lock["groups"]["store.fold.collection"], "A pass that loses its pointer, and the staging it leaves behind.");
+}
+
+#[test]
+fn a_group_without_a_one_sentence_lede_or_after_other_content_is_an_anatomy_finding() {
+    let s = Scratch::copy();
+    group_before(&s, "lost-pointer", "collection", "A pass that loses its pointer. Staging it leaves behind.");
+    let found = codes(&s.lint("anatomy"), "SpecAnatomy");
+    assert!(found.iter().any(|m| m.contains("group `fold.collection` lede is 2 sentences, want 1")), "{found:?}");
+
+    let s = Scratch::copy();
+    group_before(&s, "lost-pointer", "collection", "");
+    let found = codes(&s.lint("anatomy"), "SpecAnatomy");
+    assert!(found.iter().any(|m| m.contains("group `fold.collection` opens without a lede")), "{found:?}");
+
+    let s = Scratch::copy();
+    after_list(&s, "fold", "A pass reads every run since the last one.\n\n### late\n\nClauses after prose.\n\n- `late-rule` — A late rule holds.\n");
+    let found = codes(&s.lint("anatomy"), "SpecAnatomy");
+    assert!(found.iter().any(|m| m.contains("group `fold.late` follows content after a clause list")), "{found:?}");
+}
+
+/// Set the corpus fragment line starting `prefix` to `line`.
+fn corpus_line(s: &Scratch, prefix: &str, line: &str) {
+    let text = s.read("spec/terms/corpus.toml");
+    let old = text.lines().find(|l| l.starts_with(prefix)).unwrap_or_else(|| panic!("no `{prefix}` line")).to_string();
+    s.write("spec/terms/corpus.toml", &text.replacen(&old, line, 1));
+}
+
+fn long_lists(s: &Scratch) -> usize {
+    let found = codes(&s.lint("anatomy"), "SpecAnatomy");
+    let m = found.iter().find_map(|m| m.strip_prefix("ratchet `anatomy-long-lists` counts ")).unwrap_or_else(|| panic!("{found:?}"));
+    m.split(',').next().unwrap().parse().unwrap()
+}
+
+// spec: corpus.anatomy.group-clauses@ee765807
+#[test]
+fn each_list_over_its_bound_counts_toward_the_long_list_ceiling() {
+    let s = Scratch::copy();
+    corpus_line(&s, "anatomy-long-lists ", "anatomy-long-lists = 100000");
+    let live = long_lists(&s);
+    corpus_line(&s, "corpus-group-clauses ", "corpus-group-clauses = { clause = \"corpus.anatomy.group-clauses\", value = 20, unit = \"clauses\", basis = \"chosen\", gloss = \"Longest clause list.\" }");
+    let tighter = long_lists(&s);
+    assert!(tighter > live, "{tighter} > {live}");
+    group_before(&s, "lost-pointer", "collection", "A pass that loses its pointer, and the staging it leaves behind.");
+    assert_eq!(long_lists(&s), tighter - 1, "store.fold's 24 items split into 20 and 4");
+    corpus_line(&s, "anatomy-long-lists ", &format!("anatomy-long-lists = {}", tighter - 1));
+    assert!(codes(&s.lint("anatomy"), "SpecAnatomy").is_empty(), "{:?}", s.lint("anatomy"));
+}

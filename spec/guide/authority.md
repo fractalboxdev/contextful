@@ -4,14 +4,14 @@ contract: authority
 
 # Authority and enforcement
 
-## What it is for
+## The problem authority solves
 
-Every row **Contextful** returns or lands answers to one question: who asked, on whose
-behalf, and what did they hold? The contract splits that question in two. Admission turns a
-presented credential into a verified value once; enforcement rewrites every read so that
-value decides which rows and cells survive.
-
-## How it works
+A caller reads stored rows on behalf of a person, and the store holds rows that person
+may not see. **Admission** verifies the caller's credential. A **checkpoint** is the
+code in a command, server or gateway that performs admission and produces the verified
+permissions every read and write takes ({{authority.verify.admitted-authority}}).
+**Enforcement** applies those permissions to each read, deciding which rows and cells
+the caller receives.
 
 ```mermaid
 flowchart LR
@@ -43,29 +43,38 @@ flowchart LR
   REL -->|"admitted rows"| READ
 ```
 
-A subject is a tuple of agent, host, principal, task, zone and incognito flag
-({{authority.identify.subject-tuple}}). Only the principal is verified, at the mint against
-the identity provider ({{authority.identify.on-behalf-of}}); the rest render as asserted
-({{authority.identify.attestation}}). A credential is a chain-signed Biscuit token under a
-versioned profile that names every admitted element ({{authority.profile.delegation-profile}}). Its
-grants name actions, table patterns and optional tenant, template and aggregate bounds
-({{authority.grant.fields}}), over a four-word action vocabulary
-({{authority.grant.actions}}).
+## What a credential says
 
-Minting needs a grant carrying `admin` ({{authority.issue.unauthorized-mint}}) and runs
-through one signing port ({{authority.issue.signing-port}}) under a persisted lifetime ceiling
-({{authority.issue.ceiling}}). A port answering ES256 as `r ‖ s` converts to DER at the port
-({{authority.issue.der-at-the-edge}}). An embedding application instead exchanges its signed-in
-reader's assertion for that reader's short-lived credential
-({{authority.exchange.per-reader}}), with grants drawn from the policy alone
-({{authority.exchange.minted-grants}}).
+A **subject** is a tuple of agent, host, principal, task, zone and incognito flag
+({{authority.identify.subject-tuple}}). The mint verifies only the principal,
+against the identity provider ({{authority.identify.on-behalf-of}}).
 
-A holder narrows a credential offline by appending a signed block
-({{authority.attenuate.offline}}); every dimension obeys the narrowing table, checked at
-derivation and again over the whole chain ({{authority.attenuate.narrowing}}).
+The credential is a chain-signed token under a versioned profile that names every fact
+the engine admits ({{authority.profile.delegation-profile}}). Its grants name actions,
+table patterns and optional tenant, template and aggregate bounds
+({{authority.grant.fields}}).
 
-A horizon on the credential ({{authority.grant.horizon}}) bounds every read
-({{read.horizon.inherited-bound}}) and every outbound hop ({{read.horizon.egress-hook}}):
+## Getting a credential
+
+The example reader signs into the console. The console holds no project-wide credential;
+it exchanges the reader's identity assertion for that reader's short-lived credential
+({{authority.exchange.per-reader}}). The policy maps the reader's role to `read` on
+`workspace/*`, and the assertion's tenant claim becomes the tenant scope `acme-eu` on
+every grant ({{authority.exchange.tenant}}).
+
+A direct mint, outside the exchange, needs a credential whose grant carries `admin`
+({{authority.issue.unauthorized-mint}}).
+
+## Narrowing for a sub-agent
+
+The reader's agent spawns a sub-agent. A holder derives a narrower child offline by
+appending a signed block, with no issuer round trip ({{authority.attenuate.offline}}).
+The agent derives one child per sub-agent, bound to that sub-agent's own key pair
+({{authority.attenuate.per-sub-agent}}). A derivation that adds `write` fails, naming
+the widened dimension ({{authority.attenuate.widens}}).
+
+A horizon on a grant bounds the availability time of every read its holder makes
+({{authority.grant.horizon}}).
 
 ```mermaid
 flowchart LR
@@ -93,67 +102,48 @@ flowchart LR
   D -->|"no"| REFH
 ```
 
-A checkpoint holds public keys only and calls no service to admit
-({{authority.verify.public-key-only}}). Each request under a key-bound credential proves possession of
-that key ({{authority.verify.possession-binding}}); a network checkpoint admits one binding no key
-as a short-lived bearer for its audience ({{authority.verify.network-bearer}},
-{{authority.verify.bearer-lifetime}}), and a local transport admits one binding no key only
-through its operating-system peer ({{authority.verify.local-peer-fallback}}). A command-line verb
-proves a key-bound credential with a presented proof or a holder seed
-({{authority.verify.local-proof-channel}}), each proof once ({{authority.verify.local-nonce-store}}).
-Verification yields the admitted-authority
-value every read and row-landing effect takes as an argument
-({{authority.verify.admitted-authority}}), and no constructor fabricates one
-({{authority.verify.no-bypass-constructor}}). Each statement start and commit re-reads expiry,
-revocation and policy version ({{authority.verify.effect-boundary}}). Withdrawal leans on short
-lifetimes ({{authority.revoke.short-lifetime}}), with a revocation identifier per derivation
-({{authority.revoke.revocation-id}}).
+## Admission
 
-Enforcement is three layers ({{authority.compose.three-layers}}). Write-time redaction removes
-values before columnar bytes exist ({{authority.redact.write-time}}), and it is the only layer
-that protects data at rest ({{authority.redact.at-rest-scope}}). The redistribution bound
-withholds a table from the bucket at push ({{authority.bound-redistribution.withhold}}). At
-query time the compiler binds one registered relation per granted table
-({{authority.compose.registered-relation}}), applying steps in a fixed order
-({{authority.compose.relation-order}}), each only removing rows
-({{authority.compose.conjunctive-narrowing}}), all before a ranked result is cut
-({{authority.compose.before-the-cut}}). Masks substitute columns in place
-({{authority.mask.in-place}}), and an inference zone the table does not admit drops the row
-({{authority.place.excluded-row}}). A table declaring no zone policy resolves to a
-fail-closed pair ({{authority.place.fail-closed}}). A refused read is a typed error, never an
-empty result ({{authority.refuse.not-empty}}).
+A checkpoint holds public keys only, so admitting a request calls no outside service
+({{authority.verify.public-key-only}}). Each request under a key-bound credential
+carries a proof signed by the matching private key ({{authority.verify.possession-binding}}).
 
-## Worked example
+Each statement start and each commit re-reads expiry, revocation and policy version
+({{authority.verify.effect-boundary}}). Short lifetimes are the primary withdrawal
+({{authority.revoke.short-lifetime}}).
 
-Dana signs into the console. It posts her identity provider's assertion to the exchange; the
-policy maps her `reader` role to `read` on `workspace/*`, and the `org_id` claim becomes the
-tenant scope `acme-eu` on every minted grant ({{authority.exchange.tenant}}).
+An operator adds the sub-agent's derivation to the denylist every checkpoint reads
+({{authority.revoke.denylist}}). At its next effect boundary the sub-agent's credential
+fails ({{authority.revoke.revoked}}). The parent credential carries its own revocation
+identifier and keeps working ({{authority.revoke.revocation-id}}).
 
-Her reader agent spawns a sub-agent and derives it a child limited to `workspace/documents`,
-bound to the sub-agent's own key pair ({{authority.attenuate.per-sub-agent}}). A derivation
-that adds `write` refuses, naming the dimension ({{authority.attenuate.widens}}).
+## Enforcement in three layers
 
-The sub-agent queries `workspace/documents` with no tenant filter. Admission passes, and the
-relation conjoins a byte-exact tenant equality the query never wrote
-({{authority.filter-rows.tenant-equality}}). A statement naming `acme-us` in its top-level
-conjuncts is caught by the scope guard ({{authority.refuse.scope-guard}}) and refused with
-both scopes named ({{authority.refuse.scope-denied}}).
+Enforcement is three layers: removal at write time, a redistribution bound at push, and
+row and column restriction at query time ({{authority.compose}}).
 
-The session declares `local:device`, which the table's fail-closed default admits. A
-`contact_email` column tokenized by policy arrives masked where it stands. The response
-envelope reports how many rows the zone removed and which columns it masked, carrying no
-removed value ({{authority.place.envelope}}).
+Write-time redaction drops or transforms a value before columnar bytes exist
+({{authority.redact.write-time}}). It is the only layer protecting data at rest; a
+column protected at query time alone is cleartext in storage.
+A cleared redistribution flag withholds the whole table from the bucket at push
+({{authority.bound-redistribution.withhold}}).
 
-An operator then denylists the sub-agent's derivation. At its next effect boundary the
-sub-agent's credential refuses ({{authority.revoke.revoked}}), while the agent's parent credential,
-carrying a different revocation identifier, keeps working.
+The sub-agent queries `workspace/documents` with no tenant filter. The engine conjoins a
+byte-exact tenant equality the query text omits ({{authority.filter-rows.tenant-equality}}).
+A statement naming `acme-us` fails, naming both scopes ({{authority.refuse.scope-denied}}).
+A refusal returns a typed error, not an empty result ({{authority.refuse.not-empty}}).
 
-## Where to look
+A `contact_email` column masked by policy arrives masked where it stands
+({{authority.mask.in-place}}). The table declares no zone policy, so it resolves to a
+fail-closed pair of zones ({{authority.place.fail-closed}}). The response envelope
+reports the zone's removals and carries no removed value ({{authority.place.envelope}}).
 
-| Question | Operation |
-| --- | --- |
-| What does a credential say? | `authority.grant`, `authority.profile` |
-| Why did admission refuse? | `authority.verify`, `authority.revoke` |
-| May this child exist? | `authority.attenuate` |
-| Why is a row or cell missing? | `authority.compose`, `authority.place` |
-| Why is a value unreadable? | `authority.mask`, `authority.redact` |
+Every step completes before the engine cuts a ranked result to size, so visible positions carry no
+trace of a withheld row ({{authority.compose.before-the-cut}}).
+
+## Injected instructions
+
+Text read from a source sometimes holds instructions aimed at the model. An
+organization-wide face serves only the read tools, and the server authors every
+conversational write ({{authority.resist.read-only-face}}). A claim write holding a
+credential-shaped value fails before storage ({{authority.resist.credential-shaped-value}}).

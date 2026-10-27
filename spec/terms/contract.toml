@@ -59,6 +59,6 @@ gloss = "The schedule grammar, reconciler and bounded dispatch, the control docu
 
 [contract.assurance]
 title = "Assurance"
-files = ["spec/80-formal.md", "spec/81-engineering.md", "spec/82-consumer.md"]
-titles = ["The formal model", "Engineering gates and the quality harness", "Consumer compatibility"]
+files = ["spec/80-formal.md", "spec/81-engineering.md", "spec/82-consumer.md", "spec/83-gate.md"]
+titles = ["The formal model", "Engineering gates and the quality harness", "Consumer compatibility", "The gate and the release tag"]
 gloss = "The proof package, theorems and proof gate, the differential harness; one home per capability, test placement, build gates and retrieval evaluation."

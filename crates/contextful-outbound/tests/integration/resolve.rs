@@ -18,8 +18,10 @@ fn vars(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 }
 
 /// One provider interface resolves a reference to credential material. Each backend implements this interface as an
-/// adapter. `CONTEXTFUL_SECRETS_BACKEND` selects the adapters in the chain.
-// spec: connector.resolve.provider-port@acb93111
+/// adapter.
+// spec: connector.resolve.provider-port@de08dad6
+// spec: connector.reference.backend-independence@f4575393
+// spec: connector.resolve.provider-chain@a3f2cbee
 #[test]
 fn the_backend_variable_selects_the_adapters() {
     let clock = SetClock::new();
@@ -191,9 +193,9 @@ fn an_unanswered_reference_refuses_at_preflight_and_at_the_call() {
     assert!(r.preflight([&Template::parse("Bearer ${secret://other}").unwrap()]).is_ok());
 }
 
-/// Template hydration skips the process-environment adapter and continues through the chain. If no adapter answers,
-/// the resolver applies {{connector.resolve.unresolved-name}}.
-// spec: connector.reference.environment-is-a-miss@34f4a4c8
+/// Template hydration skips the process-environment adapter unless `CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES=1`, and
+/// continues through the chain. If no adapter answers, the resolver applies {{connector.resolve.unresolved-name}}.
+// spec: connector.reference.environment-is-a-miss@9bd60345
 #[test]
 fn the_environment_answers_no_template() {
     let clock = SetClock::new();
@@ -206,6 +208,9 @@ fn the_environment_answers_no_template() {
     // With the opt-in, the environment serves templates again.
     let opted = Resolver::new(vec![env], true, Arc::new(clock.clone()));
     assert_eq!(opted.hydrate(&name("other-token")).unwrap().reveal(), "env-only");
+    // The variable is that opt-in for the assembled chain.
+    let assembled = assemble(&vars(&[("OTHER_TOKEN", "env-only"), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")]), Arc::new(clock.clone())).unwrap();
+    assert_eq!(assembled.hydrate(&name("other-token")).unwrap().reveal(), "env-only");
 }
 
 /// A `secret://<name>` bound whole, outside any template, hydrates through every assembled adapter, the process

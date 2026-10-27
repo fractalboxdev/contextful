@@ -6,6 +6,17 @@ use crate::{codes, Scratch};
 const GUIDE: &str = "spec/guide/store.md";
 const STORE: &str = "spec/10-store.md";
 
+#[test]
+fn state_labels_error_cases_in_cards_and_status() {
+    let s = Scratch::copy();
+    assert!(s.cmd(&["state"]).status.success());
+    let card = s.read("spec/cards/store.md");
+    assert!(card.contains("## Error cases\n\n| Error | When | Clause |"), "{card}");
+    assert!(card.contains("`StorePartialSnapshot`"));
+    let status = s.read("spec/status.md");
+    assert!(status.contains("| Clauses | Error cases | Limits |"), "{status}");
+}
+
 /// The `code` findings of the `render` check after appending `line` to `rel`.
 fn appended(rel: &str, line: &str, code: &str) -> Vec<String> {
     let s = Scratch::copy();
@@ -14,7 +25,7 @@ fn appended(rel: &str, line: &str, code: &str) -> Vec<String> {
     codes(&s.lint("render"), code)
 }
 
-// spec: corpus.render.generated@7d80b387
+// spec: corpus.render.generated@2d01b374
 #[test]
 fn a_committed_render_differing_from_regeneration_is_stale() {
     let s = Scratch::copy();
@@ -31,7 +42,26 @@ fn a_committed_render_differing_from_regeneration_is_stale() {
     }
 }
 
-// spec: corpus.render.lock-file@b3f3193a
+#[test]
+fn a_line_shift_in_a_tagged_test_leaves_the_generated_files_current() {
+    let s = Scratch::copy();
+    s.scaffold("corpus.anatomy", "crates/x");
+    s.implement("crates/x/tests/integration/anatomy.rs");
+    assert!(s.cmd(&["state"]).status.success());
+    assert!(s.cmd(&["extract"]).status.success());
+    let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+    let pin = &lock["pins"]["corpus.anatomy.statement-words"][0];
+    assert_eq!(pin["path"], "crates/x/tests/integration/anatomy.rs", "{pin}");
+    assert!(pin["line"].is_null(), "a pin records its file and name, not a line: {pin}");
+    let test = s.read("crates/x/tests/integration/anatomy.rs");
+    s.write("crates/x/tests/integration/anatomy.rs", &format!("// A line above every tag.
+
+{test}"));
+    let found = codes(&s.lint("render"), "SpecStaleRender");
+    assert!(found.is_empty(), "{found:?}");
+}
+
+// spec: corpus.render.lock-file@b5bf98d5
 #[test]
 fn the_lock_carries_clauses_ledes_owns_registry_and_pointers() {
     let s = Scratch::copy();
@@ -48,6 +78,7 @@ fn the_lock_carries_clauses_ledes_owns_registry_and_pointers() {
     assert!(lock["owns"][STORE].as_array().is_some_and(|o| o.iter().any(|op| op == "fold")), "{}", lock["owns"]);
     assert!(lock["registry"]["fragments"]["store"].to_string().contains("StorePartialSnapshot"));
     assert!(!lock["pointers"].as_array().unwrap().is_empty());
+    assert!(lock["pins"].is_object(), "the lock carries each pinned clause's sites and verdict");
 }
 
 // spec: corpus.render.dated-prose@fe451fb3

@@ -179,6 +179,7 @@ fn a_host_task_declaring_a_shared_quota_grant_refuses() {
         Err(RunError::DeriveUnmeteredGrant(message)) if message.contains("word-split") && message.contains("split")));
 }
 
+// spec: run.select.unmetered-grant@9035fd6f
 #[test]
 fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
     let granted = with("grant", json!("vendor-quota"));
@@ -273,9 +274,10 @@ fn an_engine_with_no_block_refuses_naming_every_bound_engine() {
     }
 }
 
-/// `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises
+/// A {{type:contextful_core::run::derive::config::Binding}} key `preprocess`, `env` or
+/// `allow_hosts`, or a step's `command`, inside `[pipeline.source.config]` raises
 /// `DeriveCommandInManifest`.
-// spec: run.bind.command-in-manifest@a1e200c3
+// spec: run.bind.command-in-manifest@44c64227
 #[test]
 fn an_executable_key_in_the_manifest_refuses() {
     for k in ["command", "preprocess", "env", "allow_hosts"] {
@@ -321,7 +323,7 @@ fn a_driver_the_task_does_not_serve_refuses() {
     assert!(bind("doc-text", &link, &b, "m").is_ok());
 }
 
-// spec: run.fetch.binding-key@e267e119
+// spec: run.fetch.binding-key@c362aa7b
 // spec: run.bind.endpoint-host-bare@7f200598
 #[test]
 fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
@@ -348,9 +350,9 @@ fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
     assert!(bind("doc-text", &link, &valid, "m").is_ok());
 }
 
-/// The executor runs `command` as an argument array without a shell. A string-valued `command` raises
-/// `DeriveShellCommand`.
-// spec: run.exec.shell-command@96a79818
+/// A string-valued `command` raises `DeriveShellCommand`; {{run.exec.no-shell}} runs the argument
+/// array.
+// spec: run.exec.shell-command@9c84aea4
 #[test]
 fn a_command_given_as_one_string_refuses() {
     let b = bindings("[derive.reader.engine]\ncommand = \"cat {input} | tr a-z A-Z\"\n").unwrap();

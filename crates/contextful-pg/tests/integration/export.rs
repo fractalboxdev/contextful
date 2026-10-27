@@ -4,6 +4,7 @@ use contextful_core::export::{change_events, change_state, parse_exports, Export
 use contextful_pg::PgExportLedger;
 use serde_json::json;
 
+// spec: run.export.remote-state@4b5bd8f5
 #[test]
 fn replacement_reoffers_identical_event_ids_and_acknowledges_only_its_prefix() {
     let Some(server) = super::server::start() else {
@@ -144,6 +145,7 @@ fn log_checkpoints_survive_replacement_and_refuse_backwards_progress() {
     assert_eq!(replacement.checkpoint("logs").unwrap(), cursor);
 }
 
+// spec: run.export.writer-fenced@7ebbf9ff
 #[test]
 fn ownership_transfer_waits_for_an_admitted_outbound_effect() {
     let Some(server) = super::server::start() else {
@@ -185,7 +187,8 @@ fn ownership_transfer_waits_for_an_admitted_outbound_effect() {
     });
     let mut replacement = PgExportLedger::connect(&server.conninfo).unwrap();
     replacement.claim("sink", "replacement", 90).unwrap();
-    assert!(writer
+    let error = writer
         .dispatch("sink", || panic!("old effect entered after transfer"))
-        .is_err());
+        .unwrap_err();
+    assert!(error.message.contains("ExecutionWriterFenced"), "{error}");
 }

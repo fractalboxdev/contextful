@@ -1,0 +1,17 @@
+extends: existence
+message: "'%s' dates the text. State the end state in the present tense, as a standing fact."
+level: error
+ignorecase: true
+tokens:
+  - we decided
+  - it was decided
+  - it was determined
+  - we've now
+  - we have now
+  - now switched
+  - will eventually
+  - the new approach
+  - the new version
+  - going forward
+  - previously
+  - no longer

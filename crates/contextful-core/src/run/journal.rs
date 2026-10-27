@@ -104,7 +104,7 @@ impl Stored {
 pub enum Row {
     /// The run holding the claim; its owner lease decides a takeover. `attempts` counts the
     /// attempts the step's schedule closed in flight, so a crash mid-backoff resumes the
-    /// remaining budget (`run.retry.attempt-counter`).
+    /// remaining budget (`run.retry.not-before`).
     Pending {
         key: EntryKey,
         run_id: String,

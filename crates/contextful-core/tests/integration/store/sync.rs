@@ -61,9 +61,9 @@ fn prefix_and_prefix_from_together_refuse() {
     assert!(matches!(c.resolve_prefix(|_| Some("x".into())), Err(StoreError::SyncPrefixOverspecified(_))));
 }
 
-/// A key names its owner through the node in its run directory, request-ledger filename, commit-log directory or run-
-/// state directory. Every other key is unowned and propagates no deletion.
-// spec: store.merge.ownership@0457be52
+/// A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state
+/// directory; any other key is unowned and propagates no deletion.
+// spec: store.merge.ownership@cd44833c
 #[test]
 fn a_keys_owner_is_read_off_the_key() {
     assert_eq!(owner_of(RUN_A).as_deref(), Some("ingest-a"));
@@ -172,8 +172,8 @@ fn differing_copies_of_a_commit_log_entry_refuse() {
     assert!(merge(&remote, &same, "ingest-a", at("2030-01-01T00:00:00Z")).is_ok());
 }
 
-/// A lease grants ownership for 10 min.
-// spec: store.lease.ttl@10aa496e
+/// A writer lease grants ownership for 10 min.
+// spec: store.lease.ttl@742eaac5
 #[test]
 fn a_lease_is_granted_for_10_minutes() {
     assert_eq!(TTL_SECS, 600);
@@ -184,7 +184,7 @@ fn a_lease_is_granted_for_10_minutes() {
 
 /// Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-
 /// Match` on its ETag, the fence one past the object's.
-// spec: store.lease.acquire@deadc41c
+// spec: store.lease.acquire@0a8044ac
 #[test]
 fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
     let now = at("2030-01-01T00:00:00Z");
@@ -199,8 +199,9 @@ fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
     assert!(matches!(BucketLease::acquire(Some((&second, "etag-2")), "ingest-a", now.plus_secs(600 + 29)), Err(StoreError::LeaseHeld(_))));
 }
 
-/// A holder renews every 200 s by `If-Match` replace on the ETag it holds.
-// spec: store.lease.renewal@86e363e5
+/// The process holding a compaction lease renews it every 200 s by `If-Match` replace on its ETag; `sync compact`
+/// renews while it pulls, folds and pushes.
+// spec: store.lease.renewal@176cf746
 #[test]
 fn a_holder_renews_every_200_seconds_on_the_etag_it_holds() {
     assert_eq!(RENEWAL_SECS, 200);
@@ -333,6 +334,7 @@ fn plaintext_http_opens_on_loopback_alone() {
 
 /// `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each parse as a `secret://<name>` or
 /// an `env://NAME` reference.
+// spec: connector.reference.whole-value-binding@a5f6354c
 #[test]
 fn credential_keys_bind_secret_or_environment_references() {
     let c = SyncConfig {
@@ -348,9 +350,9 @@ fn credential_keys_bind_secret_or_environment_references() {
     assert_eq!(temporary.credential_refs().unwrap().session_token, Some(CredentialRef::Secret(SecretName::parse("sync-session").unwrap())));
 }
 
-/// S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-
-/// reference credential, or names an unset variable. The error names the key.
-// spec: store.endpoint.credential-unbound@3f4efb9d
+/// An S3 or R2 `[sync]` omitting `access_key_id` or `secret_access_key`, supplying a non-reference credential, or
+/// naming an unset variable raises `SyncCredentialUnbound`, naming the key.
+// spec: store.endpoint.credential-unbound@769f258e
 #[test]
 fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
     let bound = SyncConfig { access_key_id: Some("env://A".into()), secret_access_key: Some("env://B".into()), ..endpoint("s3://eu-west-1") };
@@ -374,7 +376,7 @@ fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
 
 /// `credentials = "role"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint,
 /// raises `SyncCredentialConflict`, naming the endpoint; alone on an S3 or HTTPS endpoint it selects role signing.
-// spec: store.endpoint.role-conflict@0db7d718
+// spec: store.endpoint.role-conflict@ea998d83
 #[test]
 fn role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint() {
     let role = |e: &str| SyncConfig { credentials: Some("role".into()), ..endpoint(e) };

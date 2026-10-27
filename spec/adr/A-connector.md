@@ -2,249 +2,215 @@
 
 **Status:** accepted
 
-## Executables are content-pinned and replay uses the recorded artifact
+## executables-content-pinned — Executables are content-pinned and replay uses the recorded artifact
 
-A reviewed program is identified by a content digest, and a live run completes against the digest its record names. `connector.package` refuses a remote artifact without a 64-hex pin at parse, refuses plain HTTP, re-hashes resolved bytes before load, and pins only from a digest-pinned container on one fixed platform; re-resolving a connector while a journaled run is live refuses. `run.own` holds connector identity, component world and plan hash until a terminal status; `run.exec` requires a digest on a path-form command.
+A live run completes against the digest its record names; a changed connector reaches new runs only.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Pin by digest, hold the pin while work is pending, apply changes to new runs only *(chosen)* | — | Pinning needs a container runtime; an urgent fix waits for in-flight runs; a bare-name binary changes with no configuration change. |
+| Pin by digest, hold the pin while work is pending *(chosen)* | — | Pinning needs a container runtime; an urgent fix waits for in-flight runs. |
 | Trust version tags | Review binding | Reviewed and running programs match only while the publisher behaves. |
-| Reload in place, or adopt the new build on resume | Replay fidelity | Recorded output replays silently into code that never produced it. |
+| Reload in place, or adopt the new build on resume | Replay fidelity | Recorded output replays into code that never produced it. |
 | Digest every command, including bare names | Runnability | Each package upgrade refuses every derive pipeline until re-pinned. |
 
-Consequences: an unpinned local artifact runs whatever bytes sit on disk unless the store policy key or per-connector flag is set.
 Revisit: production runs unpinned local artifacts, arguing for inverting the default; the toolchain stops embedding the host triple.
 
-## Remote artifacts use one verified component blob
+## remote-artifacts-use — Remote artifacts use one verified component blob
 
-The content pin names component bytes rather than a mutable URL, tag or manifest. HTTPS retrieval uses the mediated client with the artifact host alone admitted. OCI retrieval accepts one component layer from a schema-2 manifest; its descriptor digest and the source pin both check the bytes. A project cache publishes only admitted bytes and refuses a damaged cache entry rather than silently replacing the bytes of a recorded run. The operator binds a registry bearer by exact host through `secret://`; that credential reaches registry requests, not the guest.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Fetch one pinned blob through mediated HTTP or a one-layer OCI manifest, then cache by digest *(chosen)* | — | Multi-layer packages and registry token exchanges need another contract; each cache hit re-hashes bytes. |
-| Resolve every run from the remote reference | Replay availability | An outage stops replay even when the admitted bytes once existed locally. |
-| Reuse the guest's access grant and headers for artifact retrieval | Credential containment | Registry material reaches guest endpoints and vendor material reaches the registry. |
-| Trust an OCI tag and manifest descriptor alone | Review binding | A moved tag changes executable bytes without changing the declaration's pin. |
-
-Consequences: a registry that only accepts a challenge-based token exchange refuses a fetch until it has a directly bound bearer credential. Revisit: a required registry exposes no directly bound bearer; a package needs several blobs or an OCI index.
-
-## The content pin is the only trust root
-
-Admission trusts the 64-hex pin alone. A reviewer binds review to bytes by rebuilding with `connector pin --verify` and comparing digests, not by trusting a publisher. `connector.package` refuses an unpinned remote artifact, re-hashes resolved bytes and checks an OCI layer against its descriptor and the pin; no signature, key or log takes part in admission.
+A damaged cache entry refuses rather than replacing the bytes of a recorded run.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Pin plus reproducible rebuild *(chosen)* | — | A reviewer needs the source and the builder image; an operator who neither builds nor reviews trusts whoever handed over the pin. |
-| Publisher signature plus transparency log | Replay availability | Every admission depends on a key custodian, a log operator and a network round trip; a signature names who published, not which bytes were reviewed. |
-| Signature without a log, or trust on first use of a publisher key | Review binding | A stolen or rotated key signs bytes no reviewer saw, and nothing records that it did. |
-| Optional signature checked when present | Failure direction | An absent signature reads like a valid one, a degraded answer that must be a denial. |
+| One pinned blob over mediated HTTP or one-layer OCI, cached by digest *(chosen)* | — | Multi-layer packages and registry token exchanges need another contract. |
+| Resolve every run from the remote reference | Replay availability | An outage stops replay of bytes once admitted locally. |
+| Reuse the guest's grant and headers for retrieval | Credential containment | Registry material reaches guest endpoints, and vendor material reaches the registry. |
+| Trust an OCI tag and descriptor alone | Review binding | A moved tag changes executable bytes under an unchanged pin. |
 
-Consequences: no registry, key or log runs for connectors; distribution is whatever channel carries the pin.
+Revisit: a required registry exposes no directly bound bearer; a package needs several blobs or an OCI index.
+
+## content-pin-trust — The content pin is the only trust root
+
+A reviewer binds review to bytes by rebuilding with `connector pin --verify` and comparing digests.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Pin plus reproducible rebuild *(chosen)* | — | An operator who neither builds nor reviews trusts whoever handed over the pin. |
+| Publisher signature plus transparency log | Replay availability | Admission depends on a key custodian, a log operator and a network round trip. |
+| Signature without a log, or trust on first use | Review binding | A stolen or rotated key signs bytes no reviewer saw. |
+| Optional signature checked when present | Failure direction | An absent signature reads like a valid one. |
+
 Revisit: a public registry distributes connectors to operators who neither build nor review them.
 
-## The pin builder runs one fixed platform
+## pin-builder-runs — The pin builder runs one fixed platform
 
-A pin reproduces from one builder platform, defined once as `PLATFORM` in `contextful-core::connector::package`: a digest-pinned image carrying the toolchain, the `wasm32-wasip2` target, the fetch `cargo fetch --locked`, the argv `cargo build --release --locked --target wasm32-wasip2`, and the remap targets `/src`, `/cargo` and `/rustup`. Both runs use `--platform linux/amd64` and the invoking user's uid and gid, mount the source read-only and a per-build package cache at `/cargo`; the fetch reaches the registry, and the build adds `--offline` under `--network none`. A manifest names one build input, `[build] source`; `connector.package` refuses every other unread key, so attach headers and memory bounds stay in the pipeline's component source.
+`PLATFORM` in `contextful-core::connector::package` defines the platform once.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| One fixed platform, one manifest build input *(chosen)* | — | Every connector builds with one Rust toolchain; a toolchain bump re-pins every connector at once. |
-| Per-manifest image and argv | Reproducibility | Each digest reproduces only on its own image, and native verification has no single set of constants to check. |
-| Per-manifest toolchain version fields | One home per fact | The toolchain is stated in the manifest and again in the image. |
-| Per-connector Dockerfile | Reviewability | Build inputs hide in a second file a reviewer must read as code. |
+| One fixed platform, one manifest build input *(chosen)* | — | A toolchain bump re-pins every connector at once. |
+| Per-manifest image and argv | Reproducibility | Each digest reproduces only on its own image. |
+| Per-manifest toolchain version fields | One home per fact | The manifest and the image both state the toolchain. |
+| Per-connector Dockerfile | Reviewability | Build inputs hide in a second file a reviewer reads as code. |
 
-Consequences: `connector pin` without a container runtime refuses and never falls back to a host build; a guest in another language needs a second platform.
 Revisit: a guest language other than Rust needs first-class pinning.
 
-## Precompiled components reuse only compatible host output
+## precompiled-components-reuse — Precompiled components reuse only compatible host output
 
-A cache key joins the admitted artifact digest with the engine's precompile compatibility hash. The host writes compiled output into a private cache directory and verifies its recorded digest before deserialization. An absent, altered or incompatible entry compiles from the admitted source bytes. Pulley output stays separate from native output through the engine hash.
+Precompiled output never travels with a pin.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Private precompile cache with compatibility key and integrity check *(chosen)* | — | A cache miss compiles the guest; the cache holds another copy of each compiled component. |
+| Private cache with compatibility key and integrity check *(chosen)* | — | A hardened host still links a compiler for cache misses. |
 | Recompile on every process start | Startup latency | Every guest pays compilation again. |
 | Deserialize any file named by the artifact digest | Input integrity | A stale engine build or altered file reaches unsafe deserialization. |
 
-Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings. A pin names component bytes alone; precompiled output never travels with a pin. Windows compiles each fire until the host verifies a private cache ACL.
 Revisit: a pinned precompile artifact and a compiler-free host build exist for every deployment target.
 
-## The guest world targets synchronous WASI 0.2
+## guest-world-targets — The guest world targets synchronous WASI 0.2
 
-Both worlds import WASI 0.2 interfaces, and every export is a synchronous call. `connector.package` bounds a call by epoch interruption, a session reserves at one pre-send hook per request, and `connector.import` gives a guest no wait primitive; each holds because a guest call runs to completion on one stack.
+The call deadline, the session budget and the absent wait primitive each hold because a guest call runs to completion on one stack. Adopting 0.3 changes all three and is a major world bump.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| WASI 0.2 with synchronous exports *(chosen)* | — | A guest overlaps requests only through outgoing-handler futures; no guest awaits a timer. |
-| WASI 0.3 native async | Runtime maturity | The host runtime gates the 0.3 interfaces as experimental, and three performed clauses change meaning at once. |
-| Both worlds side by side | One implementation per capability | Dispatch branches on the world, which `connector.export.authoring-path` forbids. |
+| WASI 0.2 with synchronous exports *(chosen)* | — | A guest overlaps requests only through outgoing-handler futures. |
+| WASI 0.3 native async | Runtime maturity | The host runtime gates the 0.3 interfaces as experimental. |
+| Both worlds side by side | One implementation per capability | Dispatch branches on the world. |
 
-Consequences: native async changes the meaning of `call-deadline` (a task and its subtasks), `session-budget` (concurrent requests reserving at the one pre-send hook) and `wait-primitive` (a guest can await), so adopting 0.3 is a major world bump under `connector.package.world-drain`.
 Revisit: the host runtime ships the 0.3 interfaces without an experimental gate.
 
-## Untrusted input decodes off-process and fails whole
+## untrusted-input-decodes — Untrusted input decodes off-process and fails whole
 
-An input lands whole and faithful or refuses by name, and no input ends the serving process. `run.land` decodes behind a process boundary bounding wall clock and resident memory; a crash is the same named diagnosis as a parse error. A partial parse refuses the whole input, naming path and page, worksheet or entry, and fails one table's pull while siblings keep their tick. `connector.source` reads office parts by exact name and refuses external references; an image lands a null body with no pixel decode; `run.fetch` reads UTF-8 only.
+An input lands whole and faithful or refuses by name. A native decoder is neither interruptible nor memory-bounded in process.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Process boundary, permanent whole-input refusal per table *(chosen)* | — | Every input pays a boundary crossing; one damaged page discards a readable document; non-UTF-8 publications are unreadable. |
-| In-process unwind guard or watchdog thread | Effectiveness | A crash or runaway allocation in a native decoder ends the process; native code is neither interruptible nor memory-bounded. |
+| Process boundary, whole-input refusal per table *(chosen)* | — | Every input pays a boundary crossing; one damaged page discards a readable document. |
+| In-process unwind guard or watchdog thread | Effectiveness | A native decoder crash or runaway allocation ends the process. |
 | Land the parsed parts with a truncation flag | Distinguishability | No reader consults the flag, so a fragment is quoted as the document. |
-| Skip the item and tally it, for HTTP bodies and receive batches | Answerability | A collection missing documents reads like one that has none. |
 | Lossy or statistical decoding | Honesty of landed values | Replacement characters land as publisher text. |
 
-Consequences: an HTTP collection progresses only after the offending body is removed or converted; object and file reads dead-letter under the section below.
-Revisit: crossing overhead exceeds decode time on small inputs; a read surface honors a completeness predicate; a memory-safe compound-binary reader exists.
+Revisit: crossing overhead exceeds decode time on small inputs; a memory-safe compound-binary reader exists.
 
-## Unreadable objects and files dead-letter while the read lands the rest
+## unreadable-objects-files — Unreadable objects and files dead-letter while the read lands the rest
 
-One damaged input refusing a prefix or folder read holds back every other input and its position. An object or file a decoder cannot read, or one past the expansion ceiling, lands one row — key, reason, SHA-256 — in `<table>_dead_letter`, committed beside the readable rows. The position holds the input at its ETag or digest; `replay_dead_letters` reads it again. A read whose every input is unreadable refuses whole. The dead-letter table names each input a collection lacks, which a tally cannot; it governs object and file reads, and the section above governs HTTP bodies and receive batches. A replacing table fails a pull that dead-letters anything, since its partial inventory cannot replace the table.
+One damaged input refusing a prefix or folder read would hold back every other input. The dead-letter table names each input a collection lacks; a replacing table still refuses, since a partial inventory cannot replace it.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Dead-letter table, position past the input *(chosen)* | — | A sibling table per table; a fixed decoder waits on a replay; a replacing table still stalls. |
+| Dead-letter table, position past the input *(chosen)* | — | A sibling table per table; a fixed decoder waits on a replay. |
 | Refuse the whole read | Progress | One damaged object stalls thousands. |
 | Skip and tally under a ceiling | Answerability | A count names no input. |
-| Audit entries on the run record | Queryability | Capped per run; join no table. |
+| Audit entries on the run record | Queryability | Capped per run; joins no table. |
 
-Consequences: a dead-lettered input keeps its earlier rows live until a replay or a changed input lands it.
+## host-access-quota — Host access and quota are declared and fail closed
 
-## Host access and quota are declared and fail closed
-
-Every host access and quota draw is named in a file the operator reads and decided before anything runs; a degraded answer is a denial. `connector.import` refuses a configuration table carrying a credential or environment reference with `ConnectorConfigRejected`. `connector.declare-capability` decides grants at load and refuses an empty or bare-wildcard allowlist, and excess or missing scopes at the probe. `connector.meter` issues one permit per request, refuses on an unbound quota or unreachable limiter, and retries nothing. `run.select` meters per task; `run.fetch` reaches only an operator-authored host list.
+The operator reads every host access and quota draw in a file before anything runs; a degraded answer is a denial.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Declared grants decided at load, fail closed on every degradation *(chosen)* | — | A second host needs a file edit, widening review and reload; a vendor dropping the scopes header breaks a working pipeline; each permit batch costs a round trip. |
+| Grants decided at load, fail closed *(chosen)* | — | A second host needs an edit, review and reload; each permit batch costs a round trip. |
 | A run-time permission request | Reviewability | The grant set is a union over code paths. |
-| Ambient access, denial at the network stack | Timing | Request and credential already exist when the denial fires. |
-| Fail open on an unreachable limiter or missing header | Failure direction | An unmetered burst lands during the unwatched outage. |
-| A local token bucket inside the engine | Visibility | It caps the engine with no view of other traffic. |
+| Fail open on an unreachable limiter | Failure direction | An unmetered burst lands during the outage. |
+| A local token bucket in the engine | Visibility | It caps the engine with no view of other traffic. |
 
-Consequences: permits held by a crashed run return only on TTL expiry.
-Revisit: a connector class whose reachable hosts are genuinely data-dependent; permit round trips become a measurable share of read wall-clock time.
+Revisit: a connector class whose reachable hosts are data-dependent; permit round trips become a measurable share of read time.
 
-## Outbound transport is origin-pinned and never downgrades
+## outbound-transport-origin — Outbound transport is origin-pinned and never downgrades
 
-The origin answering any outbound request equals the declared origin, over the same or a stronger transport. `connector.attach` follows a hop only on the configured host and port, connects to the vetted resolved address, and raises `ConnectorPrivateAddress` on a private, link-local, loopback or metadata address unless the configured host is loopback; declared headers select the proxy-bypassing client. `connector.source` pins next links and search hosts; `connector.lease` follows no redirect; `run.fetch` guards every hop and caps a chain at 5.
+The origin answering any outbound request equals the declared origin, over the same or a stronger transport.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Pin origin at declaration and every hop; refuse downgrade *(chosen)* | — | A vendor moving to a `www` or CDN host refuses until the declaration changes; proxy-only egress needs a direct path for credential traffic. |
-| Pin only credential-bearing sources | Landed-content provenance | A redirected uncredentialed source lands another party's body in a trusted column. |
-| Check the first link only | Credential containment | One shortener empties the pin of meaning. |
-| Warn and send, or follow a downgrade and record it | Irreversibility | The record follows a disclosure it cannot undo. |
+| Pin origin at declaration and every hop *(chosen)* | — | A vendor moving to a `www` or CDN host refuses until the declaration changes. |
+| Pin only credential-bearing sources | Landed-content provenance | A redirected source lands another party's body in a trusted column. |
+| Warn and send, or follow and record | Irreversibility | The record follows a disclosure it cannot undo. |
 | Vet the host name, not the resolved address | Internal-range containment | A name whose DNS points inward reaches the machine's network. |
 
-Consequences: a publisher whose canonical address crosses domains needs both names listed.
 Revisit: the declaration grammar gains a per-vendor allowed-origin set; proxy-only egress is the sole path for a class of deployments.
 
-## Credentials are references, workload identity is the default, and leases lead
+## credentials-references-workload — Credentials are references, workload identity is the default, and leases lead
 
-Declarations carry names, stores carry opaque bytes, connectors carry provider know-how, and the engine holds the shortest-lived material the deployment mints. A `connector.reference` template accepts only `${secret://<name>}` placeholders. `connector.resolve` defaults to an external manager through workload identity, refuses inline material outside development, and raises `SecretNameShadowed` when two adapters answer a name. `connector.lease` leads the chain with no fall-through and retries nothing; `connector.rotate` fails the run closed on a refused write-back.
+The engine holds the shortest-lived material the deployment mints.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Reference-only declarations, workload identity default, lease at the head *(chosen)* | — | Material sits in engine memory for a request; a read-only manager cannot run the OAuth refresh loop. |
+| References only, workload identity, lease first *(chosen)* | — | Material sits in engine memory for a request. |
 | Inline material or environment templates | Plaintext at rest | The committed file or environment becomes the secret. |
 | A broker sidecar as the default | Operability | Every deployment runs a second failure domain. |
-| Lease provider last, first hit wins | Posture | A leftover environment variable wins unnoticed. |
-| Provider rotation engines inside the store | Swappability | Every backend reimplements every vendor's exchange. |
+| Lease provider last, first hit wins | Precedence | A leftover environment variable wins unnoticed. |
 
-Consequences: local development pastes a token only behind an explicit opt-in flag; a bootstrap backend is a second backend to operate.
-Revisit: workload identity becomes unattestable on a needed runtime; a broker becomes near-free to operate; a runtime identity authenticates to the mint directly.
+Revisit: workload identity becomes unattestable on a needed runtime; a broker becomes near-free to operate.
 
-## Credential custody stays with the provider and inventory labels its evidence
+## credential-custody-stays — Credential custody stays with the provider and inventory labels its evidence
 
-The selected provider owns values, versions and rotation state. `connector.record` inventories configured bindings with optional operator descriptions and separately attributed provider observations. A manager-backed credential needs no encrypted repository copy, and rotation needs no commit. Missing expiry remains unknown; configured adapters and observed runtime attribution answer different questions.
+Configured adapters and observed runtime attribution answer different questions, so inventory labels each. A missing expiry stays unknown.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Provider custody and optional descriptive records *(chosen)* | — | Metadata completeness varies by adapter; inventory exposes unavailable observations and conflicting assertions. |
-| Mandatory encrypted entries and comments in Git | Backend independence | External managers need duplicate ciphertext; automated rotation needs commits; comments cannot establish runtime state. |
-| Provider enumeration as the entire inventory | Binding coverage | Listing permissions and metadata differ by provider; unresolvable configured names disappear. |
+| Provider custody, optional descriptive records *(chosen)* | — | Metadata completeness varies by adapter. |
+| Mandatory encrypted entries in Git | Backend independence | External managers need duplicate ciphertext; rotation needs commits. |
+| Provider enumeration as the whole inventory | Binding coverage | Unresolvable configured names disappear. |
 
-Consequences: repository policy in `assurance.gate` checks dotenv files when tracked; runtime credentials use any configured provider. The record is a typed `[secret.<name>]` table refused when it describes no binding; observation is a separate port holding no hydrated value, so inventory never reads credential values. An outside rotation keeps the prior version valid for 300 s, or accepts auth failures for up to that long.
+Revisit: a shared provider metadata protocol supplies complete observations without value access.
 
-Revisit: a shared provider metadata protocol supplies complete observations without value access or broader listing permissions.
+## rotation-writes-forward — Rotation writes forward to the answering adapter
 
-## Rotation writes forward to the answering adapter
-
-A refreshed OAuth token is put to the adapter the run's attribution names for its logical name, through a write half separate from the provider port, conditioned on the version the run hydrated. `connector.rotate` refreshes at the lease retirement margin, drops the token unserved when the put is refused or the adapter has no write half, and re-hydrates the winner when another writer stored first. The environment, keychain and lease adapters have no write half, so operator-entered and leased credentials never write back.
+The environment, keychain and lease adapters have none, so operator-entered and leased credentials never write back.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Conditional put to the attributed adapter *(chosen)* | — | A read-only manager fails the run on every refresh; a lost race costs one extra hydration. |
+| Conditional put to the attributed adapter *(chosen)* | — | A read-only manager fails the run on every refresh. |
 | First writable adapter in the chain | Name join | A shadowing adapter in front hides the stored version. |
-| Serve the token from memory on a refused put | Provider custody | A vendor rotating refresh tokens leaves the manager's copy dead, with nothing recording it. |
-| Unconditional put | Atomic turnover | A slower replica overwrites a newer token, a torn credential state. |
+| Serve the token from memory on a refused put | Provider custody | A rotated refresh token leaves the manager's copy dead, unrecorded. |
+| Unconditional put | Atomic turnover | A slower replica overwrites a newer token. |
 
-Consequences: the write-forward path runs against a manager adapter only.
 Revisit: a manager offers no conditional write; two resolvers share one cache across runs.
 
-## Egress passes one transport port and one pre-send hook ahead of resolution
+## egress-passes-transport — Egress passes one transport port and one pre-send hook ahead of resolution
 
-Status: accepted.
-
-Context: the client resolves a name before any gate, a reservation sees no request, the model endpoint bypasses mediation, and `contextful-outbound` links its HTTP stack unconditionally.
-
-Decision: the runtime defines a transport port with a resolve half and a send half; its HTTP adapter sits behind a default-on `transport-ureq` feature. The model call sends through the mediated client. Each hop passes the allowlist, then one hook carrying the request intent, then resolution; the limiter reservation is the hook's innermost implementation, and an operator hook composes in front.
-
-Criteria: one attachment point, no lookup before a refusal, `connector.meter.allowlist-precedence` intact; allowlist precedence decided the hook's position.
+Allowlist precedence decided the hook's position: no host lookup precedes a refusal, and one attachment point serves every hop.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Allowlist, one intent hook, port-owned resolution *(chosen)* | — | Each adapter re-implements proxy choice, timeout and body ceiling; a ledger learns allowlist refusals from the run record, not the hook. |
+| Allowlist, one intent hook, port-owned resolution *(chosen)* | — | Each adapter re-implements proxy choice, timeout and body ceiling. |
 | Hook ahead of the allowlist | Allowlist precedence | An undeclared host reaches the operator hook and the limiter. |
 | An egress gate beside the meter | One attachment point | Three pre-send hooks, each a call site to miss. |
-| A send-only port, resolution through the system | Lookup containment | A refused hop has already sent its host name to a resolver. |
-| The HTTP stack unconditional | Embeddability | An embedder with its own client links a second TLS stack. |
+| A send-only port, system resolution | Lookup containment | A refused hop has already sent its host name to a resolver. |
 
-Consequences: `contextful-decode` then holds the record decoders with no edge to `contextful-outbound`, a split needing no section here. Each transport adapter is audited against the attach clauses.
-Revisit: a transport that must resolve remotely, such as a proxy-only deployment.
+Revisit: a transport that resolves remotely, such as a proxy-only deployment.
 
-## Manifest widening binds approval to both declarations
+## manifest-widening-binds — Manifest widening binds approval to both declarations
 
-`connector.widen` compares full declarations before publication. Host patterns use syntactic containment; environment names and scope strings use set inclusion, and the clock uses Boolean inclusion. A reported host witness replays through both matchers. The comparison makes no claim about vendor scope implications, DNS, transport mediation or credential bytes.
+The comparison makes no claim about vendor scope implications, DNS or credential bytes.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Compare grants and bind approval to both manifest digests *(chosen)* | — | Additional access needs operator review; opaque scope strings over-report semantic widening. |
+| Compare grants, bind approval to both digests *(chosen)* | — | Opaque scope strings over-report semantic widening. |
 | Treat every reload as approval | Review binding | A program update silently gains access. |
-| Compare textual entries alone | Semantic inclusion | Replacing an exact host with a covering wildcard obscures the newly reachable hosts. |
-| Solve the host grammar with SMT | Dependency budget | Exact hosts and suffix wildcards acquire a solver and a second trusted interpretation. |
+| Compare textual entries alone | Semantic inclusion | A covering wildcard hides the newly reachable hosts. |
+| Solve the host grammar with SMT | Dependency budget | A solver adds a second trusted interpretation. |
 
-Consequences: a concurrent edit invalidates the approval; unresolved comparisons retain the predecessor. A fixed wildcard sample can already belong to an exact predecessor entry, so absence of a replayed witness supplies no inclusion verdict. Approval storage and authorization remain the operation's unsettled boundary.
 Revisit: host grants gain ports, methods, paths or address ranges.
 
-## Drive capture binds bounded roots and mode to the position
+## drive-capture-binds — Drive capture binds bounded roots and mode to the position
 
-One Shared Drive and a bounded selected root set define the capture boundary. Validation precedes listing; file identity deduplicates overlapping trees, and the least selected root id resolves its provenance. The position binds the sorted selection and mode, so either change requires a complete walk and fresh byte reads before removals. Metadata-only capture hashes complete download or export bytes without retaining bodies.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Bounded roots and explicit capture mode *(chosen)* | — | Every changed selection rewalks its roots; metadata-only still downloads or exports each captured body. |
-| One pipeline per root | Overlap identity | The same file lands in several tables and removal depends on cross-pipeline reconciliation. |
-| Arbitrary roots and shortcuts | Scope review | One declaration reaches unrelated drives or trees outside its selected roots. |
-| Drive's checksum alone | Byte identity | Native exports lack a checksum for the exported representation. |
-
-Consequences: an incomplete walk preserves earlier rows and refuses before inferring removals. A separately retained named version can verify the recorded byte digest.
-Revisit: Drive offers a verifiable export digest without reading bytes, or a tenant needs more roots than the declared ceiling.
-
-## Picker files bind selection and principal to one position
-
-**Status:** accepted
-
-Context: a Picker selection admits individual files, while folder walks and OAuth refreshes carry existing positions and credential names.
-
-Decision: `connector.drive-picks.file-selection` admits one explicit file set. Its sorted ids and mode bind the position (`connector.drive-picks.file-position`), while a connection binds tenant and principal at landing. Credential refresh serializes on the answering adapter's version (`connector.principal-secrets.write-serialization`).
+Native exports carry no checksum for the exported representation, so capture hashes the bytes.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Explicit files and versioned credential names *(chosen)* | — | Selection changes reread retained files; one connection adds a position namespace. |
-| Treat a picked folder as access to descendants | Proven access | A selected folder may not grant its children's bytes under `drive.file`. |
-| One global refresh lock | Distributed correctness | Another process can still rotate the same credential. |
+| Bounded roots and explicit capture mode *(chosen)* | — | A changed selection rewalks its roots; metadata-only still downloads each body. |
+| One pipeline per root | Overlap identity | One file lands in several tables. |
+| Arbitrary roots and shortcuts | Scope review | One declaration reaches unrelated drives. |
+| Drive's checksum alone | Byte identity | Native exports lack a checksum. |
 
-Consequences: an inaccessible id refuses first capture; a later loss of access withdraws its rows. A lease endpoint can own refresh-token custody while the source mints access tokens.
+Revisit: Drive offers a verifiable export digest without reading bytes, or a tenant needs more roots than the ceiling.
+
+## picker-files-bind — Picker files bind selection and principal to one position
+
+Under `drive.file`, a selected folder may not grant its children's bytes, so a selection admits individual files.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Explicit files, versioned credential names *(chosen)* | — | Selection changes reread retained files. |
+| A picked folder grants its descendants | Proven access | A child's bytes may sit outside the grant. |
+| One global refresh lock | Distributed correctness | Another process still rotates the same credential. |

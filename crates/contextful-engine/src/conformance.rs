@@ -6,6 +6,8 @@
 //! A factory hands back empty stores on every call; a clone of a store shares its state.
 //! The restart check reopens a durable adapter over its location instead of cloning it.
 
+pub mod interleave;
+
 use crate::awake::{resume_key, AwakeError, Awaited, Registry};
 use crate::journal::{Journal, Resolved, StepError};
 use contextful_core::run::journal::{sha256_hex, EntryKey, Row, Stored, BLOB_SWEEP_GRACE_SECS, BLOB_SWEEP_INTERVAL_SECS, INLINE_CUTOFF_BYTES};
@@ -185,7 +187,7 @@ pub fn journal_store<J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &st
         other => panic!("{adapter}: a missing blob read as {other:?}"),
     }
 
-    // run.retry.attempt-counter: a schedule's closed attempts persist on its pending row,
+    // run.retry.not-before: a schedule's closed attempts persist on its pending row,
     // survive a takeover, and leave with a release or a record.
     let j = journal(fresh);
     let k = key("x-3");
@@ -255,7 +257,7 @@ pub fn awakeable_store<A: AwakeableStore + Clone, J: JournalStore + Clone, B: Bl
     assert_eq!(r.resolve(&a.token, b"yes", at("2030-01-01T00:00:10Z")).unwrap(), b"yes");
     let journal = Journal::over(rows.clone(), blobs.clone());
     assert!(matches!(journal.row(&resume_key("x-1", &a.token)).unwrap(), Some(Row::Recorded { .. })), "{adapter}: the payload is a journal entry under the resume key");
-    // run.suspend.idempotent-resolution and conflicting-resolution.
+    // run.suspend.resume-is-a-step-output and conflicting-resolution.
     assert_eq!(r.resolve(&a.token, b"yes", at("2030-01-01T00:00:20Z")).unwrap(), b"yes", "{adapter}: the identical payload answers the recorded value");
     assert!(matches!(r.resolve(&a.token, b"no", at("2030-01-01T00:00:20Z")), Err(AwakeError::Refused(RunError::AwakeableAlreadyResolved(_)))));
     assert_eq!(r.awaited("x-1", &a.token, at("2030-01-01T00:00:30Z")).unwrap(), Awaited::Resumed(b"yes".to_vec()), "{adapter}: a conflicting payload leaves the recorded one");
@@ -266,7 +268,7 @@ pub fn awakeable_store<A: AwakeableStore + Clone, J: JournalStore + Clone, B: Bl
     assert_eq!(store.get(&e.token).unwrap().map(|row| row.state), Some(AwakeableState::TimedOut), "{adapter}: the timeout persists");
     assert_eq!(r.awaited("x-2", &e.token, at("2030-01-01T00:00:00Z")).unwrap(), Awaited::TimedOut, "{adapter}: a timeout is sticky under an earlier instant");
 
-    // run.suspend.payload-offload: a payload above the cutoff lands as a blob the row references.
+    // run.journal.one-cutoff: a payload above the cutoff lands as a blob the row references.
     let big = r.suspend("x-3", "upload", "2030-01-01T00:00:00Z", 60).unwrap();
     let payload = large(b'p');
     let sha = sha256_hex(&payload);

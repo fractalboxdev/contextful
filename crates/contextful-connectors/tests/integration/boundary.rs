@@ -9,6 +9,8 @@ fn sh(script: &str) -> Boundary {
     Boundary::new("/bin/sh", &["-c", script])
 }
 
+// spec: run.land.parse-deadline@2a51ddfc
+// spec: run.land.parse-memory@8160aabc
 #[test]
 fn every_decode_child_receives_the_declared_bounds() {
     let worker = sh("cat");
@@ -18,9 +20,9 @@ fn every_decode_child_receives_the_declared_bounds() {
     assert_eq!(MEMORY_BYTES, worker.memory_bytes);
 }
 
-/// A decoder subject to process failure runs outside the serving process. The serving process bounds the decoder's
-/// wall clock and memory and supports terminating the decoder.
-// spec: run.land.parse-boundary@1f45c20a
+/// Each input whose decoder is subject to process failure decodes alone in a child process outside the serving
+/// process, which bounds the child's wall clock and memory and can terminate it.
+// spec: run.land.parse-boundary@8b5aec0b
 #[test]
 fn a_decode_runs_in_a_child_the_parent_kills_at_its_deadline() {
     // The child reads its input and answers on standard output.

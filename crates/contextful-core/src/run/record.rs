@@ -135,7 +135,7 @@ pub struct RunRow {
     pub started_at: Instant,
     #[serde(default)]
     pub ended_at: Option<Instant>,
-    /// Rows and bytes measured at the destination (`run.record.counts-at-destination`).
+    /// Rows and bytes measured at the destination (`run.record.skipped-count`).
     pub rows: u64,
     pub bytes: u64,
     /// Batches the run landed.
@@ -182,7 +182,7 @@ pub struct RunRow {
     /// pipeline and table name its scope (`run.own.host-scope`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_scope: Option<String>,
-    /// A store-driven run's input (`run.record.input-bounds`); `None` for every other run.
+    /// A store-driven run's input (`run.record.sweep-bounds`); `None` for every other run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<InputBounds>,
     /// Each fan-out branch that failed into a join declaring `allow_partial`, with its
@@ -228,7 +228,7 @@ pub struct BoundHit {
 }
 
 /// The input a store-driven run read: the resolved `as_of`, the snapshot id per table the
-/// statement touched, and the row count (`run.record.input-bounds`).
+/// statement touched, and the row count (`run.record.sweep-bounds`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputBounds {
     pub as_of: String,
@@ -398,7 +398,7 @@ pub struct HistoryPage {
 }
 
 /// Select a pipeline's history: rows inside the window, newest first, clipped at the
-/// ceiling. An empty window answers an empty page (`run.record.empty-window`).
+/// ceiling. An empty window answers an empty page (`run.record.truncation-flag`).
 pub fn select_history(rows: impl IntoIterator<Item = RunRow>, window: &Window) -> HistoryPage {
     let mut inside: Vec<RunRow> = rows.into_iter().filter(|r| window.admits(r)).collect();
     inside.sort_by(|a, b| b.started_at.cmp(&a.started_at).then_with(|| b.run_id.cmp(&a.run_id)));

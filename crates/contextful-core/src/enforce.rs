@@ -8,7 +8,7 @@
 pub enum EnforceError {
     #[error("EnforceRedactionInvalid: {0}")]
     RedactionInvalid(String),
-    /// A value matching a credential shape on the write path. (`authority.resist.credential-shaped-value`)
+    /// A credential-shaped value on the write path. (`authority.resist.credential-shaped-value`)
     #[error("EnforceCredentialShapedValue: {0}")]
     CredentialShapedValue(String),
     /// A combine leaving its primary's digest output unchanged. (`authority.mask.combine-generalizes`)
@@ -32,16 +32,13 @@ pub enum EnforceError {
     /// A mask naming a column the schema omits. (`authority.mask.absent-column`)
     #[error("EnforceMaskOnAbsentColumn: {0}")]
     MaskOnAbsentColumn(String),
-    /// A wildcard zone default in a store with several principals. (`authority.place.permissive-default`)
-    #[error("EnforcePermissiveZoneDefault: {0}")]
-    PermissiveZoneDefault(String),
     /// A row predicate node outside the typed subset. (`authority.filter-rows.outside-grammar`)
     #[error("EnforcePredicateOutsideGrammar: {0}")]
     PredicateOutsideGrammar(String),
     /// A protected-class surface widened past its floor with no override. (`authority.place.floor-widened`)
     #[error("EnforceProtectedFloorWidened: {0}")]
     ProtectedFloorWidened(String),
-    /// Write-time removal on a surface whose allow-set admits a public cloud. (`authority.place.removal-with-public-cloud`)
+    /// Write-time removal and a public-cloud allow-set on one surface. (`authority.place.removal-with-public-cloud`)
     #[error("EnforceRemovalWithPublicCloud: {0}")]
     RemovalWithPublicCloud(String),
     /// A root-level object pushed outside the allowlist while a table is withheld. (`authority.bound-redistribution.root-not-allowlisted`)
@@ -71,7 +68,7 @@ pub enum EnforceError {
     /// A write tool registered on an organization-wide face. (`authority.resist.write-tool`)
     #[error("EnforceWriteOnReadOnlyFace: {0}")]
     WriteOnReadOnlyFace(String),
-    /// A request asserting a zone its credential does not sign. (`authority.place.asserted-zone`)
+    /// A request asserted a zone its credential does not sign. (`authority.place.asserted-zone`)
     #[error("EnforceZoneAssertionWidens: {0}")]
     ZoneAssertionWidens(String),
     /// A mint signing a zone other than a non-widenable project default. (`authority.place.default-widened`)
@@ -95,7 +92,6 @@ impl EnforceError {
             EnforceError::IncognitoWidening(_) => "EnforceIncognitoWidening",
             EnforceError::KeyMaterialInRelation(_) => "EnforceKeyMaterialInRelation",
             EnforceError::MaskOnAbsentColumn(_) => "EnforceMaskOnAbsentColumn",
-            EnforceError::PermissiveZoneDefault(_) => "EnforcePermissiveZoneDefault",
             EnforceError::PredicateOutsideGrammar(_) => "EnforcePredicateOutsideGrammar",
             EnforceError::ProtectedFloorWidened(_) => "EnforceProtectedFloorWidened",
             EnforceError::RemovalWithPublicCloud(_) => "EnforceRemovalWithPublicCloud",

@@ -26,7 +26,7 @@ pub const CALL_TIMEOUT_CEILING_SECS: u64 = 3600;
 /// The prefix a delegated body is named under inside a job declaration: `delegate:<name>`.
 pub const BODY_PREFIX: &str = "delegate:";
 
-/// How a delegate takes its request (`surface.delegate.call-mode`, `surface.delegate.submit-mode`).
+/// How a delegate takes its request (`surface.delegate.call-mode`, `surface.delegate.binding`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Mode {

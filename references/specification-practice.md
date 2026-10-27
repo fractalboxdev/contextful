@@ -1,6 +1,6 @@
 # Specification practice
 
-How the corpus itself is written: clause-addressed rules, decision records, requirement
+How authors write the corpus: clause-addressed rules, decision records, requirement
 syntax, lint rules over prose, and the link from a clause to the test, theorem or type
 that demonstrates it.
 
@@ -10,18 +10,18 @@ that demonstrates it.
 | --- | --- | --- | --- |
 | Rule id to test annotation: Rust Reference `r[...]` ids, compiletest `//@ reference:`, the Ferrocene FLS traceability matrix | <https://public-docs.ferrocene.dev/main/qualification/plan/details.html>; *Ferrocene Language Specification* below | `corpus.state` | Tests carry `#[spec("…")]` and the checker collects them; the central pin file holds only theorem and type pins, so no second map drifts. |
 | Coverage types and revision suffix (OpenFastTrace `impl~`/`utest~`, `~1`; Doorstop; sphinx-needs) | <https://github.com/itsallcode/openfasttrace> · <https://github.com/doorstop-dev/doorstop> · <https://sphinx-needs.readthedocs.io> | `corpus.state`, `corpus.address` | Each kind declares the coverage it needs (refusal and limit need a test or theorem, shape needs a type), and a pin records a statement hash so a reworded clause loses its pin instead of keeping it silently. |
-| ADR granularity; Mega-ADR, Dummy Alternative and Blueprint-in-disguise anti-patterns | <https://www.ozimmer.ch/practices/2023/04/03/ADRCreation.html> · <https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions> | `corpus.rationale` | One record per architecturally significant decision, not per refusal; a refusal's direction follows from a small set of principles; options are real alternatives, never straw men. |
+| ADR granularity; Mega-ADR, Dummy Alternative and Blueprint-in-disguise anti-patterns | <https://www.ozimmer.ch/practices/2023/04/03/ADRCreation.html> · <https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions> | `corpus.rationale` | One record per architecturally significant decision, not per refusal; a refusal's direction follows from eight principles (`P1`–`P8`); options are real alternatives, not straw men. |
 | MADR 4 minimal template plus Confirmation | <https://adr.github.io/madr/> | `corpus.rationale` | Context, options and outcome are mandatory, the rest optional; a Confirmation line names the pin that proves the decision holds. |
-| Y-statements | <https://medium.com/olzzio/y-statements-10eb07b5a177> · <https://socadk.github.io/design-practice-repository/artifact-templates/DPR-ArchitecturalDecisionRecordYForm.html> | `corpus.rationale`, `corpus.anatomy` | A one-sentence `because` cell carries a single-clause decision; a full record is kept only where the options genuinely diverge. |
-| RFC 2119 / RFC 8174 keywords | <https://www.rfc-editor.org/rfc/rfc8174> | `corpus.anatomy`, `corpus.rationale` | Position replaces keywords — only a clause cell is normative, and a stray modal is refused — which is stronger than RFC 8174; optional or conditional behavior needs its own form, since every clause is absolute. |
-| EARS templates | <https://alistairmavin.com/ears/> | `corpus.address`, `corpus.anatomy` | A refusal is the unwanted-behavior pattern ("If <trigger>, the <party> raises <Error>") with a parseable trigger, a workflow the event- and state-driven patterns, and the kind segment is computed from the form. |
+| Y-statements | <https://medium.com/olzzio/y-statements-10eb07b5a177> · <https://socadk.github.io/design-practice-repository/artifact-templates/DPR-ArchitecturalDecisionRecordYForm.html> | `corpus.rationale`, `corpus.anatomy` | A one-sentence `because` cell carries a single-clause decision; a full record exists only where the options diverge. |
+| RFC 2119 / RFC 8174 keywords | <https://www.rfc-editor.org/rfc/rfc8174> | `corpus.anatomy`, `corpus.rationale` | Position replaces keywords — only a clause cell is normative, and the linter refuses a stray modal — which is stronger than RFC 8174; optional or conditional behavior needs its own form, since every clause is absolute. |
+| EARS templates | <https://alistairmavin.com/ears/> | `corpus.address`, `corpus.anatomy` | A refusal is the unwanted-behavior pattern ("If <trigger>, the <party> raises <Error>") with a parseable trigger, a workflow the event- and state-driven patterns, and the checker computes the kind segment from the form. |
 | ISO/IEC/IEEE 29148 requirement quality: singular, verifiable, necessary | <https://www.iso.org/standard/72089.html> | `corpus.anatomy`, `corpus.state` | One obligation per row under a clause-word cap; a limit names its workload; a shape row that a type or DDL pin already carries is not necessary. |
 | test262 beside ecma262; ESMeta; WHATWG living standards | <https://github.com/tc39/test262> · <https://whatwg.org/faq>; *JISET and JEST* below | `corpus.rationale`, `assurance.test` | The specification stays short because an executable conformance suite carries the edge cases; parser, matcher and scanner detail moves into fixture tests. |
-| KEP and Rust RFC templates | <https://github.com/kubernetes/enhancements/blob/master/keps/NNNN-kep-template/README.md> · <https://github.com/rust-lang/rfcs/blob/master/0000-template.md> | `corpus.rationale` | Rationale for one operation lives in one document with alternatives, drawbacks and a test plan, rather than in many per-clause records. |
-| Oxide RFD lifecycle | <https://rfd.shared.oxide.computer/rfd/0001> | `corpus.rationale`, `corpus.state` | Lifecycle state is the only place a date could belong; the grammar either legalizes it in one field or drops it, never both. |
-| Requirements smell detection with measured precision | *Rapid quality assurance with Requirements Smells* and *Requirements quality research* below | `corpus.state`, `corpus.rationale`, `corpus.reference` | The checker emits per-rule hit and override counts, and a lint rule stays only while its false-refusal rate and downstream defect effect are measured. |
-| Executable models for the protocol-critical core | see [formal-methods.md](./formal-methods.md) | `store.lease`, `store.fold`, `run.journal` | A TLA+ or P model of lease + CAS + fence, with the store refusals pinned to its invariants. |
-| Fencing checked by the resource; S3 conditional writes | see [leases-and-coordination.md](./leases-and-coordination.md), [storage-and-table-formats.md](./storage-and-table-formats.md) | `store.lease`, `store.probe` | The probe names `If-None-Match` and `If-Match`; the store, not the writer, rejects a stale fence. |
+| KEP and Rust RFC templates | <https://github.com/kubernetes/enhancements/blob/master/keps/NNNN-kep-template/README.md> · <https://github.com/rust-lang/rfcs/blob/master/0000-template.md> | `corpus.rationale` | Rationale for one operation lives in one document with alternatives, drawbacks and a test plan, rather than in one record per clause. |
+| Oxide RFD lifecycle | <https://rfd.shared.oxide.computer/rfd/0001> | `corpus.rationale`, `corpus.state` | Lifecycle state is the only place a date could belong; the grammar either legalizes it in one field or drops it. |
+| Requirements smell detection with measured precision | *Rapid quality assurance with Requirements Smells* and *Requirements quality research* below | `corpus.state`, `corpus.rationale`, `corpus.reference` | The checker emits per-rule hit and override counts, and a lint rule stays only while the maintainers measure its false-refusal rate and downstream defect effect. |
+| Executable models for the protocol-critical core | see [formal-methods.md](./formal-methods.md) | `store.lease`, `store.fold`, `run.journal` | A TLA+ or P model of lease + CAS + commit fence, with the store refusals pinned to its invariants. |
+| Fencing checked by the resource; S3 conditional writes | see [leases-and-coordination.md](./leases-and-coordination.md), [storage-and-table-formats.md](./storage-and-table-formats.md) | `store.lease`, `store.probe` | The probe names `If-None-Match` and `If-Match`; the store, not the writer, rejects a stale commit fence. |
 | DPoP; Merkle transparency log; JCS canonical JSON | see [access-control-and-capabilities.md](./access-control-and-capabilities.md), [audit-and-erasure.md](./audit-and-erasure.md), [durable-execution.md](./durable-execution.md) | `authority.verify`, `disclosure.attest`, `run.declare` | Skew and replay limits from RFC 9449; a Merkle tree per segment from RFC 6962; the declaration hash defined by RFC 8785. |
 
 ## Decision records
@@ -47,7 +47,7 @@ rationale." *Journal of Systems and Software* 79(12), 2006.
 - **Informs:** `corpus.rationale`
 - **Question:** How much captured rationale is ever read? The survey measures the
   cost of capture against the rate of use and names why rationale goes unmaintained —
-  the central risk when rationale outweighs behavior several times over.
+  the central risk when rationale outweighs behavior.
 
 ### Using Architecture Decision Records in Open Source Projects
 
@@ -70,10 +70,10 @@ Practice: An Action Research Study." *ECSA*, 2024.
 
 - **Priority:** should-read
 - **Informs:** `corpus.rationale`
-- **Question:** What makes records useful or ignored in a working team? Documentation
-  culture, knowledge transfer and prioritization of what to record are addressed by
-  ADRs; decisions about shared and distributed components are not, and where records
-  are stored has a large effect on their perceived usefulness.
+- **Question:** What makes records useful or ignored in a working team? ADRs address
+  documentation culture, knowledge transfer and prioritization of what to record;
+  they leave decisions about shared and distributed components open, and a record's
+  storage location shapes its perceived usefulness.
 
 ### Kinds and documentation of design decisions in practice
 
@@ -95,7 +95,7 @@ Syntax (EARS)." *IEEE RE*, 2009. <https://doi.org/10.1109/RE.2009.9>
 
 - **Priority:** must-read
 - **Informs:** `corpus.address`, `corpus.anatomy`
-- **Question:** Should a clause's kind be computed from its sentence form? Five
+- **Question:** Does a clause's sentence form determine its kind? Five
   templates — ubiquitous, event-driven, state-driven, unwanted behavior, optional —
   cover most requirements and are checkable, which turns free-prose invariants and
   refusals into trigger and response fields a checker and a test generator read.
@@ -172,6 +172,6 @@ Differential Testing of Both JavaScript Engines and Specification." *ICSE*, 2021
 
 - **Priority:** optional
 - **Informs:** `corpus.state`, `assurance.test`
-- **Question:** Can structured clause rows generate test skeletons? JISET mechanizes
+- **Question:** Do structured clause rows generate test skeletons? JISET mechanizes
   prose algorithm steps and JEST runs the result differentially against engines and
   the specification text, catching defects on both sides.

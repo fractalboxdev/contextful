@@ -102,7 +102,6 @@ fn the_replication_tick_is_ten_minutes() {
 
 /// A segment closing while the replicator runs reaches the bucket within one tick, under
 /// the prefix, byte for byte the local root; the open segment's absent root sends nothing.
-// spec: disclosure.attest.root-replication@82344430
 #[test]
 fn a_closed_segment_root_lands_within_one_tick() {
     let dir = tempfile::tempdir().unwrap();

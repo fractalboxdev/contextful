@@ -10,6 +10,7 @@ use std::process::{Command, Output};
 
 const AUD: &str = "contextful://acme-research";
 
+// spec: run.items.completion@080e93f0
 #[test]
 fn isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires() {
     for prepared in [false,true] {
@@ -30,7 +31,7 @@ fn isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires() {
 /// One exhausted and two succeeded items each read back from the item record with their
 /// job, keys, attempt count and outcome; a later fire holding their receipts adds no row.
 // spec: run.items.outcome-record@3702f38d
-// spec: run.items.terminal-outcome@8b1abe1a
+// spec: run.items.terminal-outcome@8b3425cd
 #[test]
 fn terminal_items_read_back_from_the_item_record_by_job_and_entity() {
     let (dir, public, token) = project(&job("max_in_flight=1\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=1\n"));
@@ -157,6 +158,7 @@ fn fire(dir: &Path, public: &str, token: &str, run: &str, now: &str, env: &[(&st
     )
 }
 
+// spec: run.export.group-source@2cbdd2ff
 #[test]
 fn a_successful_job_records_one_coordinated_output_frontier() {
     let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
@@ -193,6 +195,8 @@ fn isolated_aggregate_publication_records_only_successful_complete_frontiers() {
     assert!(ledger.source("scoring").unwrap().is_none(),"failed isolated aggregate publishes no completion frontier");
 }
 
+// spec: run.export.group-block@2ae97ac9
+// spec: run.export.group-rebuild@512f1c2b
 #[test]
 fn coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member() {
     use contextful_acceptance::http::{Response,Server};
@@ -279,6 +283,7 @@ fn a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table() {
     assert!(refused.contains("fire-2 failed"), "{refused}");
 }
 
+// spec: authority.redact.recorded-body@88111fd6
 #[test]
 fn canonical_output_removal_refuses_before_recorded_body_calls_but_unprotected_jobs_run() {
     for protected in [false, true] {
@@ -405,6 +410,7 @@ fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
     assert!(ledger.source("scoring").unwrap().is_none(),"a partial producer publishes no coordinated completion frontier");
 }
 
+// spec: surface.fire.executable-pin@462b2270
 /// The rows every body emits land after the last input row completes and before the owner retires, one run per
 /// declared output table through {{run.land.stage-order}}.
 // spec: run.journal.row-output@90602540
@@ -515,6 +521,7 @@ fn scheduled_host(dir: &Path, public: &str, token: &str, args: &[&str], extra: &
     host(dir, args, &vars)
 }
 
+// spec: surface.fire.scheduled-body@4f22c86a
 // spec: surface.dispatch.fire-credential-inherited@fe4cd292
 #[test]
 fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart() {
@@ -627,6 +634,7 @@ fn a_serve_scheduling_a_store_driven_job_without_key_or_credential_refuses_at_st
     assert!(!ledger.exists(), "no fire runs");
 }
 
+// spec: surface.fire.job-identity@022961a7
 #[test]
 fn scheduled_jobs_validate_registration_schedule_and_dispatch_identity_before_import() {
     for (extra, replacement, expected) in [
@@ -657,6 +665,7 @@ fn unscheduled_jobs_remain_applied_without_running() {
     assert!(snapshot.contains("score-documents"));
 }
 
+// spec: surface.fire.scheduled-history@613dd4cc
 #[test]
 fn scheduled_jobs_resume_paid_calls_after_a_failed_child() {
     let (dir, public, token) = project(&format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n")));
@@ -674,6 +683,7 @@ fn scheduled_jobs_resume_paid_calls_after_a_failed_child() {
     assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
 }
 
+// spec: surface.fire.job-snapshot@150a7736
 #[test]
 fn a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body() {
     let declaration = format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
@@ -726,6 +736,9 @@ fn recorded(dir: &Path, run_id: &str) -> serde_json::Value {
 
 /// Parallel branches rejoin only at an explicit join node. A failed branch reaching the join fails the run. With
 /// `allow_partial`, the join instead records each failed branch's label and failure tag on the run record.
+// spec: run.compile.lowering@a0f7f1c2
+// spec: run.compile.plan-node@0027f2a5
+// spec: surface.fire.plan-job@d1cb5814
 // spec: run.journal.fan-out-join@d9f77d0c
 #[test]
 fn a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch() {

@@ -33,6 +33,7 @@ fn a_binding_names_an_endpoint_a_token_reference_and_a_batch_size() {
 
 /// A cleartext endpoint off loopback, an endpoint carrying a query, fragment or userinfo, and a token that is not a
 /// `secret://` reference raise `ConnectorLimiterBindingRejected`; the refusal never repeats the literal.
+// spec: connector.meter.binding-transport@2b66afbf
 #[test]
 fn a_cleartext_endpoint_or_a_literal_token_rejects_the_binding() {
     let rejected = |endpoint: &str, token: &str| match LimiterBinding::parse("graph-app", endpoint, token, None) {
@@ -53,6 +54,7 @@ fn a_cleartext_endpoint_or_a_literal_token_rejects_the_binding() {
 }
 
 /// A declared quota with no binding raises `ConnectorQuotaUnbound`, naming the quota.
+// spec: connector.meter.quota-unbound@3c671e00
 #[test]
 fn a_declared_quota_with_no_binding_refuses() {
     let mut bindings = BTreeMap::new();
@@ -103,7 +105,7 @@ fn an_unreadable_acquire_answer_grants_nothing() {
 }
 
 /// The acquire and report bodies carry counts and verbatim headers, and no price, cost or currency field.
-// spec: connector.meter.counting-not-pricing@1fca5afa
+// spec: connector.meter.reservation-point@2c3f1188
 #[test]
 fn the_wire_counts_requests_and_prices_none() {
     let acquire = acquire_body("graph-app", "reads", 8);
@@ -123,6 +125,7 @@ fn the_wire_counts_requests_and_prices_none() {
 }
 
 /// A declaration forwarding a credential-bearing header raises `ConnectorForwardRejected`, whatever its case.
+// spec: connector.meter.forward-credential@eb55e34e
 #[test]
 fn a_declaration_forwarding_a_credential_header_refuses() {
     for header in ["Authorization", "proxy-authorization", "Cookie", "SET-COOKIE"] {

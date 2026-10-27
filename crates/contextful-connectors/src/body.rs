@@ -1,5 +1,5 @@
 //! The decode keys the HTTP and object sources share: how a body is compressed, the zip
-//! member it lands, and how delimited text splits (`connector.source.object-zip`,
+//! member it lands, and how delimited text splits (`connector.source.object-gzip`,
 //! `connector.source.delimiter`, `connector.source.declared-columns`).
 
 use crate::decode::{gunzip, unzip, Delimited, Format};

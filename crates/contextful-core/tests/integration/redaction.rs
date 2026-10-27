@@ -42,10 +42,12 @@ fn array_path_indices_use_decimal_digits_without_a_sign() {
     assert!(CompiledRule::compile(rule(json!("whole"), Some("$.parts[+1]"))).is_err());
 }
 
+// spec: authority.redact.pattern-refusal@4e9cc683
 #[test]
 fn unsupported_and_empty_patterns_and_malformed_paths_refuse_at_declaration() {
     for pattern in ["(a)\\1", "(?=a)", "a*", "\\b", "["] {
-        assert!(CompiledRule::compile(rule(json!({"pattern":pattern}), None)).is_err(), "{pattern}");
+        let refused = CompiledRule::compile(rule(json!({"pattern":pattern}), None)).err().unwrap_or_else(|| panic!("{pattern}"));
+        assert_eq!(refused.identifier(), "EnforceRedactionInvalid", "{pattern}");
     }
     for path in ["$.parts[", "$..text", "$.parts[?(@.secret)]", "text"] {
         assert!(CompiledRule::compile(rule(json!("whole"), Some(path))).is_err(), "{path}");
@@ -60,6 +62,7 @@ fn greedy_quantifiers_rewrite_one_leftmost_first_span() {
     assert_eq!(value, "[REDACTED:phone] b [REDACTED:phone]");
 }
 
+// spec: authority.redact.in-value@ffe1f9f4
 #[test]
 fn a_rewritten_span_leaves_no_matched_byte_of_its_leftmost_match() {
     for (pattern, text) in [("password=\\S+", "password=hunter2 ok"), ("ab+c|b", "xabbbcx")] {
@@ -103,6 +106,7 @@ fn ordinary_patterns_rewrite_a_mebibyte_in_one_pass() {
     assert!(!value.as_str().unwrap().contains("415"));
 }
 
+// spec: authority.redact.rules-per-pipeline@77e297af
 #[test]
 fn pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules() {
     use contextful_core::pipeline::declare::PipelineSpec;
@@ -119,6 +123,7 @@ fn pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules() {
     assert!(declared(json!(vec![valid; 257])).validate().is_err(), "the pipeline owns the aggregate bound");
 }
 
+// spec: authority.redact.after-normalization@40434495
 #[test]
 fn relational_lineage_rewrites_children_before_deriving_persisted_identities() {
     use contextful_core::pipeline::normalize::NormalizedGroup;
@@ -145,12 +150,15 @@ fn relational_lineage_rewrites_children_before_deriving_persisted_identities() {
     assert_eq!(normalize("415-555-0100"), normalize("415-555-0999"), "no identity retains a digest of either removed value");
 }
 
+// spec: authority.redact.compiled-pattern-size@38edb64a
+// spec: authority.redact.pattern-bytes@bbed5a2a
 #[test]
 fn source_and_expanded_automaton_limits_refuse_before_matching() {
     assert!(CompiledRule::compile(rule(json!({"pattern":"a".repeat(4097)}), None)).is_err());
     assert!(CompiledRule::compile(rule(json!({"pattern":"a{100000}"}), None)).is_err());
 }
 
+// spec: store.encrypt.redacted-index@97ec966e
 #[test]
 fn an_index_cannot_derive_a_copy_from_a_removed_column() {
     use contextful_core::store::declare::TableDecl;

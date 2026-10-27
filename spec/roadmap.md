@@ -220,7 +220,7 @@ Acceptance: `contextful_acceptance::m16::m16_traverse`
 
 | Operations | Intent |
 | --- | --- |
-| `surface.delegate` | A store-driven item's body on deploy-bound code outside the binary: the binding, the envelope, signed answers, call and submit modes, and the outcome vocabulary. |
+| `surface.delegate` | A store-driven item's body on deploy-bound code outside the binary: the binding, the envelope, signed answers, the call mode, and the outcome vocabulary. |
 
 Reach: A store-driven item runs its paid call on a loopback delegate, its answer lands as the item's rows, and a resume after a restart sends no second request.
 

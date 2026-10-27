@@ -185,9 +185,10 @@ fn urls(answer: &Value) -> Vec<String> {
     out
 }
 
-/// `[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each
-/// capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.
-// spec: store.snapshot.capture@bbab83d6
+/// `[pipeline.tables.snapshot]` declares {{type:contextful_core::store::declare::SnapshotDecl}}, the columns
+/// describing each captured document. Each capture commits as one store snapshot, and an evaluation case pins
+/// it by `snapshot` id.
+// spec: store.snapshot.capture@1b5ecf0e
 #[test]
 fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     let mut ids = Vec::new();
@@ -206,9 +207,10 @@ fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     assert!(unknown.contains("PinnedBuildUnavailable") && unknown.contains("research/pages"), "{unknown}");
 }
 
-/// A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-
-/// time.live-since}}. A horizon read admits the document only when the block's `leak_score` column holds 0.
-// spec: store.snapshot.post-horizon-capture@81e4608c
+/// A document captured after the reading horizon carries `_available_reconstructed` true under
+/// {{store.available-time.live-since}}, and a horizon read admits it only while the block's `leak_score` column
+/// holds 0.
+// spec: store.snapshot.post-horizon-capture@680a9ba6
 #[test]
 fn a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero() {
     let mut ids = Vec::new();
@@ -310,10 +312,10 @@ fn close_of(rows: &Value, i: usize) -> f64 {
     rows[i][2].as_f64().unwrap_or_else(|| rows[i][2].as_str().unwrap().parse().unwrap())
 }
 
-/// `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps stored
-/// values raw. An `available_as_of` read multiplies each listed numeric column by the product of factor vintages
-/// available by the bound.
-// spec: store.available-time.adjustment-factors@0bf779c0
+/// `available_time.adjustment` keeps stored values raw; an `available_as_of` read multiplies each `adjust_columns`
+/// column by the product of `factor_column` vintages available by the bound, over factor rows sharing its factor-table
+/// `primary_key` values with a later valid-time `from`.
+// spec: store.available-time.adjustment-factors@c44a2c6d
 #[test]
 fn a_bounded_read_applies_only_factors_announced_by_the_bound() {
     let f = prices();
@@ -331,8 +333,9 @@ fn a_bounded_read_applies_only_factors_announced_by_the_bound() {
     assert!((close_of(&later, 0) - 553.13 * 0.5 * 0.25).abs() < 1e-9, "{later}");
 }
 
-/// A factor row applies to each row agreeing on every factor-table `primary_key` column whose valid-time `from` precedes the factor row's valid-time `from`.
-// spec: store.available-time.adjustment-join@a62de940
+/// `available_time.adjustment` keeps stored values raw; an `available_as_of` read multiplies each `adjust_columns` column by the product of `factor_column`
+/// vintages available by the bound, over factor rows sharing its factor-table `primary_key` values with a later valid-time `from`.
+// spec: store.available-time.adjustment-factors@c44a2c6d
 #[test]
 fn a_factor_applies_to_its_own_key_before_its_effective_date() {
     let f = prices();

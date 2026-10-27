@@ -5,10 +5,18 @@ mod cards;
 mod checks;
 mod corpus;
 mod diagram;
+mod drift;
 mod native_ts;
+mod pins;
+mod ratchet;
+mod records;
+mod size;
 mod slice;
 mod targets;
+mod terms;
+mod topic;
 mod scaffold;
+mod types;
 mod util;
 
 use anyhow::Result;
@@ -40,16 +48,42 @@ enum Cmd {
     },
     /// Write `spec/spec.lock.json`.
     Extract,
-    /// Write `spec/status.md` from `spec/pins.toml`.
+    /// Write `spec/status.md`, `spec/targets.md`, `spec/glossary.md`, `spec/cards/`, the Vale term
+    /// rule and the lock file's pins.
     State,
-    /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number.
+    /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number,
+    /// or the clauses a test file or a diff reaches.
     Slice {
-        target: String,
+        #[arg(required_unless_present_any = ["file", "diff"], conflicts_with_all = ["file", "diff"])]
+        target: Option<String>,
+        /// Print each clause the file's tags name, with its current statement.
+        #[arg(long, conflicts_with = "diff")]
+        file: Option<PathBuf>,
+        /// Print each clause whose tagged test the working tree changes against the merge base of this revision.
+        #[arg(long)]
+        diff: Option<String>,
         #[arg(long)]
         json: bool,
     },
     /// Set every contract's coverage floor to its live performed count.
-    Pins,
+    Pins {
+        /// Move each `test` entry of `spec/pins.toml` into a tag above its test, and set no floor.
+        #[arg(long)]
+        migrate: bool,
+    },
+    /// Rewrite the rev on every tag of each clause, and a close `///` statement copy above it.
+    Retag {
+        #[arg(required = true)]
+        clauses: Vec<String>,
+    },
+    /// Lower each ratchet in `spec/terms/corpus.toml` to its live count.
+    Ceilings,
+    /// Rewrite bare citations of each named contract ADR to the one section naming the clause.
+    WhyMigrate {
+        /// `A-<contract>` record ids.
+        #[arg(required = true)]
+        records: Vec<String>,
+    },
     /// Write one failing, tagged test per refusal and limit clause of an operation.
     Scaffold {
         /// `<contract>.<operation>`.
@@ -72,15 +106,42 @@ fn main() -> Result<()> {
         Cmd::Extract => Ok(std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?),
         Cmd::State => {
             std::fs::write(root.join("spec/targets.md"), targets::page(&c))?;
+            std::fs::write(root.join(terms::GLOSSARY), terms::glossary(&c))?;
+            std::fs::create_dir_all(root.join(terms::VALE_TERMS).parent().unwrap())?;
+            std::fs::write(root.join(terms::VALE_TERMS), terms::vale_terms(&c))?;
             std::fs::create_dir_all(root.join("spec/cards"))?;
             for (contract, text) in cards::pages(&c) {
                 std::fs::write(root.join(format!("spec/cards/{contract}.md")), text)?;
             }
+            for advisory in size::advisories(&c) {
+                eprintln!("{advisory}");
+            }
+            for (clause, path) in types::restatements(&c) {
+                eprintln!("advisory: SpecRestatesCode `{clause}` backticks the keys of `{path}`; point with {{{{type:{path}}}}}");
+            }
+            std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?;
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
-        Cmd::Pins => raise_floor(&c),
-        Cmd::Slice { target, json } => {
-            let sl = slice::build(&c, &target)?;
+        Cmd::Pins { migrate: true } => pins::migrate(&c),
+        Cmd::Pins { migrate: false } => raise_floor(&c),
+        Cmd::Retag { clauses } => pins::retag(&c, &clauses),
+        Cmd::Ceilings => ratchet::lower(&c),
+        Cmd::WhyMigrate { records } => records::migrate(&c, &records),
+        Cmd::Slice { file, diff, json, .. } if file.is_some() || diff.is_some() => {
+            let (heading, rows) = match (file, diff) {
+                (Some(file), _) => (format!("tagged in `{}`", file.display()), pins::by_file(&c, &file)?),
+                (None, Some(rev)) => (format!("reached by the diff from `{rev}`"), pins::by_diff(&c, &rev)?),
+                (None, None) => unreachable!("guarded above"),
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                print!("{}", pins::markdown(&heading, &rows));
+            }
+            Ok(())
+        }
+        Cmd::Slice { target, json, .. } => {
+            let sl = slice::build(&c, target.as_deref().unwrap_or_default())?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&sl)?);
             } else {
@@ -142,8 +203,17 @@ pub fn lock_text(c: &Corpus) -> String {
         clauses: Vec<&'a Clause>,
         owns: BTreeMap<&'a str, &'a Vec<String>>,
         ledes: BTreeMap<String, &'a str>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        groups: BTreeMap<String, &'a str>,
+        /// The clauses citing each contract ADR section, keyed `A-<contract>#<slug>`.
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        sections: BTreeMap<String, Vec<String>>,
         pointers: Vec<(&'a str, String)>,
+        /// Each `{{type:<path>}}` pointer's struct or enum, keyed by its path.
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        types: &'a BTreeMap<String, types::TypeRecord>,
         registry: &'a Registry,
+        pins: BTreeMap<&'a String, &'a Vec<PinEntry>>,
     }
     let clauses: Vec<&Clause> = c.clauses().collect();
     let pointers = clauses
@@ -151,24 +221,82 @@ pub fn lock_text(c: &Corpus) -> String {
         .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
         .collect();
     let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
-    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), pointers, registry: &c.reg }).unwrap();
+    let mut s = serde_json::to_string_pretty(&Lock {
+        clauses,
+        owns,
+        ledes: c.ledes(),
+        groups: c.group_ledes(),
+        sections: records::cited_by(c),
+        pointers,
+        types: types::records(c),
+        registry: &c.reg,
+        pins: pin_rows(c).iter().map(|(id, r)| (id, &r.pins)).collect(),
+    })
+    .unwrap();
     s.push('\n');
     s
+}
+
+/// One pin in the lock file's `pins` list for its clause: the artifact's kind, the file
+/// defining it, its name, and its clause's verdict and proof. No line number, so a line
+/// shift in the file leaves the lock current.
+#[derive(Serialize, Clone)]
+pub struct PinEntry {
+    pub kind: String,
+    pub path: String,
+    pub name: String,
+    pub verdict: &'static str,
+    pub proved: bool,
+}
+
+/// One pinned clause: its pins, its verdict, and whether it computes proved.
+pub struct PinRow {
+    pub pins: Vec<PinEntry>,
+    pub verdict: &'static str,
+    pub proved: bool,
+}
+
+/// Where a pin sits: a tag's own file, or the file of the definition a `spec/pins.toml`
+/// path resolves to (`spec/pins.toml` when it resolves to none).
+fn entry(c: &Corpus, p: &checks::Pin, verdict: &'static str, proved: bool) -> PinEntry {
+    let name = match &p.tag {
+        Some(t) => t.function.clone().unwrap_or_default(),
+        None => p.path.rsplit(if p.kind == "theorem" { "." } else { "::" }).next().unwrap_or_default().to_string(),
+    };
+    let path = match &p.tag {
+        Some(_) => p.file.clone(),
+        None => pins::locate(c, &p.kind, &p.path, &checks::PIN_ROOTS).first().map_or_else(|| p.file.clone(), |site| site.file.clone()),
+    };
+    PinEntry { kind: p.kind.clone(), path, name, verdict, proved }
+}
+
+/// Every pinned clause by id (`corpus.state.status-is-computed`), computed once per run.
+pub fn pin_rows(c: &Corpus) -> &'static BTreeMap<String, PinRow> {
+    static ROWS: std::sync::OnceLock<BTreeMap<String, PinRow>> = std::sync::OnceLock::new();
+    ROWS.get_or_init(|| {
+        checks::judged(c)
+            .iter()
+            .map(|(id, j)| {
+                let pins = j.pins.iter().map(|p| entry(c, p, j.verdict, j.proved)).collect();
+                (id.clone(), PinRow { pins, verdict: j.verdict, proved: j.proved })
+            })
+            .collect()
+    })
 }
 
 // ---------------------------------------------------------------- status
 
 pub fn status_text(c: &Corpus) -> String {
     let pins = checks::load_pins(c);
-    let all = checks::pins_by_clause(c);
-    let verdicts: BTreeMap<&String, &str> = all.iter().map(|(id, g)| (id, checks::clause_verdict(c, g))).collect();
+    let rows = pin_rows(c);
+    let verdicts: BTreeMap<&String, &str> = rows.iter().map(|(id, r)| (id, r.verdict)).collect();
     let clauses = c.clause_map();
     let mut s = String::new();
     s.push_str("# Status\n\nGenerated by `contextful-spec state` from `spec/pins.toml` and `// spec:` tags; not authored.\n");
-    s.push_str("An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Lean or native TypeScript test qualifies and matches its tag's rev, else `broken`.\n\n");
-    s.push_str("| Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |\n");
-    s.push_str("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
-    let mut totals = [0usize; 8];
+    s.push_str("An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Lean or native TypeScript test qualifies and matches its tag's rev, else `broken`. A performed clause is `proved` when a theorem its inventory row binds to one of its tests performs beside that test. Each pinned clause's sites, verdict and proof sit under `pins` in `spec/spec.lock.json`.\n\n");
+    s.push_str("| Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |\n");
+    s.push_str("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    let mut totals = [0usize; 9];
     for (name, e) in &c.reg.contracts {
         let docs: Vec<&Doc> = c.contracts().filter(|d| d.contract.as_deref() == Some(name)).collect();
         let cls: Vec<&Clause> = docs.iter().flat_map(|d| d.clauses.iter()).collect();
@@ -176,34 +304,37 @@ pub fn status_text(c: &Corpus) -> String {
         let refusals = cls.iter().filter(|x| x.kind == "refusal").count();
         let limits = cls.iter().filter(|x| x.kind == "limit").count();
         let unsettled = docs.iter().flat_map(|d| d.kinds.iter()).filter(|k| **k == LineKind::Unsettled).count();
-        let (mut perf, mut broken) = (0, 0);
-        for (id, verdict) in &verdicts {
-            if clauses.get(*id).map(|x| &x.contract == name).unwrap_or(false) {
-                if *verdict == "performed" {
+        let (mut perf, mut proved, mut broken) = (0, 0, 0);
+        for (id, row) in rows {
+            if clauses.get(id).map(|x| &x.contract == name).unwrap_or(false) {
+                if row.verdict == "performed" {
                     perf += 1
                 } else {
                     broken += 1
                 }
+                proved += usize::from(row.proved);
             }
         }
         let floor = pins.floor.get(name).copied().unwrap_or(0);
-        let row = [e.files.len(), ops, cls.len(), refusals, limits, unsettled, perf, broken];
+        let row = [e.files.len(), ops, cls.len(), refusals, limits, unsettled, perf, proved, broken];
         for (i, v) in row.iter().enumerate() {
             totals[i] += v;
         }
         let _ = writeln!(
             s,
-            "| `{name}` | {} | {} | {} | {} | {} | {} | {} | {} | {floor} |",
-            row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+            "| `{name}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {floor} |",
+            row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
         );
     }
     let _ = writeln!(
         s,
-        "| **total** | {} | {} | {} | {} | {} | {} | {} | {} | |",
-        totals[0], totals[1], totals[2], totals[3], totals[4], totals[5], totals[6], totals[7]
+        "| **total** | {} | {} | {} | {} | {} | {} | {} | {} | {} | |",
+        totals[0], totals[1], totals[2], totals[3], totals[4], totals[5], totals[6], totals[7], totals[8]
     );
     let records = c.records().count();
     let _ = writeln!(s, "\nDecision records: {records}.\n");
+    let restated = types::restatements(c).len();
+    let _ = writeln!(s, "Clauses restating a code type: {restated}.\n");
     let (claim, _) = checks::expand_roadmap(c);
     if !claim.is_empty() {
         s.push_str("## Milestones\n\nA milestone reads `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause.\n\n");
@@ -218,9 +349,7 @@ pub fn status_text(c: &Corpus) -> String {
             let performed: Vec<&&Clause> = cls.iter().filter(|cl| verdicts.get(&cl.id) == Some(&"performed")).collect();
             let perf = performed.len();
             let acc = checks::acceptance_verdict(c, ml.acceptance.as_deref());
-            // `corpus.state.closed`: every named operation holds at least one performed clause.
-            let covered = ops.iter().all(|o| performed.iter().any(|cl| **o == format!("{}.{}", cl.contract, cl.operation)));
-            let closed = if acc == "passing" && !ops.is_empty() && covered { "closed" } else { "open" };
+            let closed = if checks::milestone_closed(c, ml.acceptance.as_deref(), &ops, &verdicts) { "closed" } else { "open" };
             let _ = writeln!(s, "| {m} | {} | {} | {perf} | {acc} | {closed} |", ops.len(), cls.len());
         }
         let unscheduled = c
@@ -232,13 +361,6 @@ pub fn status_text(c: &Corpus) -> String {
             .count();
         let _ = writeln!(s, "\nUnscheduled operations: {unscheduled}.");
     }
-    if !all.is_empty() {
-        s.push_str("\n## Pins\n\n| Clause | Pinned by | Verdict |\n| --- | --- | --- |\n");
-        for (id, group) in &all {
-            let sites: Vec<String> = group.iter().map(|p| format!("`{}`", p.site())).collect();
-            let _ = writeln!(s, "| `{id}` | {} | {} |", sites.join(", "), verdicts[id]);
-        }
-    }
     s
 }
 
@@ -247,9 +369,9 @@ fn raise_floor(c: &Corpus) -> Result<()> {
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let clauses = c.clause_map();
     let mut live: BTreeMap<String, i64> = c.reg.contracts.keys().map(|k| (k.clone(), 0)).collect();
-    for (id, group) in &checks::pins_by_clause(c) {
+    for (id, row) in pin_rows(c) {
         if let Some(cl) = clauses.get(id) {
-            if checks::clause_verdict(c, group) == "performed" {
+            if row.verdict == "performed" {
                 *live.entry(cl.contract.clone()).or_default() += 1;
             }
         }

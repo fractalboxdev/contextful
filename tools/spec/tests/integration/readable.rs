@@ -34,7 +34,7 @@ fn the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding() {
     assert!(found.iter().any(|m| m.contains("`fold`") && m.contains("lede")), "{found:?}");
 }
 
-// spec: corpus.anatomy.clause-list@8574bc7c
+// spec: corpus.anatomy.clause-list@b0bca13f
 #[test]
 fn a_clause_list_split_by_prose_is_an_anatomy_finding() {
     let s = Scratch::copy();
@@ -45,7 +45,7 @@ fn a_clause_list_split_by_prose_is_an_anatomy_finding() {
     assert!(found.iter().any(|m| m.contains("`fold`") && m.contains("broken")), "{found:?}");
 }
 
-// spec: corpus.anatomy.bad-anatomy@443124ed
+// spec: corpus.anatomy.bad-anatomy@ed3388c6
 #[test]
 fn an_item_outside_the_clause_shape_is_an_anatomy_finding() {
     let s = Scratch::copy();
@@ -101,7 +101,7 @@ fn a_contract_without_a_guide_is_a_guide_finding() {
     assert!(found.iter().any(|m| m.contains("`store` has no guide")), "{found:?}");
 }
 
-// spec: corpus.guide.non-normative@3597e673
+// spec: corpus.guide.non-normative@ff2e9531
 #[test]
 fn a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding() {
     let s = Scratch::copy();
@@ -112,14 +112,14 @@ fn a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding() {
     assert!(found.iter().any(|m| m.contains("clause item")), "{found:?}");
 }
 
-// spec: corpus.guide.file@e5fe69c4
+// spec: corpus.guide.file@52864563
 #[test]
 fn a_guide_over_its_length_or_off_its_title_is_a_guide_finding() {
     let s = Scratch::copy();
     let text = s.read(GUIDE).replacen("# The store and its sync", "# The store", 1);
     s.write(GUIDE, &format!("{text}\n{}\n", "word ".repeat(700)));
     let found = codes(&s.lint("guide"), "SpecGuide");
-    assert!(found.iter().any(|m| m.contains("exceed 700")), "{found:?}");
+    assert!(found.iter().any(|m| m.contains("exceed 800")), "{found:?}");
     assert!(found.iter().any(|m| m.contains("differs from registry")), "{found:?}");
 }
 

@@ -260,6 +260,7 @@ fn refused(answer: &(u16, Value), status: u16, identifier: &str) {
     assert_eq!(answer.1["error"]["identifier"], identifier, "{}", answer.1);
 }
 
+// spec: surface.connection.routes@49a218b5
 #[test]
 fn tenant_connection_routes_create_pause_and_delete_once() {
     let face = ConnectionFace::start();
@@ -376,7 +377,8 @@ fn a_differing_declaration_under_one_connection_id_conflicts_and_keeps_the_stand
 
 /// A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable
 /// schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
-// spec: surface.connection.malformed@54ab3015
+// spec: surface.connection.consent-boundary@cc44cea3
+// spec: surface.connection.malformed@852b3b36
 #[test]
 fn a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed() {
     let face = ConnectionFace::start();
@@ -547,6 +549,7 @@ fn pending_control_mutation(apply: bool, expired: bool) {
     assert_eq!(snapshots.join("manifest@draft.json").exists(), apply);
 }
 
+// spec: surface.apply.operator-attestation@feb4a692
 #[test]
 fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     let (dir, public) = project();
@@ -559,19 +562,22 @@ fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     let (listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
     assert_eq!(control(&addr, "GET", "/control/record", Some(&admin), "").0, 200);
     let edit = json!({ "expected": 1, "document": original.replace("every 1h", "every 1d") }).to_string();
-    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, "").0, 403);
+    let attestation_invalid = |(status, body): (u16, Value)| {
+        assert_eq!((status, body["error"]["identifier"].clone()), (403, json!("ControlOperatorAttestationInvalid")), "{body}");
+    };
+    attestation_invalid(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, ""));
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
     let stale = attestation("/control/edit", &edit, "operator-a", now - 120, &"1".repeat(32));
-    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &stale).0, 403);
+    attestation_invalid(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &stale));
     let forged = attestation("/control/edit", &edit, "operator-a", now, &"2".repeat(32)).replace("Operator: operator-a", "Operator: operator-b");
-    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &forged).0, 403);
+    attestation_invalid(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &forged));
     let signed = attestation("/control/edit", &edit, "operator-a", now, &"3".repeat(32));
     let (status, saved) = control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed);
     assert_eq!(status, 200, "{saved}");
-    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    attestation_invalid(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed));
     drop(listener);
     let (_restart, restarted_addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
-    assert_eq!(control_headers(&restarted_addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    attestation_invalid(control_headers(&restarted_addr, "POST", "/control/edit", Some(&admin), &edit, &signed));
     let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
     let signed = attestation("/control/apply", &apply, "operator-a", now, &"4".repeat(32));
     let (status, result) = control_headers(&restarted_addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
@@ -583,6 +589,7 @@ fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
 }
 
+// spec: surface.apply.served-malformed@ac55789a
 #[test]
 fn control_routes_require_admin_and_project_applied_workflows() {
     let (dir, public) = project();
@@ -609,7 +616,9 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["pipelines"][0]["id"], "filings-flow");
     assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
 
-    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
+    let (status, malformed) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}");
+    assert_eq!(status, 400, "{malformed}");
+    assert_eq!(malformed["error"]["identifier"], "ControlRequestMalformed");
 
     let edited = json!({ "expected": 1, "document": pipeline.replace("every 1h", "every 1d") }).to_string();
     let (_, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edited);
@@ -621,6 +630,10 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
 }
 
+// spec: surface.apply.draft-absent@7bab4ffa
+// spec: surface.apply.draft-claim@b91fbf6b
+// spec: surface.edit.store-draft@b51dfac1
+// spec: surface.apply.draft-table-contracts@9d966271
 #[test]
 fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() {
     let (dir, public) = project();
@@ -1143,6 +1156,11 @@ fn post_claim(addr: &str, token: &str, body: &Value, browser_origin: bool) -> (u
     (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(data).unwrap_or(Value::Null))
 }
 
+// spec: read.revise.browser-request@8f0636c9
+// spec: read.revise.malformed-request@016f9c20
+// spec: read.revise.served-dedup@79bfaea7
+// spec: read.revise.served-scope@49e82ff9
+// spec: read.revise.served-write@499e9869
 #[test]
 fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     let memory = "\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
@@ -1172,8 +1190,10 @@ fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     assert_eq!(post_claim(&addr, &expired, &claim, false).0, 401, "expired authority cannot write");
     let mut client_scope = claim.clone();
     client_scope["claim"]["scope"] = json!("shared");
-    assert_eq!(post_claim(&addr, &alice, &client_scope, false).0, 400, "the caller cannot set claim scope");
-    assert_eq!(post_claim(&addr, &alice, &claim, true).0, 403, "a browser origin cannot reach the write");
+    let (status, refused) = post_claim(&addr, &alice, &client_scope, false);
+    assert_eq!((status, refused["error"]["identifier"].clone()), (400, json!("MemoryClaimMalformed")), "the caller cannot set claim scope");
+    let (status, refused) = post_claim(&addr, &alice, &claim, true);
+    assert_eq!((status, refused["error"]["identifier"].clone()), (403, json!("MemoryClaimBrowserRefused")), "a browser origin cannot reach the write");
     let mut shaped = claim.clone();
     shaped["claim"]["object"] = json!("AKIAIOSFODNN7EXAMPLE");
     let (status, refused) = post_claim(&addr, &alice, &shaped, false);
@@ -1212,6 +1232,60 @@ fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     assert_eq!(memory["result"]["structuredContent"]["rows"].as_array().map(Vec::len), Some(1), "{memory}");
     stdout(&run(p, &["token", "revoke", "--principal-class", "delegated"]));
     assert_eq!(post_claim(&addr, &alice, &claim, false).0, 401, "revoked authority commits nothing");
+}
+
+/// A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
+// spec: read.revise.served-fault@6924a099
+#[test]
+fn a_served_claim_write_whose_store_refuses_lands_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let memory = "\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let (dir, public) = project_declaring(memory);
+    let p = dir.path();
+    let alice = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "read", "--action", "write",
+        "--table", "memory/facts", "--table", "research/notes", "--ttl", "900"]));
+    let claim = json!({ "into": "memory/facts", "actor": "user://alice", "session": "session-1", "dedup_key": "turn-1",
+        "claim": { "subject": "Northwind", "predicate": "filings", "object": "arrived", "confidence": 0.9,
+            "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] } });
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let tables = p.join(".contextful/context/research/tables");
+    std::fs::create_dir_all(&tables).unwrap();
+    let before = std::fs::read_dir(&tables).unwrap().count();
+    std::fs::set_permissions(&tables, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let (status, refused) = post_claim(&addr, &alice, &claim, false);
+    std::fs::set_permissions(&tables, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!((status, refused["error"]["identifier"].clone()), (503, json!("MemoryClaimWriteRefused")), "{refused}");
+    assert_eq!(std::fs::read_dir(&tables).unwrap().count(), before, "the refused write lands nothing");
+    let (status, first) = post_claim(&addr, &alice, &claim, false);
+    assert_eq!((status, &first["landed"]), (200, &json!(true)), "the refused write left no dedup record: {first}");
+}
+
+/// A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered
+/// `503`, and returns no internal error text.
+// spec: surface.apply.served-unavailable@e940ed92
+#[test]
+fn a_served_control_fault_answers_unavailable_without_internal_text() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&admin), "").0, 200);
+
+    // The declaration the handler reads disappears: a storage fault, neither an authority nor a surface refusal.
+    let declaration = root.join("contextful.toml");
+    let kept = std::fs::read(&declaration).unwrap();
+    std::fs::remove_file(&declaration).unwrap();
+    let (status, answer) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    std::fs::write(&declaration, kept).unwrap();
+    assert_eq!(status, 503, "{answer}");
+    assert_eq!(answer, json!({ "error": { "identifier": "ControlUnavailable" } }));
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&admin), "").0, 200);
 }
 
 #[test]
@@ -1703,9 +1777,10 @@ fn the_served_stop_route_marks_the_run_and_answers_its_ids() {
     assert_eq!(control(&addr, "POST", "/runs/live-a/stop", Some(&execute), "[1]").0, 400);
 }
 
-/// Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises
-/// `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
-// spec: run.cancel.not-in-flight@285fe285
+/// Only a row holding a non-terminal {{type:contextful_core::run::record::RunStatus}} accepts a
+/// mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and
+/// exiting non-zero at the terminal.
+// spec: run.cancel.not-in-flight@df4eae70
 #[test]
 fn a_stop_on_a_finished_run_answers_409_and_exits_non_zero() {
     let (dir, public) = project();

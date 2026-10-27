@@ -200,23 +200,6 @@ pub struct GrantLine {
     pub level: String,
 }
 
-/// Parse a `--grants` file: one JSON object per non-blank line carrying `resource_id`,
-/// `principal`, `principal_kind` and `level`, each a non-empty string.
-pub fn parse_grants(text: &str) -> Result<Vec<GrantLine>, SweepError> {
-    let mut out = Vec::new();
-    for (i, line) in text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
-        let bad = |reason: String| SweepError::GrantLine { line: i + 1, reason };
-        let g: GrantLine = serde_json::from_str(line).map_err(|e| bad(e.to_string()))?;
-        for (k, v) in [("resource_id", &g.resource_id), ("principal", &g.principal), ("principal_kind", &g.principal_kind), ("level", &g.level)] {
-            if v.is_empty() {
-                return Err(bad(format!("`{k}` is empty")));
-            }
-        }
-        out.push(g);
-    }
-    Ok(out)
-}
-
 /// A `--grants` file read: its grant lines and the resources it marks unread
 /// (`disclosure.sweep.grants-file`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -256,8 +239,9 @@ enum ReadLine {
     Bare(BareLine),
 }
 
-/// Parse a `--grants` file holding grant lines, unread markers and bare resources: a grant as
-/// [`parse_grants`] reads it, `{"resource_id": <id>, "unread": true}` naming a resource the
+/// Parse a `--grants` file holding grant lines, unread markers and bare resources, one JSON
+/// object per non-blank line: a grant carrying `resource_id`, `principal`, `principal_kind`
+/// and `level`, each a non-empty string, `{"resource_id": <id>, "unread": true}` naming a resource the
 /// read failed or skipped, or `{"resource_id": <id>}` naming a resource read holding no
 /// grant. A resource carrying two of those refuses.
 pub fn parse_read(text: &str) -> Result<GrantsRead, SweepError> {

@@ -14,6 +14,7 @@ fn a_change_touching_no_source_passes() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
+// spec: assurance.test.test-first@b25e1506
 #[test]
 fn source_change_without_test_is_refused() {
     let r = Repo::init();
@@ -212,6 +213,7 @@ fn validation_runs_beside_selected_package_parts() {
     assert!(!o.status.success() && stderr(&o).contains("source package `demo`"), "{}", stderr(&o));
 }
 
+// spec: assurance.test.refactor-trailer@8003d595
 #[test]
 fn a_refactor_trailer_exempts_the_range() {
     let r = Repo::init();
@@ -316,6 +318,42 @@ fn a_base_run_past_its_bound_is_killed_and_counts_red() {
     assert!(started.elapsed() < std::time::Duration::from_secs(120), "{:?}", started.elapsed());
 }
 
+/// Test-first reports assertion failures, compilation failures and bounded test executions separately; infrastructure
+/// faults follow {{assurance.test.base-unrunnable}} and supply no failing-test evidence.
+// spec: assurance.test.base-evidence@2ac18307
+#[test]
+fn assertion_compile_and_bound_failures_report_apart() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 {\n    1\n}\n");
+    r.write("crates/slow/Cargo.toml", &manifest("slow", ""));
+    r.write("crates/slow/src/lib.rs", "pub fn ready() -> bool {\n    false\n}\n");
+    r.lock();
+    r.commit("two more packages and the workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() {\n    assert_eq!(demo::triple(2), 6);\n}\n");
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 {\n    2\n}\n");
+    r.write("crates/other/tests/integration/main.rs", "#[test]\nfn two() {\n    assert_eq!(other::value(), 2);\n}\n");
+    r.write("crates/slow/src/lib.rs", "pub fn ready() -> bool {\n    true\n}\n");
+    r.write(
+        "crates/slow/tests/integration/main.rs",
+        "#[test]\nfn settles() {\n    while !slow::ready() {\n        std::thread::sleep(std::time::Duration::from_millis(10));\n    }\n}\n",
+    );
+    r.commit("triple, value and ready, test first");
+    let o = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "20"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    let line = err.lines().find_map(|l| l.strip_prefix("test-first: red against the base in ")).unwrap_or_else(|| panic!("{err}"));
+    let entries: Vec<&str> = line.split(", crates/").collect();
+    let entry = |package: &str| entries.iter().find(|e| e.trim_start_matches("crates/").starts_with(package)).unwrap_or_else(|| panic!("{package}: {line}"));
+    assert!(entry("demo").ends_with("which does not compile at base"), "{line}");
+    assert!(entry("slow").ends_with("killed at the 20 s bound"), "{line}");
+    let asserted = entry("other");
+    assert!(!asserted.contains("compile") && !asserted.contains("killed"), "{line}");
+}
+
 /// A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises
 /// `TestFirstBaseUnrunnable` instead of a verdict.
 // spec: assurance.test.base-unrunnable@60e4830e
@@ -414,4 +452,59 @@ fn a_module_filter_selects_that_module_alone() {
     let err = stderr(&o);
     assert!(!o.status.success(), "`redouble::` ran as the change's test: {err}");
     assert!(err.contains("TestNotFirst"), "{err}");
+}
+
+/// The gate run from a copy of `contextful-ci` in its own directory, beside `spec` as a
+/// `contextful-spec` script when one is given, with every `cargo` invocation logged to
+/// `cargo.log` there and refused.
+fn gate_beside(r: &Repo, spec: Option<&str>, args: &[&str]) -> (std::process::Output, String) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let ci = bin.path().join("contextful-ci");
+    std::fs::copy(env!("CARGO_BIN_EXE_contextful-ci"), &ci).unwrap();
+    let log = bin.path().join("cargo.log");
+    let mut scripts = vec![("cargo", format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()))];
+    if let Some(spec) = spec {
+        scripts.push(("contextful-spec", format!("#!/bin/sh\n{spec}")));
+    }
+    for (name, script) in scripts {
+        std::fs::write(bin.path().join(name), script).unwrap();
+        std::fs::set_permissions(bin.path().join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default());
+    let o = std::process::Command::new(&ci).arg("gate").args(args).current_dir(&r.root).env_remove("CARGO_TARGET_DIR").env("PATH", path).output().unwrap();
+    (o, std::fs::read_to_string(&log).unwrap_or_default())
+}
+
+/// A repository whose last commit edits a test, and the commit before it.
+fn a_test_edit() -> (Repo, String) {
+    let r = Repo::init();
+    r.write("spec/spec.lock.json", "{}\n");
+    r.commit("a corpus");
+    let base = r.head();
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(3), 6);\n}\n");
+    r.commit("a test edit");
+    (r, base)
+}
+
+// spec: corpus.state.slice-diff@fc464d78
+#[test]
+fn the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log() {
+    let (r, base) = a_test_edit();
+    let spec = "case \"$*\" in \"slice --diff\"*) echo \"- \\`demo.double.doubles\\` — called with $*\" ;; *) exit 1 ;; esac\n";
+    let (o, cargo) = gate_beside(&r, Some(spec), &["--stage", "test-first", "--base", &base]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let log = stderr(&o);
+    assert!(log.contains("demo.double.doubles"), "{log}");
+    assert!(log.contains(&format!("slice --diff {base}")), "{log}");
+    assert!(!cargo.contains("slice"), "the listing runs the built binary, not cargo: {cargo}");
+}
+
+#[test]
+fn without_a_built_contextful_spec_the_stage_prints_no_listing_and_builds_none() {
+    let (r, base) = a_test_edit();
+    let (o, cargo) = gate_beside(&r, None, &["--stage", "test-first", "--base", &base]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!stderr(&o).contains("confirm each clause"), "{}", stderr(&o));
+    assert!(!cargo.contains("contextful-spec"), "{cargo}");
 }

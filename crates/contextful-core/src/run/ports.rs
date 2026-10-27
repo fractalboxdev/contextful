@@ -352,7 +352,7 @@ pub trait JournalStore: Send + Sync {
     /// Persist that `run_id`'s schedule on `key` closed `attempts` attempts, as a pending
     /// claim of `run_id` carrying the count, where no row stands or `run_id`'s own claim
     /// does; a recorded row or another run's claim is left alone
-    /// (`run.retry.attempt-counter`).
+    /// (`run.retry.not-before`).
     fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure>;
     /// Every row under `execution_id`, in no particular order.
     fn rows(&self, execution_id: &str) -> Result<Vec<JournalRow>, Failure>;

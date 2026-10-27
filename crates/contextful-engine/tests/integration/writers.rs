@@ -198,9 +198,9 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
     assert_eq!(steps, [("pull-0", Completed), ("pull-1", Completed), ("pull-2", Completed)]);
 }
 
-/// Live run state is a best-effort projection of events the runner emits after durable state changes; execution
-/// never reads it.
-// spec: run.project.best-effort@d23bbc69
+/// Live run state is a best-effort in-memory projection of events the runner emits after durable state changes;
+/// execution never reads it, and a restart discards it, so a subscriber recovers from the durable record.
+// spec: run.project.best-effort@1ff0ae38
 #[test]
 fn a_run_lands_the_same_whether_its_projection_drops_every_event_or_none() {
     let run = |emitter: Option<contextful_engine::project::Emitter>| {

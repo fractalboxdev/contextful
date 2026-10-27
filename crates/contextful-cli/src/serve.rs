@@ -237,6 +237,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         None => face,
     };
     let audit = crate::project::read_audit(&located.project, args.issuer_key.as_deref(), args.public_key.as_deref(), args.keyset.as_deref())?;
+    let _replicator = crate::audit::replicator(&located, &audit);
     #[cfg(feature = "data-plane")]
     let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
     #[cfg(feature = "data-plane")]

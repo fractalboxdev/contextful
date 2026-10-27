@@ -3,15 +3,17 @@
 //! A variant's `Display` begins with its identifier, so a surface printing the error
 //! names the refusal a caller greps for.
 
+use crate::read::ReadError;
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
-    /// A persisted store UUID is malformed or cannot identify a store. (`store.init.identity-invalid`)
+    /// A store UUID is malformed or owner mint names no initialized root. (`store.init.identity-invalid`)
     #[error("StoreIdentityInvalid: {0}")]
     StoreIdentityInvalid(String),
     /// A pull would replace one store UUID with another. (`store.pull.identity-conflict`)
     #[error("StoreIdentityConflict: {0}")]
     StoreIdentityConflict(String),
-    /// A row-retention column is absent or not declared Timestamp (`store.declare.retain-rows`).
+    /// A row-retention column or age is invalid, or a landed value is null. (`store.declare.retain-rows`)
     #[error("StoreRetentionColumnInvalid: {0}")]
     StoreRetentionColumnInvalid(String),
     /// An `as_of` precedes the oldest retained snapshot of a table whose history was collected. (`store.bound-time.as-of-unretained`)
@@ -35,14 +37,13 @@ pub enum StoreError {
     /// An index is declared over a column redacted at write time. (`store.encrypt.redacted-index`)
     #[error("StoreIndexOverRedactedColumn: {0}")]
     StoreIndexOverRedactedColumn(String),
-    /// Two sidecar declarations resolve to one path. (`store.index.path-collision`)
+    /// Two sidecar declarations of one table resolve to one path. (`store.index.path-collision`)
     #[error("StoreIndexPathCollision: {0}")]
     StoreIndexPathCollision(String),
     /// A `primary_key` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreKeyUnknownColumn: {0}")]
     StoreKeyUnknownColumn(String),
-    /// A struct, list or map column names a key, ordering, clustering, partition or
-    /// valid-time role. (`store.declare.nested-key`)
+    /// A struct, list or map column takes a key, ordering, clustering, partition or valid-time role. (`store.declare.key-unknown`)
     #[error("StoreNestedKeyColumn: {0}")]
     StoreNestedKeyColumn(String),
     /// A primary-key column takes the float promotion. (`store.reconcile.key-widening`)
@@ -66,13 +67,13 @@ pub enum StoreError {
     /// An init meets a `contextful.toml` declaring another project, or a project with no name. (`store.init.name-conflict`)
     #[error("StoreProjectConflict: {0}")]
     StoreProjectConflict(String),
-    /// A project name is not path-safe `/`-separated segments. (`store.init.name-shape`)
+    /// A project name is not path-safe `/`-separated segments. (`store.init.name-conflict`)
     #[error("StoreProjectNameInvalid: {0}")]
     StoreProjectNameInvalid(String),
     /// A command given no `--project` finds no `contextful.toml` naming a project from its working directory up. (`store.init.undiscovered`)
     #[error("StoreProjectUndiscovered: {0}")]
     StoreProjectUndiscovered(String),
-    /// An `order_by` names a column neither declared nor injected. (`store.declare.order-by-unknown`)
+    /// An `order_by` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreOrderByUnknownColumn: {0}")]
     StoreOrderByUnknownColumn(String),
     /// A `partition_by` column is typed binary or vector. (`store.index.partition-type`)
@@ -87,10 +88,10 @@ pub enum StoreError {
     /// A declared table collides with a reserved table namespace. (`store.reserve.table-name`)
     #[error("StoreReservedTableName: {0}")]
     StoreReservedTableName(String),
-    /// A commit outwaited its table's commit lock past the commit wait. (`store.reserve.commit-wait`)
+    /// A commit outwaited its table's commit lock or a lower value's publication. (`store.reserve.commit-wait`)
     #[error("StoreCommitLockTimeout: {0}")]
     StoreCommitLockTimeout(String),
-    /// A run id already committed on its node lands again, as other than its replay. (`store.lay-out.run-conflict`)
+    /// A run id already committed on its node lands again as other than its replay. (`store.lay-out.run-conflict`)
     #[error("StoreRunConflict: {0}")]
     StoreRunConflict(String),
     /// Two observed types for one column have no supertype in the lattice. (`store.reconcile.incompatible`)
@@ -108,13 +109,13 @@ pub enum StoreError {
     /// An availability-bounded read names a table declaring no availability time. (`store.available-time.undeclared`)
     #[error("StoreAvailableTimeUndeclared: {0}")]
     StoreAvailableTimeUndeclared(String),
-    /// A landing row resolves to a null availability instant. (`store.available-time.null`)
+    /// A landing row resolves to a null availability instant. (`store.available-time.undeclared`)
     #[error("StoreAvailableTimeNull: {0}")]
     StoreAvailableTimeNull(String),
-    /// A vintage table declares no `content_hash_column`. (`store.available-time.vintage-hash-undeclared`)
+    /// A vintage table declares no `content_hash_column`. (`store.available-time.vintage-validation`)
     #[error("StoreVintageHashUndeclared: {0}")]
     StoreVintageHashUndeclared(String),
-    /// A vintage table declares a row-age retention cutoff. (`store.available-time.vintage-retain-rows`)
+    /// A vintage table declares a row-age retention cutoff. (`store.available-time.vintage-validation`)
     #[error("StoreVintageRetainRows: {0}")]
     StoreVintageRetainRows(String),
     /// A cursor whose kind takes no lease reached `cursors/`. (`store.lease.cursor-kind`)
@@ -177,7 +178,7 @@ pub enum StoreError {
     /// A bucket or generation manifest carries a format newer than the reader parses. (`store.push.format-unsupported`)
     #[error("SyncManifestFormatUnsupported: {0}")]
     SyncManifestFormatUnsupported(String),
-    /// The bucket manifest commit lost its race past the retry bound. (`store.merge.exhausted`)
+    /// The bucket manifest commit lost its race past the retry bound or the round ceiling. (`store.merge.exhausted`)
     #[error("SyncManifestRebaseExhausted: {0}")]
     SyncManifestRebaseExhausted(String),
     /// A downloaded object's digest differs from its entry. (`store.pull.digest-mismatch`)
@@ -201,13 +202,13 @@ pub enum StoreError {
     /// A fold's input parts exceed the part cache bound. (`store.fold.cached-inputs`)
     #[error("FoldInputsExceedCache: {0}")]
     FoldInputsExceedCache(String),
-    /// A part a statement touches did not download within its wait. (`read.cache.miss-wait`)
-    #[error("ReadPartUnavailable: {0}")]
-    ReadPartUnavailable(String),
+    /// A refusal of the read contract raised while the store serves a part.
+    #[error(transparent)]
+    Read(#[from] ReadError),
     /// A pull exhausted its retries against keys moving beneath it. (`store.pull.unconverged`)
     #[error("SyncPullDidNotConverge: {0}")]
     SyncPullDidNotConverge(String),
-    /// A second push of one store started on a machine already pushing it. (`store.push.in-flight`)
+    /// A push of one store waited past its bound for the push guard another push on the machine holds. (`store.push.in-flight`)
     #[error("SyncPushInFlight: {0}")]
     SyncPushInFlight(String),
     /// A tombstone names an entry another node owns. (`store.merge.tombstone-owner`)

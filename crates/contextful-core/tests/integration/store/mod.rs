@@ -7,6 +7,7 @@ mod endpoint;
 mod fold;
 mod index;
 mod lay_out;
+mod merge_model;
 mod reconcile;
 mod reserve;
 mod shapes;

@@ -62,7 +62,7 @@ impl Shared {
 }
 
 /// The hub: owns the observer end of the emission channel and every run's snapshot.
-/// A restart builds a new hub, which holds no snapshot (`run.project.restart-discards`).
+/// A restart builds a new hub, which holds no snapshot (`run.project.best-effort`).
 pub struct Hub {
     shared: Arc<Shared>,
     rx: Receiver<Delta>,
@@ -148,7 +148,7 @@ impl Hub {
 
     /// A subscription starting at the oldest snapshot the run's ring holds, so a late
     /// joiner reads each held snapshot in order before live updates
-    /// (`run.project.catch-up`). `None` for a run this hub has not seen.
+    /// (`run.project.connect`). `None` for a run this hub has not seen.
     pub fn catch_up(&self, run_id: &str) -> Option<Subscription> {
         let st = self.shared.lock();
         let ch = st.runs.get(run_id)?;

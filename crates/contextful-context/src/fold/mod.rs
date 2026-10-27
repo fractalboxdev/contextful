@@ -138,7 +138,7 @@ fn merge_ledgers(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
 /// key form a sparse map a point lookup probes (`store.index.kinds`). A vintage table with
 /// valid time sorts by valid-time `from` first instead, so footer bounds keep pruning a
 /// landing's history read and its key bounds form no sparse map
-/// (`store.available-time.vintage-fold-order`).
+/// (`store.available-time.vintage-dedup-key`).
 pub(crate) fn sort_order(decl: &TableDecl) -> Vec<String> {
     if !decl.cluster_by().is_empty() {
         decl.cluster_by().to_vec()
@@ -298,7 +298,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     let mut rows = concat_batches(&target, &batches).map_err(invalid)?;
     if decl.is_keyed() {
         // One row per key and valid-time line, and per availability instant on a vintage
-        // table, so the fold drops no vintage (`store.available-time.vintage-fold-key`).
+        // table, so the fold drops no vintage (`store.available-time.vintage-dedup-key`).
         rows = dedupe(&rows, &decl.dedup_line(), decl.order_by()).map_err(invalid)?;
     }
     if is_derive_key(decl.primary_key()) {

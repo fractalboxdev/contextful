@@ -108,7 +108,13 @@ fn open_refuses_when_one_owners_prefix_is_writable_by_the_other() {
 
     // A whole-bucket credential is the same breach.
     let f = fixture(&[""]);
-    unmet(open_cross_owner(&f.owners()), "write prefix");
+    match open_cross_owner(&f.owners()) {
+        Err(e @ DisclosureError::CleanRoomPreconditionUnmet(_)) => {
+            assert_eq!(e.identifier(), "DisclosureCleanRoomPreconditionUnmet");
+            assert!(e.to_string().contains("write prefix"), "{e}");
+        }
+        other => panic!("expected DisclosureCleanRoomPreconditionUnmet, got {other:?}"),
+    }
 
     // A policy admitting the publisher's credential on one existing key under the
     // retailer's prefix is the same breach, though the rest of the prefix refuses it.

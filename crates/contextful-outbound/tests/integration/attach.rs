@@ -50,9 +50,9 @@ fn a_request_to_an_uncovered_host_fails_before_any_socket() {
     assert_eq!(ok.status, 200);
 }
 
-/// With or without credentials, a source follows a hop only with the configured host and port on the same or stronger
-/// transport. Sources follow cleartext-to-TLS hops at that host and port.
-// spec: connector.attach.redirect-pinning@291717e2
+/// With or without credentials, a source follows a hop only at the configured host and port on the same or stronger
+/// transport, cleartext-to-TLS included, and stores response bodies from that origin alone.
+// spec: connector.attach.redirect-pinning@92da74b5
 #[test]
 fn a_hop_is_followed_only_within_the_configured_origin() {
     let _env = proxy_env();
@@ -108,8 +108,10 @@ fn a_hop_off_the_origin_or_down_to_cleartext_is_refused() {
     assert!(f.message.starts_with("SecretRedirectOffOrigin"), "{f}");
 }
 
-/// The source stores response bodies only from the configured host and port.
-// spec: connector.attach.landed-origin@d2917eb9
+/// With or without credentials, a source follows a hop only at the configured host and port on the
+/// same or stronger transport, cleartext-to-TLS included, and stores response bodies from that
+/// origin alone.
+// spec: connector.attach.redirect-pinning@92da74b5
 #[test]
 fn the_body_that_lands_comes_from_the_configured_origin() {
     let _env = proxy_env();
@@ -159,8 +161,9 @@ fn the_client_records_credential_header_names_and_no_value() {
     assert_eq!(server.requests.lock().unwrap()[0].header("authorization"), Some("Bearer vendor-token-value"));
 }
 
-/// `Referer` is off on every outbound client.
-// spec: connector.attach.referer-off@42f41c3a
+/// A source declaring any header, literal or hydrated, uses the hardened client and bypasses the
+/// system proxy; a source declaring no header keeps the proxy. No outbound client sends `Referer`.
+// spec: connector.attach.header-selects-client@08348cb1
 #[test]
 fn no_request_carries_a_referer() {
     let _env = proxy_env();

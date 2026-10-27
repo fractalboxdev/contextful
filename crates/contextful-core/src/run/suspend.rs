@@ -79,7 +79,7 @@ impl Awakeable {
     }
 
     /// The state at `now`: a pending row past its deadline reads `timed_out`, and the
-    /// transition sticks under any later instant (`run.suspend.timeout-is-sticky`).
+    /// transition sticks under any later instant (`run.suspend.deadline`).
     pub fn evaluate(&mut self, now: Instant) -> AwakeableState {
         if self.state == AwakeableState::Pending && now >= self.deadline {
             self.state = AwakeableState::TimedOut;

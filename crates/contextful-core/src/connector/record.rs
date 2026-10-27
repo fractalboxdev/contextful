@@ -28,7 +28,7 @@ pub enum Expiry {
 }
 
 /// One documented consuming surface and its credential binding name
-/// (`connector.record.surface-of-consumption`).
+/// (`connector.record.operator-record`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Surface {
     pub surface: String,
@@ -36,7 +36,7 @@ pub struct Surface {
 }
 
 /// An operator record: descriptive metadata only, never a value or ciphertext
-/// (`connector.record.operator-record`, `connector.record.metadata-storage`).
+/// (`connector.record.operator-record`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperatorRecord {
     pub description: Option<String>,

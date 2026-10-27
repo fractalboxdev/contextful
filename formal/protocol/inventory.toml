@@ -1,42 +1,228 @@
-# Required constants of the protocol model: the four invariant theorems and their
-# conjunction, matched by `contextful formal check --root formal/protocol`.
+# Required constants of the protocol model: the five invariant theorems over both lease
+# paths and their conjunction, matched by `contextful formal check --root formal/protocol`.
+# The differential harness ties the step function to the store's two lease paths.
 
 [constant."Protocol.one_holder_per_fence"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → ∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m"
+binding   = "crates/contextful-sync/src/sync.rs::Syncer::acquire via crates/contextful-core/src/store/lease.rs::BucketLease::acquire and crates/contextful-engine/src/catalog.rs::LocalCatalog::acquire; test crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → ∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Speaks of the fence a node believes it holds, not of which node the lease object names.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Speaks of the fence a node believes it holds, not of which node the lease object names.
 """
 
 [constant."Protocol.fences_only_increase"]
 module    = "Protocol.Invariants"
-statement = "∀ (s : Protocol.State) (st : Protocol.Step), s.granted ≤ (Protocol.step s st).granted ∧ s.catalogFence ≤ (Protocol.step s st).catalogFence ∧ s.cursorFence ≤ (Protocol.step s st).cursorFence"
+binding   = "crates/contextful-sync/src/sync.rs::Syncer::raise_pointer_fence via crates/contextful-sync/src/sync.rs::Syncer::publish and crates/contextful-context/src/commit_log.rs::append; test crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
+statement = "∀ (p : Protocol.Path) (s : Protocol.State) (st : Protocol.Step), s.granted ≤ (Protocol.step p s st).granted ∧ s.fence ≤ (Protocol.step p s st).fence"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Holds for every state, reachable or not; says nothing about how far a fence rises.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Holds for every state, reachable or not; says nothing about how far a fence rises.
 """
 
-[constant."Protocol.no_commit_below_granted"]
+[constant."Protocol.no_commit_after_successor_acquire"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → ∀ (st : Protocol.Step) (t : Protocol.Target) (f : Nat), Protocol.landed s st = some (t, f) → s.granted ≤ f"
+binding   = "crates/contextful-sync/src/sync.rs::Syncer::publish via crates/contextful-core/src/store/lease.rs::BucketPointer::admit and crates/contextful-context/src/commit_log.rs::append via crates/contextful-core/src/store/commit_log.rs::admit; test crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → ∀ (st : Protocol.Step) (f : Nat), Protocol.landed s st = some f → ∀ (m : Protocol.Node) (g : Nat), s.acquire m = some g → g ≤ f"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Covers the two guarded objects, the catalog row and the cursor object; the sidecars a snapshot declares lie outside the model.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Speaks of a completed acquisition, its raise written; a commit landing between a successor's grant and its raise lands, and the successor reads it after its raise.
+"""
+
+[constant."Protocol.no_lost_update"]
+module    = "Protocol.Invariants"
+binding   = "crates/contextful-sync/src/sync.rs::Syncer::raise_pointer_fence via crates/contextful-sync/src/sync.rs::Syncer::publish and crates/contextful-context/src/commit_log.rs::open_fence; test crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → ∀ (st : Protocol.Step), ¬Protocol.lostUpdate p s st"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Speaks of the guarded object's head, the last commit applied; a snapshot's content beyond the fence it was published under lies outside the model.
 """
 
 [constant."Protocol.release_keeps_lease"]
 module    = "Protocol.Invariants"
-statement = "∀ (s : Protocol.State) (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
+binding   = "crates/contextful-sync/src/sync.rs::Syncer::release via crates/contextful-core/src/store/lease.rs::BucketLease::release and crates/contextful-engine/src/catalog.rs::LocalCatalog::release; test crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
+statement = "∀ (p : Protocol.Path) (s : Protocol.State) (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step p s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Holds for every state; a refused release leaves the state unchanged.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Holds for every state; a refused release leaves the lease object unchanged.
 """
 
 [constant."Protocol.protocol_safety"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → (∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m) ∧ (∀ (st : Protocol.Step), s.granted ≤ (Protocol.step s st).granted ∧ s.catalogFence ≤ (Protocol.step s st).catalogFence ∧ s.cursorFence ≤ (Protocol.step s st).cursorFence) ∧ (∀ (st : Protocol.Step) (t : Protocol.Target) (f : Nat), Protocol.landed s st = some (t, f) → s.granted ≤ f) ∧ ∀ (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
+binding   = "crates/contextful-sync/src/sync.rs::Syncer::acquire via crates/contextful-sync/src/sync.rs::Syncer::publish, crates/contextful-engine/src/catalog.rs::LocalCatalog::acquire and crates/contextful-context/src/commit_log.rs::append; test crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → (∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m) ∧ (∀ (st : Protocol.Step), s.granted ≤ (Protocol.step p s st).granted ∧ s.fence ≤ (Protocol.step p s st).fence) ∧ (∀ (st : Protocol.Step) (f : Nat), Protocol.landed s st = some f → ∀ (m : Protocol.Node) (g : Nat), s.acquire m = some g → g ≤ f) ∧ (∀ (st : Protocol.Step), ¬Protocol.lostUpdate p s st) ∧ ∀ (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step p s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares.
+"""
+
+[constant."Protocol.Journal.recorded_stable"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ (s : Protocol.Journal.State) (st : Protocol.Journal.Step) (k : Protocol.Journal.Key) (v : Protocol.Journal.Value), s.rows k = some (Protocol.Journal.Row.recorded v) → (Protocol.Journal.step s st).rows k = some (Protocol.Journal.Row.recorded v) ∨ st = Protocol.Journal.Step.retire k"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Holds for every state, reachable or not; retirement of the key's execution deletes the row.
+"""
+
+[constant."Protocol.Journal.resolutions_agree"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c d : Protocol.Journal.Caller) (k : Protocol.Journal.Key) (v w : Protocol.Journal.Value), (s.callers c).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.replayed v) ∨ (s.callers c).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.recorded v) → (s.callers d).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.replayed w) ∨ (s.callers d).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.recorded w) → v = w"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Speaks of callers holding a journaled resolution; an unrecorded value and a failed effect resolve to no recorded value.
+"""
+
+[constant."Protocol.Journal.one_record_per_key"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (k : Protocol.Journal.Key), s.records k ≤ 1"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Counts records between two retirements of the key's execution; a retired key records afresh.
+"""
+
+[constant."Protocol.Journal.effect_only_when_claimed"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase = Protocol.Journal.Phase.claimed k → (∃ a, s.rows k = some (Protocol.Journal.Row.pending c a)) ∨ (s.callers c).lapsed = true ∨ ∃ v, s.rows k = some (Protocol.Journal.Row.recorded v)"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Admits a lapsed holder's effect: a holder whose lease lapsed runs its effect after a taker claimed the key, and a taker runs its effect after a lapsed holder recorded, so the effect runs twice; the recorded value stays one.
+"""
+
+[constant."Protocol.Journal.takeover_only_from_lapsed"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c h : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase = Protocol.Journal.Phase.takingOver k h → (s.callers h).lapsed = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Says nothing of when a takeover happens: a live holder's claim is waited on without bound.
+"""
+
+[constant."Protocol.Journal.no_dangling_blob"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (k : Protocol.Journal.Key) (v : Protocol.Journal.Value), s.rows k = some (Protocol.Journal.Row.recorded v) → v.blob = true → s.blobs v.origin = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis: an aged sweep spares the blob of a caller between its put and its record, so that span stays under the grace window. Mark and delete are one step.
+"""
+
+[constant."Protocol.Journal.no_blob_missing"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase ≠ Protocol.Journal.Phase.done k Protocol.Journal.Resolution.missing"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis of `no_dangling_blob`; without it, `protocol journal check --no-grace` prints the shortest sequence to `BlobMissing`.
+"""
+
+[constant."Protocol.Merge.merge_scoped_union"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input), (∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner = me → (Protocol.Merge.mergeKey me now i).entry = some e) ∧ (∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner ≠ 0 → e.owner ≠ me → Protocol.Merge.mergeKey me now i = Protocol.Merge.mergeKey me now { log := i.log, held := i.held, verified := i.verified, localEntry := none, remoteEntry := i.remoteEntry, remoteTomb := i.remoteTomb }) ∧ ∀ (t : Protocol.Merge.Tombstone), (Protocol.Merge.mergeKey me now i).tomb = some t → i.remoteTomb ≠ some t → t = { owner := me, deletedAt := now } ∧ i.held = true ∧ (∃ r, i.remoteEntry = some r ∧ r.owner = me) ∧ ∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner ≠ 0 ∧ e.owner ≠ me"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of one writer's merge; an unowned local entry is listed and a verified unowned tombstone removes it.
+"""
+
+[constant."Protocol.Merge.foreign_tombstone_keeps_entry"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (x : Protocol.Merge.Entry) (rt : Protocol.Merge.Tombstone), Protocol.Merge.base me now i = (some x, none) → i.remoteTomb = some rt → now - rt.deletedAt < Protocol.Merge.ttl → x.owner ≠ rt.owner → Protocol.Merge.mergeKey me now i = { entry := some x, tomb := none, refusal := some Protocol.Merge.Refusal.foreign }"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of a live tombstone; an expired one leaves without a refusal.
+"""
+
+[constant."Protocol.Merge.unverified_tombstone_keeps_entry"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (x : Protocol.Merge.Entry) (rt : Protocol.Merge.Tombstone), Protocol.Merge.base me now i = (some x, none) → i.remoteTomb = some rt → now - rt.deletedAt < Protocol.Merge.ttl → x.owner = rt.owner → x.owner ≠ me → i.verified = false → Protocol.Merge.mergeKey me now i = { entry := some x, tomb := none, refusal := some Protocol.Merge.Refusal.unverified }"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of a live tombstone naming another writer's entry; a tombstone naming this writer's entry leaves without a refusal.
+"""
+
+[constant."Protocol.Merge.merged_tombstones_live"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (t : Protocol.Merge.Tombstone), (Protocol.Merge.mergeKey me now i).tomb = some t → now - t.deletedAt < Protocol.Merge.ttl"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Counts age in whole seconds at the merge's `now`; a clock behind a tombstone's `deleted_at` reads its age as zero.
+"""
+
+[constant."Protocol.Merge.merge_refuses_on_conflicts"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (is : List Protocol.Merge.Input) (i : Protocol.Merge.Input), i ∈ is → Protocol.Merge.conflicts me i = true → Protocol.Merge.merge me now is = none"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Says nothing of which copy is right: the cursor resolves through its commit outside the merge.
+"""
+
+[constant."Protocol.Merge.merge_converges"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input), (Protocol.Merge.mergeKey me now (i.after (Protocol.Merge.mergeKey me now i))).entry = (Protocol.Merge.mergeKey me now i).entry ∧ (Protocol.Merge.mergeKey me now (i.after (Protocol.Merge.mergeKey me now i))).tomb = (Protocol.Merge.mergeKey me now i).tomb"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Fixes one writer, one store and one `now`: refusals answer on the first merge only, and two writers holding different copies of an unowned key alternate.
+"""
+
+[constant."Protocol.Fold.commit_conditioned_on_version"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ (s : Protocol.Fold.State) (p : Protocol.Fold.Pass) (id v f : Nat), s.passes p = Protocol.Fold.PassState.staged id v f → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).version ≠ s.version → v = s.version"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Speaks of the pointer's version, the ETag's image; a lost commit still moves its staged directory into place.
+"""
+
+[constant."Protocol.Fold.lost_commit_publishes_nothing"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ (s : Protocol.Fold.State) (p : Protocol.Fold.Pass) (id v f : Nat), s.passes p = Protocol.Fold.PassState.staged id v f → v ≠ s.version → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).chain = s.chain ∧ (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).version = s.version"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Says nothing of the lost snapshot's directory, which collection removes once a later snapshot is current.
+"""
+
+[constant."Protocol.Fold.collect_leaves_reachable"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ {s : Protocol.Fold.State}, Protocol.Fold.Reachable s → ∀ (id cur : Nat), s.current = some cur → id < cur → ((Protocol.Fold.step s Protocol.Fold.Step.collect).staging id = true → s.inFlight id = true) ∧ ((Protocol.Fold.step s Protocol.Fold.Step.collect).final id = true → s.reachable id = true)"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Speaks of ids below the current snapshot; a directory at or above it survives collection.
+"""
+
+[constant."Protocol.Fold.commit_supersedes_without_deleting"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ (s : Protocol.Fold.State) (p : Protocol.Fold.Pass) (id v f : Nat), s.passes p = Protocol.Fold.PassState.staged id v f → f = s.granted → v = s.version → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).chain = (id, f) :: s.chain ∧ ∀ (i : Nat), s.final i = true → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).final i = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Speaks of a publishing commit under the current fence.
+"""
+
+[constant."Protocol.Fold.reader_snapshot_present"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ {s : Protocol.Fold.State}, Protocol.Fold.Reachable s → ∀ (r : Protocol.Fold.Reader) (id : Nat), s.readers r = some id → s.final id = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Holds without retention: a retention window shorter than a read removes the snapshot under it.
+"""
+
+[constant."Protocol.Fold.chain_fences_follow_the_lease"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ {s : Protocol.Fold.State}, Protocol.Fold.Reachable s → List.Pairwise (fun a b => b.snd ≤ a.snd) s.chain ∧ ∀ (e : Nat × Nat), e ∈ s.chain → e.snd ≤ s.granted"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Assumes the lease invariant: a pass whose fence a successor's acquisition superseded commits nothing.
 """

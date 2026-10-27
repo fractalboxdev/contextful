@@ -164,6 +164,8 @@ fn takeover_after_the_last_cooperative_read_refuses_provider_dispatch() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
+// spec: run.journal.guard-callback@b1964147
+// spec: run.journal.durable-dispatch@2044517c
 #[test]
 fn durable_guard_serializes_takeover_and_keeps_run_metadata_reentrant() {
     use contextful_core::coordinate::{ExecutionAdmission, ExecutionExpectation};

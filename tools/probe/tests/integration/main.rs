@@ -52,9 +52,9 @@ fn a_keyed_query_digest_matches_no_unkeyed_dictionary_entry() {
 // The arms below hold a record's presence, sample count and seed; the fold heap arm also
 // holds its bound. A resident-set probe reads getrusage, so its arm runs on unix alone.
 
-/// A carrying pass without a full sidecar build holds its delta and one record batch per part read or merged. Peak
-/// memory therefore scales with landed rows rather than stored rows.
-// spec: store.fold.bounded-memory@bcd501f3
+/// A carrying pass without a full sidecar build holds its delta and one record batch per part read or merged, so
+/// peak memory scales with landed, not stored, rows.
+// spec: store.fold.bounded-memory@6569d569
 #[test]
 fn a_fold_peak_heap_probe_records_the_growth_across_held_sizes() {
     let result = probe("fold-peak-heap", "fold-peak-heap-growth");

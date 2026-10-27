@@ -4,13 +4,14 @@ import Base from "../../layouts/Base.astro";
 import { companions, descriptionOf, titleOf } from "../../lib/nav";
 import { collectionRoute, contractsByFile } from "../../lib/corpus.mjs";
 
-type Entry = CollectionEntry<"spec" | "guide" | "cards" | "adr">;
+type Entry = CollectionEntry<"spec" | "guide" | "topics" | "cards" | "adr">;
 interface Props { entry?: Entry; entries?: Entry[]; collection: string; title?: string; }
 
 export async function getStaticPaths() {
   const sections = [
     { collection: "spec" as const, path: "specs/contracts", title: "Contracts" },
     { collection: "guide" as const, path: "guide", title: "Guides" },
+    { collection: "topics" as const, path: "specs/topics", title: "Topics" },
     { collection: "cards" as const, path: "specs/cards", title: "Contract cards" },
     { collection: "adr" as const, path: "specs/adr", title: "Principles and architecture decisions" },
   ];

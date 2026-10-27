@@ -99,7 +99,7 @@ pub(crate) const NO_ROLE: [(&str, &str); 5] = [
 
 /// `[sync] credentials = "role"` signs with workload-role credentials in place of both keys: a push and a cold
 /// pull each sign with the container endpoint's credential, which the backend verifies.
-// spec: store.endpoint.role-credentials@c7d11c89
+// spec: store.endpoint.role-credentials@7459ceb1
 #[test]
 fn role_credentials_sign_a_push_and_a_pull() {
     let server = S3Server::start("context-team");

@@ -19,11 +19,14 @@ mod source_lint;
 mod vacuous;
 mod parity;
 mod probe;
+mod prose;
 mod stage;
 mod tag;
 mod footprint;
+mod jobs;
 mod image;
 mod topology;
+mod unwired;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -132,6 +135,18 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/, apps/ and packages/ to a clause id.
     Mirrors,
+    /// Print Vale's `WriteTechnically` alerts over spec/guide/ and references/; advisory, exits 0.
+    Prose,
+    /// Refuse more public items that only a performed pin's test calls than the ceiling in
+    /// `tools/ci/unwired.toml` admits (`corpus.state.unwired`).
+    Unwired {
+        /// Report only the clauses of this contract, against no ceiling; repeatable.
+        #[arg(long)]
+        contract: Vec<String>,
+        /// Lower the ceiling to the live count.
+        #[arg(long, conflicts_with = "contract")]
+        lower: bool,
+    },
     /// Refuse subject claims formatted into SQL text in runtime crates.
     SourceLint,
     /// Run `shellcheck` over every tracked shell file, as the toolchain stage does.
@@ -402,6 +417,8 @@ fn main() {
         }
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::Prose => repo_root().and_then(|root| prose::report(&root)),
+        Cmd::Unwired { contract, lower } => repo_root().and_then(|root| unwired::check(&root, &contract, lower)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Shellcheck => repo_root().and_then(|root| shell::check(&root)),
         Cmd::CliShards { report, scale } => repo_root().and_then(|root| shards::command(&root, report.as_deref(), scale, DIFFERENTIAL_FILTER)),
@@ -533,8 +550,8 @@ fn repo_root() -> Result<PathBuf> {
 }
 
 /// The stages whose work splits into parts, each runnable alone, so each part fits one
-/// stage's wall clock (`assurance.gate.part-budget`, `assurance.build.profile-build`,
-/// `assurance.gate.budget-stage`).
+/// stage's wall clock (`assurance.gate.test-first-parts`, `assurance.gate.workspace-parts`,
+/// `assurance.build.profile-build`, `assurance.gate.budget-stage`).
 const SPLIT: [&str; 5] = ["test-first", "workspace", "evaluate", "features", "budget"];
 
 /// A package's name with the workspace prefix `contextful-` removed.
@@ -704,6 +721,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "connectors" => stage::connectors(root)?,
         "surfaces" => stage::typescript(root)?,
         "formal" => stage::formal(root)?,
+        "unwired" => unwired::check(root, &[], false)?,
         _ => unreachable!(),
     }
     Ok(())
@@ -1347,6 +1365,7 @@ fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
 fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>) -> Result<()> {
     if only.is_none_or(|parts| parts.iter().any(|part| part == "validate")) {
         vacuous::check(root, &tracked(root)?.into_iter().filter(|p| is_test(p)).collect::<Vec<_>>())?;
+        reached_clauses(root, base);
     }
     let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {
@@ -1413,6 +1432,31 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
     let red = verdict?;
     eprintln!("test-first: red against the base in {}", red.join(", "));
     Ok(())
+}
+
+/// Print `contextful-spec slice --diff <base>` into the gate log: each clause whose tagged
+/// test the change edits, for the author to confirm it still holds (`corpus.state.slice-diff`).
+/// The listing runs the `contextful-spec` built beside this binary and builds nothing; a
+/// tree without a corpus or a target without that binary prints none, and a failed listing
+/// warns without deciding the stage.
+fn reached_clauses(root: &Path, base: &str) {
+    if !root.join("spec/spec.lock.json").is_file() {
+        return;
+    }
+    let built = std::env::current_exe().ok().map(|exe| exe.with_file_name(format!("contextful-spec{}", std::env::consts::EXE_SUFFIX)));
+    let Some(spec) = built.filter(|p| p.is_file()) else {
+        eprintln!("test-first: no contextful-spec built beside contextful-ci; no clause listing");
+        return;
+    };
+    let args = ["slice", "--diff", base];
+    match Command::new(&spec).args(args).current_dir(root).output() {
+        Ok(out) if out.status.success() => {
+            eprintln!("test-first: confirm each clause below still holds for its edited test");
+            eprint!("{}", String::from_utf8_lossy(&out.stdout));
+        }
+        Ok(out) => eprintln!("test-first: `contextful-spec {}` exited {}; no clause listing", args.join(" "), out.status.code().unwrap_or(-1)),
+        Err(e) => eprintln!("test-first: `contextful-spec {}` did not start ({e}); no clause listing", args.join(" ")),
+    }
 }
 
 /// The tests one base invocation runs: a package's test target, filtered to the modules the

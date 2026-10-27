@@ -77,6 +77,7 @@ fn sbom_names(path: &Path) -> Vec<String> {
 
 /// All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
 // spec: assurance.build.targets@6f74a943
+// spec: assurance.build.windows-target@ab676935
 #[test]
 fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
     let out = ci(&["release", "--plan"], None);
@@ -126,6 +127,9 @@ fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
     assert_eq!(metadata["sha256"].as_str().unwrap().len(), 64);
 }
 
+// spec: assurance.consumer.d1-release@c17a366d
+// spec: assurance.consumer.foreign-target@936be90b
+// spec: assurance.consumer.release-distribution@e235748a
 #[test]
 fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence() {
     let bin = tempfile::tempdir().unwrap();

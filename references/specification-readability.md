@@ -1,26 +1,26 @@
 # Specification readability
 
-How specifications of large engineering systems stay readable to a human while every
-normative sentence keeps an address, a test link and a checker behind it. The corpus's
-answer — subject-anchored clause items under a lede, a guide and a generated card per
-contract, and a site rendering all three — is recorded in `A-corpus`.
+How specifications such as the Rust Reference, WHATWG HTML and RFC 8446 stay readable
+to a human while every normative sentence keeps an address, a test link and a checker
+behind it. `A-corpus` records the corpus's answer: subject-anchored clause items under a
+lede, a guide and a generated card per contract, and a site rendering all three.
 
 ## Practices
 
 | Practice | Source | Informs | What the corpus takes from it |
 | --- | --- | --- | --- |
-| Rust Reference rule names: dotted id from general to specific, rendered as a small margin link on an ordinary prose paragraph, with a Tests link beneath | <https://doc.rust-lang.org/stable/reference/introduction.html> | `corpus.address`, `corpus.anatomy` | The `contract.operation.subject` address sits on the sentence as its opening anchor, and the site renders it in the margin with the clause's pins beside it. |
-| Ferrocene Language Specification: every sentence a paragraph with a stable id (`fls_xsdmun5uqy4c`), fixed subchapter parts, a generated traceability matrix | <https://rust-lang.github.io/fls/general.html> · <https://github.com/rust-lang/fls/blob/main/src/lexical-elements.rst> · <https://public-docs.ferrocene.dev/main/qualification/traceability-matrix.html> | `corpus.anatomy`, `corpus.state` | Traceability survives prose as the source; `status.md` and the lock file are the matrix, generated and never read start to finish. |
-| SQLite requirements: conversational English with no "shall", requirement spans marked inline and stripped on render, hash-derived `R-` ids, `EVIDENCE-OF:` comments in code and tests | <https://www.sqlite.org/requirements.html> · <https://www.sqlite.org/lang_select.html> · <https://www.sqlite.org/testing.html> | `corpus.render`, `corpus.state` | The readable page is the specification and every index is generated from it; a tag's statement digest plays the role of the hash id without renaming the clause. |
-| WHATWG living standards: "This section is non-normative", per-API developer summary boxes, `dfn` autolinks, `<wpt>` test annotations | <https://html.spec.whatwg.org/multipage/introduction.html> · <https://dom.spec.whatwg.org/#interface-node> · <https://speced.github.io/bikeshed/> | `corpus.anatomy`, `corpus.reference` | Non-normative text is licensed by structure — prose after the clause list, the guide — and every `{{id}}` renders as a link. |
+| Rust Reference rule names: dotted id from general to specific, rendered as a margin link on an ordinary prose paragraph, with a Tests link beneath | <https://doc.rust-lang.org/stable/reference/introduction.html> | `corpus.address`, `corpus.anatomy` | The `contract.operation.subject` address sits on the sentence as its opening anchor, and the site renders it in the margin with the clause's pins beside it. |
+| Ferrocene Language Specification: every sentence a paragraph with a stable id (`fls_xsdmun5uqy4c`), fixed subchapter parts, a generated traceability matrix | <https://rust-lang.github.io/fls/general.html> · <https://github.com/rust-lang/fls/blob/main/src/lexical-elements.rst> · <https://public-docs.ferrocene.dev/main/qualification/traceability-matrix.html> | `corpus.anatomy`, `corpus.state` | Traceability survives prose as the source; `status.md` and the lock file are the matrix, generated and consulted rather than read start to finish. |
+| SQLite requirements: conversational English with no "shall", requirement spans marked inline and stripped on render, hash-derived `R-` ids, `EVIDENCE-OF:` comments in code and tests | <https://www.sqlite.org/requirements.html> · <https://www.sqlite.org/lang_select.html> · <https://www.sqlite.org/testing.html> | `corpus.render`, `corpus.state` | The readable page is the specification and a tool generates every index from it; a tag's statement digest plays the role of the hash id without renaming the clause. |
+| WHATWG living standards: "This section is non-normative", per-API developer summary boxes, `dfn` autolinks, `<wpt>` test annotations | <https://html.spec.whatwg.org/multipage/introduction.html> · <https://dom.spec.whatwg.org/#interface-node> · <https://speced.github.io/bikeshed/> | `corpus.anatomy`, `corpus.reference` | Structure licenses non-normative text — prose after the clause list, the guide — and every `{{id}}` renders as a link. |
 | RFC 8446 layout: Overview with message flows and no requirements, normative body, compliance list and data structures gathered in appendices | <https://www.rfc-editor.org/rfc/rfc8446.html> · <https://www.rfc-editor.org/rfc/rfc7322.html> | `corpus.guide`, `corpus.render` | One contract shown three ways: guide, contract file, card, each pointing at the others. |
 | ecmarkup and Test262: `emu-note` for non-normative text, autolinked abstract operations, tests carrying `esid:` pointing at spec anchors | <https://tc39.es/ecmarkup/> · <https://github.com/tc39/test262/blob/main/CONTRIBUTING.md> | `corpus.reference`, `corpus.state` | Tests point at the clause through `// spec:` tags; the spec lists no tests. |
-| WebAssembly and SpecTec: every rule in prose and formal notation side by side, both generated from one DSL | <https://webassembly.github.io/spec/core/valid/conventions.html> · <https://webassembly.org/news/2025-03-27-spectec/> | `corpus.render` | Two views drift unless one is generated, so the card is rendered from the registry rather than written. |
+| WebAssembly and SpecTec: every rule in prose and formal notation side by side, both generated from one DSL | <https://webassembly.github.io/spec/core/valid/conventions.html> · <https://webassembly.org/news/2025-03-27-spectec/> | `corpus.render` | Two views drift unless a tool generates one, so `contextful-spec state` renders the card from the registry and no author writes it. |
 | Raft Figure 2: the whole algorithm on one page, captioned with section numbers, backed by a TLA+ model | <https://raft.github.io/raft.pdf> | `corpus.render` | The per-contract card: operations, refusals and bounds on one page, each naming its clause. |
 | TLA+ at AWS: prose design first, refined into an executable model for the parts that need precision | <https://lamport.azurewebsites.net/tla/formal-methods-amazon.pdf> | `assurance.prove` | Prose stays the entry point; precision lives in the Lean model pinned beside the clause. |
 | Rust RFC guide-level vs reference-level explanation; PEP "How to Teach This" | <https://raw.githubusercontent.com/rust-lang/rfcs/master/0000-template.md> · <https://peps.python.org/pep-0012/> | `corpus.guide` | The guide teaches the model as if it exists, then hands off to the contract file for the corner cases. |
 | Diátaxis: tutorial, how-to, reference, explanation; "one hardly reads reference material; one consults it" | <https://diataxis.fr/reference/> | `corpus.guide`, `corpus.anatomy` | Contract files stay pure reference, and explanation lives on its own page instead of inside clauses. |
-| Google AIPs and api-linter: two-page rule documents, a Rationale section that may not carry guidance, lint rule ids keyed to the AIP number | <https://google.aip.dev/8> · <https://linter.aip.dev/131/request-name-required> | `corpus.rationale` | A document reads as prose and still has a linter keyed to its every rule; rationale sits under the rule, never inside it. |
+| Google AIPs and api-linter: two-page rule documents, a Rationale section that may not carry guidance, lint rule ids keyed to the AIP number | <https://google.aip.dev/8> · <https://linter.aip.dev/131/request-name-required> | `corpus.rationale` | A document reads as prose and still has a linter keyed to its every rule; rationale sits under the rule, outside its sentence. |
 | EARS sentence templates (ubiquitous, state, event, optional, unwanted) | <https://alistairmavin.com/ears/> | `corpus.anatomy` | A constraint on the sentence rather than the layout, which the list item keeps checkable. |
 
 ## Patterns
@@ -47,23 +47,26 @@ sees it as explanation.
 These editorial checks inform `corpus.guide`; semantic fidelity remains a review
 concern alongside the checker's structural rules.
 
+The [technical writing brief](./technical-writing.md) supplies explanatory structures,
+wording examples and a reading set for applying these checks.
+
 | Check | What the reader sees | Example |
 | --- | --- | --- |
 | Domain meanings belong to consumers | Core contracts name declared data and capabilities; industry rules, units and scoring appear within selected adapters or evaluation profiles. | `topology.bound-application` fixes this boundary; historical evaluation accepts source records, while a financial profile supplies return-series scoring. |
 | Roles have context | An actor's first mention explains its part in the operation; sector-specific roles belong to a selected consumer profile. | Core contracts name callers and operators. The reader in `assurance.backtest` is a model with a post-training cutoff. |
-| Claims retain their conditions | A summary preserves the object, assumptions and exceptions of its referenced clauses. | `assurance.prove` distinguishes model properties from execution guarantees; `disclosure.bound-staleness` includes a declared public-only posture. |
-| Results retain their meaning | Empty results, fallback scores and fenced commits describe observable outcomes without implying stronger conclusions. | `read.respond` distinguishes delivered rows from truncation; `read.rank` permits different orderings; `topology.coordinate` fences a fire without claiming exactly-once dispatch. |
+| Claims retain their conditions | A summary preserves the object, assumptions and exceptions of its referenced clauses. | `assurance.prove` distinguishes model properties from execution guarantees; `disclosure.bound-staleness` includes a declared narrowing posture. |
+| Results retain their meaning | Empty results, fallback scores and commits under a commit fence describe observable outcomes without implying stronger conclusions. | `read.respond` distinguishes delivered rows from truncation; `read.rank` permits different orderings; `topology.coordinate` conditions a fire's commit on its commit fence without claiming exactly-once dispatch. |
 | Examples follow a specified path | A worked example uses inputs and checks within the cited operation's scope and states the condition exposing a failure. | `assurance.differential-test` compares zone-admission decisions on generated cases; SQL masking and filtering lie outside those decision cases. |
 
 ## Trade-offs
 
 - **Prose invites ambiguity.** The AWS paper's critique of prose design documents is the
   counterweight; the one-obligation item stays the unit the checker measures.
-- **Two views drift unless one is generated.** WebAssembly avoided drift only through
+- **Two views drift unless a tool generates one.** WebAssembly avoided drift only through
   SpecTec. A guide that restates a clause is a second home; the checker refuses error
   names and clause items in guides, and a restated number stays a review concern.
 - **Semantic ids break on reorganization.** The Rust Reference states its rule names are
   unstable between releases; FLS and SQLite pay with meaningless ids instead. The corpus
   keeps semantic ids and bounds the cost with `corpus.address.ids-are-stable`.
 - **Complete traceability does not read.** DO-178C and Ferrocene matrices are complete
-  and unreadable by design; the readable layer is always a separate artifact.
+  and unreadable by design; the readable layer is a separate artifact.
