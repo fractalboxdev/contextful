@@ -79,6 +79,10 @@ was pending fails the open, naming both identity sets ({{run.own.pinned-plan-cha
 renamed `updated_time` fails the open before any request leaves the host
 ({{run.advance.field-rename}}).
 
+On D1, a callback guard holds only its own request's owners and leases
+({{run.callback-guard.scope}}), and releases unattended only when a replay is safe
+({{run.callback-guard.replay}}).
+
 ## Inside one batch
 
 A batch passes a fixed stage order from pull to commit ({{run.land.stage-order}}). The

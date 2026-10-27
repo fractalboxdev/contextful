@@ -14,13 +14,14 @@ A disposable disk loses paid-call records, callbacks and pending exports, so exe
 
 ## d1-execution-state — D1 execution state uses a private binding and durable callback guards
 
-D1's batch transaction ends with the request, so it holds no database lock across a provider call. A durable guard row blocks owner or lease transfer until release; automatic expiry could admit a second writer while the first effect is ambiguous.
+D1's batch transaction ends with the request, so it holds no database lock across a provider call. A durable guard row blocks transfer of its callback's rows until release; expiry could admit a second writer while the effect is ambiguous, and a key alone proves no deduplication.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| D1 metadata, R2 content, durable guards *(chosen)* | — | A Worker bridge and explicit reconciliation of orphan guards and R2 objects. |
+| D1 metadata, R2 content, per-callback durable guards *(chosen)* | — | A Worker bridge and explicit reconciliation of R2 objects and of guards over unproven effects. |
 | PostgreSQL behind Hyperdrive | Native D1 profile | An external database remains mandatory. |
 | D1 pre-dispatch checks alone | Fencing | Owner transfer can race between the check and the external call. |
+| One global guard | Availability | One orphan blocks every execution. |
 
 ## d1-coordinated-groups — D1 coordinated groups commit through versioned sender rows
 
