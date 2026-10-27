@@ -1325,9 +1325,10 @@ pub fn owned_consts(c: &Corpus, cl: &Clause) -> Vec<String> {
     c.reg.fragments.get(&cl.contract).map(|f| f.limit.values().filter(|l| l.clause == cl.id).filter_map(|l| l.constant.clone()).collect()).unwrap_or_default()
 }
 
-/// `corpus.state.limit-const`: the const at `path` resolves, and source under
-/// `crates/*/src` or `tools/*/src` names it outside its own definition line and before any
-/// `#[cfg(test)]` item of its file.
+/// `corpus.state.limit-const`: the const at `path` resolves, and code under
+/// `crates/*/src` or `tools/*/src` reads it outside its own definition line and before any
+/// `#[cfg(test)]` item of its file. Comments, string and char literals, and `const _`
+/// assertions read nothing.
 fn used(c: &Corpus, path: &str) -> bool {
     let Some(site) = crate::pins::locate(c, "item", path, &PIN_ROOTS).into_iter().next() else { return false };
     let name = path.rsplit("::").next().unwrap_or(path);
@@ -1338,7 +1339,8 @@ fn used(c: &Corpus, path: &str) -> bool {
             for e in walk.filter(|e| e.path().extension().is_some_and(|x| x == "rs")) {
                 let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
                 let rel = e.path().strip_prefix(&c.root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
-                let live = text.split("#[cfg(test)]").next().unwrap_or_default();
+                let code = without_const_asserts(&rust_code(&text));
+                let live = code.split("#[cfg(test)]").next().unwrap_or_default();
                 let defined = (rel == site.file).then(|| text[..site.offset].matches('\n').count());
                 if live.lines().enumerate().any(|(n, l)| Some(n) != defined && word.is_match(l)) {
                     return true;
@@ -1347,6 +1349,109 @@ fn used(c: &Corpus, path: &str) -> bool {
         }
     }
     false
+}
+
+/// `text` with every comment, string literal and char literal blanked to spaces, its
+/// line breaks kept, so a line number in the result names the same line in `text`.
+fn rust_code(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = b.to_vec();
+    let blank = |out: &mut Vec<u8>, from: usize, to: usize| {
+        for ch in &mut out[from..to.min(b.len())] {
+            if *ch != b'\n' {
+                *ch = b' ';
+            }
+        }
+    };
+    let mut i = 0;
+    while i < b.len() {
+        let start = i;
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'/') => i = text[i..].find('\n').map_or(b.len(), |n| i + n),
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                let mut depth = 0usize;
+                while i < b.len() {
+                    if b[i..].starts_with(b"/*") {
+                        depth += 1;
+                        i += 2;
+                    } else if b[i..].starts_with(b"*/") {
+                        depth -= 1;
+                        i += 2;
+                        if depth == 0 {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'r' | b'b' if i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_') => {
+                let prefix = if b[i] == b'b' && b.get(i + 1) == Some(&b'r') { 2 } else { 1 };
+                let hashes = text[i + prefix..].bytes().take_while(|c| *c == b'#').count();
+                let raw = b[i] == b'r' || prefix == 2;
+                if raw && b.get(i + prefix + hashes) == Some(&b'"') {
+                    let close = format!("\"{}", "#".repeat(hashes));
+                    let body = i + prefix + hashes + 1;
+                    i = text[body..].find(&close).map_or(b.len(), |n| body + n + close.len());
+                } else {
+                    i += 1;
+                    continue;
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'\'' => {
+                // A char literal `'x'` or `'\x..'`; a lifetime `'a` has no closing quote.
+                let len = text[i + 1..].chars().next().map_or(0, char::len_utf8);
+                if b.get(i + 1) == Some(&b'\\') {
+                    i = text.get(i + 3..).and_then(|rest| rest.find('\'')).map_or(b.len(), |n| i + 3 + n + 1);
+                } else if len > 0 && b.get(i + 1 + len) == Some(&b'\'') {
+                    i += len + 2;
+                } else {
+                    i += 1;
+                    continue;
+                }
+            }
+            _ => {
+                i += 1;
+                continue;
+            }
+        }
+        blank(&mut out, start, i);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `code` with each `const _: … = …;` item blanked: a compile-time assertion reads its
+/// operands at build time only.
+fn without_const_asserts(code: &str) -> String {
+    static ASSERT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bconst\s+_\s*:").unwrap());
+    let mut out = code.as_bytes().to_vec();
+    for m in ASSERT.find_iter(code) {
+        let mut depth = 0i32;
+        let end = code.as_bytes()[m.start()..]
+            .iter()
+            .position(|ch| {
+                match ch {
+                    b'(' | b'[' | b'{' => depth += 1,
+                    b')' | b']' | b'}' => depth -= 1,
+                    _ => {}
+                }
+                *ch == b';' && depth == 0
+            })
+            .map_or(code.len(), |n| m.start() + n + 1);
+        for ch in &mut out[m.start()..end] {
+            if *ch != b'\n' {
+                *ch = b' ';
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// `corpus.state.unexercised`: a test pin of a refusal clause names one of the clause's
