@@ -135,3 +135,18 @@ On a container with an ephemeral disk, the local spool loses a batch on eviction
 | Local spool on every shape | Durability | An evicted container loses a spooled batch. |
 | A managed queue on every shape | One tree | Laptop and edge shapes gain an external process. |
 | Store writes in queue consumers | One writer | Commit ordering rests on locks a consumer does not hold. |
+
+## catalog-read-add-on — A catalog query engine over Iceberg exports is an optional read face beside the Container
+
+A Container query face that sleeps pays a full hydration on its next read: 145 s for 1 GB in 8,157 objects, answering `503` until ready. Basin SQL over an Iceberg export of 10M rows answers a first read in 3.6 s and a warm one in 0.7 to 1.6 s at p50; a warm Container over 1.27M rows answers in 0.2 to 0.4 s. Read latency, idle cost and the frontier a reader sees decide.
+
+At Workers Paid list prices, an always-on `standard-1` Container costs about $27.5 a month whatever its query count. Basin SQL bills $2.50 per TB scanned with a 10 MB minimum per query, so a small query costs $25 per million, beside R2 writes and retained snapshot copies. They meet near 1.1 million queries a month. A 4,000-file table raises warm p50 1.2 to 2.1 times against 40 files and takes 24 s cold, so file size bounds latency and cost.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Container face for all, a catalog engine per exported audience *(chosen)* | — | An opted-in audience reads a copy 39 to 54 s behind a 5.1 GB fold. |
+| Container face alone | Idle cost | A sporadic audience keeps a Container warm or waits minutes on a first read. |
+| Catalog engine for every caller | Read latency | Hot callers pay 2 to 5.2 times the warm p50. |
+| A catalog over the store's own files | P5 | Any engine skips the caller's relation. |
+
+Revisit when a catalog engine's warm p50 falls below 300 ms.

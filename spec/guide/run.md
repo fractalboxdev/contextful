@@ -180,5 +180,8 @@ An export delivers committed rows to a declared target. Its cursor commits after
 target acknowledges a batch, so a run ending between the two resends that batch
 ({{run.export.at-least-once}}).
 
+An Iceberg export writes one credential's copy of a table for a query engine outside the
+store ({{run.export-iceberg.audience}}).
+
 A live progress view projects runner events, and no execution step reads that view
 ({{run.project.best-effort}}).

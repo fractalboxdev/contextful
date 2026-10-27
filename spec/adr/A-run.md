@@ -410,3 +410,24 @@ Nothing else folds `_runs`, so its listing, every watermark and every push grow 
 | A pass inside the append, its failure dropped *(chosen)* | — | The append that fires the trigger pays one pass and its collection. |
 | Operator `context compact _runs` alone | No operator command | The record grows until someone runs it. |
 | A scheduled pass in `serve` | Every writer folds | A one-shot `run` never folds its record. |
+
+## iceberg-overwrite-commit — An Iceberg export replaces its table through a hand-written overwrite commit
+
+The Iceberg library on the workspace's Arrow major exposes `fast_append` but no overwrite, and keeps its commit builder and action trait crate-private. A reader names one table, so each export replaces the rows under that name. Name continuity and the dependency graph decide.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Overwrite built from the library's public manifest writers and the REST table update *(chosen)* | — | About 150 lines no library upgrade maintains; a commit costs about 3 s at the catalog, flat from 1 to 4,000 files. |
+| Wait for a library release with overwrite | Availability | No released version offers one. |
+| Append into a fresh table per export | Name continuity | REST has no atomic swap; a drop then rename leaves a window with no table. |
+| Append every version and let readers deduplicate | Reader semantics | Every query carries a deduplication its writer must know. |
+
+## iceberg-audience — An Iceberg namespace serves one credential, and caller SQL needs a single-audience warehouse
+
+A reader of the export runs outside the read face, so the grant applied at export time is the only one it holds. A catalog query token reads every namespace in its warehouse. Isolation decides.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One credential per namespace; caller SQL only on a single-audience warehouse *(chosen)* | — | A warehouse per audience that writes its own SQL; fixed query templates for the rest. |
+| One shared table filtered in the route | Isolation | One route defect exposes every audience's rows. |
+| Caller SQL over a shared warehouse | Isolation | The caller names another audience's namespace and the token admits it. |

@@ -55,4 +55,4 @@ names it by title.
 | [specification-readability.md](./specification-readability.md) | Readable specifications with addressed, test-linked sentences; rendered views, guide layers, one-page cards | `corpus.anatomy`, `corpus.guide`, `corpus.render` |
 | [technical-writing.md](./technical-writing.md) | Agent writing brief with eight Vitalik Buterin readings, explanatory structures, examples and review questions | `corpus.guide`, `corpus.anatomy`, `corpus.rationale` |
 | [diagrams.md](./diagrams.md) | Flowchart, sequence and state diagram notation; the cognitive limits behind label and size bounds | `corpus.diagram` |
-| [deployment-runtimes.md](./deployment-runtimes.md) | Linux containers, macOS virtualization, port publishing and CPU architecture | `topology.deploy`, `topology.package` |
+| [deployment-runtimes.md](./deployment-runtimes.md) | Linux containers, macOS virtualization, port publishing, CPU architecture; Iceberg catalogs and catalog query engines on R2 | `topology.deploy`, `topology.package`, `run.export-iceberg` |
