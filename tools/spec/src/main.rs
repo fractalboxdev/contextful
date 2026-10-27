@@ -274,12 +274,11 @@ fn entry(c: &Corpus, p: &checks::Pin, verdict: &'static str, proved: bool) -> Pi
 pub fn pin_rows(c: &Corpus) -> &'static BTreeMap<String, PinRow> {
     static ROWS: std::sync::OnceLock<BTreeMap<String, PinRow>> = std::sync::OnceLock::new();
     ROWS.get_or_init(|| {
-        checks::pins_by_clause(c)
-            .into_iter()
-            .map(|(id, group)| {
-                let (verdict, proved) = (checks::clause_verdict(c, &group), checks::proved(c, &group));
-                let pins = group.iter().map(|p| entry(c, p, verdict, proved)).collect();
-                (id, PinRow { pins, verdict, proved })
+        checks::judged(c)
+            .iter()
+            .map(|(id, j)| {
+                let pins = j.pins.iter().map(|p| entry(c, p, j.verdict, j.proved)).collect();
+                (id.clone(), PinRow { pins, verdict: j.verdict, proved: j.proved })
             })
             .collect()
     })

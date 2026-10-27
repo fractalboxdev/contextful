@@ -1,7 +1,7 @@
 //! `corpus.registry.drift`: the source sites that define a registered error, checked
 //! against the registry entry that is the error's one home.
 
-use crate::checks::{clause_verdict, pins_by_clause};
+use crate::checks::judged;
 use crate::corpus::*;
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -185,7 +185,7 @@ fn refusal_sites(c: &Corpus, sites: &Sites, by_id: &BTreeMap<&str, Vec<&Variant>
     let d = |file: &str, line: usize, msg: String| Finding::new("registry", file, line, "SpecRegistryDrift", msg);
     let (mut committed, mut performed) = (Vec::new(), Vec::new());
     let clauses = c.clause_map();
-    let pins = pins_by_clause(c);
+    let pins = judged(c);
     for fr in c.reg.fragments.values() {
         for (id, e) in &fr.error {
             let Some(cl) = clauses.get(&e.clause) else { continue };
@@ -196,7 +196,7 @@ fn refusal_sites(c: &Corpus, sites: &Sites, by_id: &BTreeMap<&str, Vec<&Variant>
                     let files: Vec<&str> = defined.into_iter().collect();
                     committed.push(d(&cl.file, cl.line, format!("committed refusal `{}` raises `{id}`, which {} defines; pin the clause", cl.id, files.join(", "))));
                 }
-                Some(group) if defined.is_empty() && clause_verdict(c, group) == "performed" => {
+                Some(j) if defined.is_empty() && j.verdict == "performed" => {
                     performed.push(d(&cl.file, cl.line, format!("performed refusal `{}` raises `{id}`, which no source defines", cl.id)));
                 }
                 _ => {}
