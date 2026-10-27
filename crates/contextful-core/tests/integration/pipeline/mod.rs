@@ -2,6 +2,7 @@
 
 mod declare;
 mod export;
+mod export_iceberg;
 mod guard;
 mod model;
 mod normalize;

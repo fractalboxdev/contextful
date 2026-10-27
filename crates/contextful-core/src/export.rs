@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use url::Url;
 
+pub mod iceberg;
 pub mod publication;
 
 /// Rows one delivery batch holds (`run.export.batch-rows`).
@@ -68,6 +69,21 @@ pub enum ExportError {
     /// A pending typed export under another read identity, or its target redirected under the same name. (`run.export.typed-identity-changed`)
     #[error("ExportIdentityChanged: {0}")]
     ExportIdentityChanged(String),
+    /// An Iceberg export column no lossless Iceberg type holds under its format version. (`run.export-iceberg.type-refused`)
+    #[error("ExportTypeUnsupported: {0}")]
+    ExportTypeUnsupported(String),
+    /// An Iceberg snapshot commit still conflicting after its last attempt. (`run.export-iceberg.commit-retry`)
+    #[error("ExportCommitConflict: {0}")]
+    ExportCommitConflict(String),
+    /// An Iceberg table configuration naming a storage host the block does not declare. (`run.export-iceberg.egress`)
+    #[error("ExportStorageUndeclared: {0}")]
+    ExportStorageUndeclared(String),
+    /// Two Iceberg exports sharing a namespace, a credential or a table. (`run.export-iceberg.namespace-shared`)
+    #[error("ExportNamespaceShared: {0}")]
+    ExportNamespaceShared(String),
+    /// A source schema the Iceberg table's current schema no longer matches. (`run.export-iceberg.schema-changed`)
+    #[error("ExportSchemaChanged: {0}")]
+    ExportSchemaChanged(String),
     /// A block that does not parse, or a row export cannot place past a cursor.
     #[error("{0}")]
     Invalid(String),
@@ -78,6 +94,8 @@ pub enum ExportError {
 pub enum Signal {
     Logs,
     ChangesV1,
+    /// An Apache Iceberg table in a REST catalog (`run.export-iceberg.block`).
+    Iceberg,
 }
 
 impl Signal {
@@ -85,6 +103,7 @@ impl Signal {
         match self {
             Signal::Logs => "logs",
             Signal::ChangesV1 => "changes-v1",
+            Signal::Iceberg => "iceberg",
         }
     }
 }
@@ -94,6 +113,7 @@ impl Signal {
 pub struct Export {
     pub name: String,
     pub table: String,
+    /// The OTLP or typed target; an Iceberg export's REST catalog URI.
     pub endpoint: Url,
     pub signal: Signal,
     /// Identity columns for typed state changes; empty for OTLP logs.
@@ -102,6 +122,8 @@ pub struct Export {
     pub schedule: Option<Schedule>,
     /// Header templates, each hydrated per request.
     pub headers: BTreeMap<String, Template>,
+    /// The catalog target of an Iceberg export; `None` for every other format.
+    pub iceberg: Option<iceberg::IcebergTarget>,
 }
 
 /// Where an export stands: the last delivered row's commit sequence and row sequence.
@@ -202,7 +224,8 @@ pub fn typed_batch_len(events: &[ChangeEvent]) -> Result<usize, ExportError> {
 struct Block {
     name: String,
     table: String,
-    endpoint: String,
+    #[serde(default)]
+    endpoint: Option<String>,
     #[serde(default)]
     signal: Option<String>,
     #[serde(default)]
@@ -213,6 +236,22 @@ struct Block {
     schedule: Option<String>,
     #[serde(default)]
     headers: BTreeMap<String, String>,
+    #[serde(default)]
+    credential: Option<String>,
+    #[serde(default)]
+    catalog: Option<String>,
+    #[serde(default)]
+    storage: Option<String>,
+    #[serde(default)]
+    warehouse: Option<String>,
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    table_name: Option<String>,
+    #[serde(default)]
+    format_version: Option<i64>,
+    #[serde(default)]
+    token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -234,15 +273,17 @@ pub fn parse_exports(manifest: &str) -> Result<Vec<Export>, ExportError> {
         }
         out.push(e);
     }
+    iceberg::namespace_shared(&out)?;
     Ok(out)
 }
 
 fn check(block: Block) -> Result<Export, ExportError> {
-    let name = block.name;
+    let name = block.name.clone();
     if !is_path_segment(&name) || name.len() > 128 {
         return Err(ExportError::Invalid(format!("export name `{name}` is not 1 to 128 chars of [A-Za-z0-9._-]")));
     }
     let signal = match (block.format.as_deref(), block.signal.as_deref()) {
+        (Some("iceberg"), None) => return iceberg::check(name, block),
         (Some("changes-v1"), None) => Signal::ChangesV1,
         (None, Some("logs")) => Signal::Logs,
         (Some(other), _) => return Err(ExportError::Invalid(format!("export `{name}` names unsupported format `{other}`"))),
@@ -254,6 +295,7 @@ fn check(block: Block) -> Result<Export, ExportError> {
     let (key, schedule) = match signal {
         Signal::Logs if block.key.is_empty() && block.schedule.is_none() => (Vec::new(), None),
         Signal::Logs => return Err(ExportError::Invalid(format!("export `{name}`: `key` and `schedule` require `format = \"changes-v1\"`"))),
+        Signal::Iceberg => (Vec::new(), None),
         Signal::ChangesV1 => {
             if block.key.is_empty() || block.key.iter().any(|k| k.is_empty() || k.starts_with('_')) {
                 return Err(ExportError::Invalid(format!("export `{name}`: a typed export names non-system `key` columns")));
@@ -269,7 +311,11 @@ fn check(block: Block) -> Result<Export, ExportError> {
     if block.table.trim().is_empty() {
         return Err(ExportError::Invalid(format!("export `{name}` names no `table`")));
     }
-    let endpoint = Url::parse(&block.endpoint).map_err(|e| ExportError::Invalid(format!("export `{name}`: endpoint: {e}")))?;
+    if [&block.credential, &block.catalog, &block.storage, &block.warehouse, &block.namespace, &block.table_name, &block.token].iter().any(|f| f.is_some()) || block.format_version.is_some() {
+        return Err(ExportError::Invalid(format!("export `{name}`: catalog fields require `format = \"iceberg\"`")));
+    }
+    let endpoint = block.endpoint.as_deref().ok_or_else(|| ExportError::Invalid(format!("export `{name}` names no `endpoint`")))?;
+    let endpoint = Url::parse(endpoint).map_err(|e| ExportError::Invalid(format!("export `{name}`: endpoint: {e}")))?;
     if !matches!(endpoint.scheme(), "http" | "https") || endpoint.host_str().is_none() {
         return Err(ExportError::Invalid(format!("export `{name}`: the endpoint is an http or https URL with a host")));
     }
@@ -278,7 +324,7 @@ fn check(block: Block) -> Result<Export, ExportError> {
         let t = Template::parse(&value).map_err(|e| ExportError::Invalid(format!("export `{name}`: header `{header}`: {e}")))?;
         headers.insert(header, t);
     }
-    Ok(Export { name, table: block.table, endpoint, signal, key, schedule, headers })
+    Ok(Export { name, table: block.table, endpoint, signal, key, schedule, headers, iceberg: None })
 }
 
 impl Export {

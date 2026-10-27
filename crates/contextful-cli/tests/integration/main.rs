@@ -45,6 +45,8 @@ mod entity_eval;
 mod explain;
 #[cfg(feature = "data-plane")]
 mod export;
+#[cfg(feature = "iceberg-export")]
+mod export_iceberg;
 mod formal;
 #[cfg(feature = "data-plane")]
 mod holder;

@@ -24,6 +24,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[cfg(feature = "iceberg-export")]
+mod iceberg;
 pub(crate) mod publication;
 
 #[derive(Subcommand)]
@@ -155,6 +157,12 @@ pub(crate) fn run_once(name: &str, project: &ProjectArgs, declaration: Option<Pa
 
             if export.signal == Signal::ChangesV1 {
                 return run_changes(&l, &export, project, admit);
+            }
+            if export.signal == Signal::Iceberg {
+                #[cfg(feature = "iceberg-export")]
+                return iceberg::run(&l, &export, project, admit);
+                #[cfg(not(feature = "iceberg-export"))]
+                anyhow::bail!("ProfileCapabilityAbsent: export `{name}` publishes an Iceberg table, which requires `iceberg-export`");
             }
 
             let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;

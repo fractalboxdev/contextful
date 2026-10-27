@@ -2,6 +2,7 @@
 //! does, against scratch state it owns.
 
 pub mod http;
+pub mod iceberg;
 pub mod container_recovery;
 pub mod s3;
 pub mod sqs;
