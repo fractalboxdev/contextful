@@ -75,9 +75,9 @@
 | `guard-catalogue` | `run.guard-secrets.matchers` | `guard.recall_per_kind.min` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 1` | gated |
 | `guard-compound-keys` | `run.guard-secrets.assignment-key` | `guard.compound_keys.masked_rate` | gate | test `contextful_core::pipeline::guard::a_compound_key_assignment_is_masked_keeping_its_key` | `== 1` | gated |
 | `guard-false-positives` | `run.guard-secrets.matchers` | `guard.false_positives` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 0` | gated |
-| `guard-short-assignment` | `run.guard-secrets.mask-span` | `guard.short_assignment.masked_rate` | gate | test `contextful_core::pipeline::guard::a_keyword_assignment_is_masked_from_8_chars_keeping_its_key` | `== 1` | gated |
-| `guest-pulley-throughput` | `connector.package.native-verification` | `wasm.pulley_throughput_ratio` | trend | issue 52 | — | open (issue 52) |
-| `guest-without-jit` | `connector.package.native-verification` | `wasm.warm_compiles` | gate | issue 52 | `== 0` | open (issue 52) |
+| `guard-short-assignment` | `run.guard-secrets.mask-replacement` | `guard.short_assignment.masked_rate` | gate | test `contextful_core::pipeline::guard::a_keyword_assignment_is_masked_from_8_chars_keeping_its_key` | `== 1` | gated |
+| `guest-pulley-throughput` | `connector.package.interpreted-target` | `wasm.pulley_throughput_ratio` | trend | issue 52 | — | open (issue 52) |
+| `guest-without-jit` | `connector.package.interpreted-target` | `wasm.warm_compiles` | gate | issue 52 | `== 0` | open (issue 52) |
 | `horizon-answered` | `read.horizon.rank-statistics` | `retrieve.horizon.answered_share` | gate | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | `== 1` | gated |
 | `horizon-deep-recall` | `read.horizon.rank-statistics` | `retrieve.horizon.deep_recall` | gate | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | `== 1` | gated |
 | `horizon-rank-equivalence` | `read.horizon.rank-statistics` | `retrieve.horizon.rank_equivalence` | gate | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | `== 1` | gated |

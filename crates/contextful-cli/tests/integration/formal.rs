@@ -1218,7 +1218,7 @@ fn the_bounded_check_covers_three_nodes_and_four_generations() {
     let err = refused(&broken, "ProtocolInvariantViolated");
     assert!(err.contains("no commit after a successor's acquisition") && err.contains("path"), "{err}");
     let steps: Vec<&str> = err.lines().filter(|l| l.starts_with("  ")).collect();
-    let claimed: usize = err.split("after ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap();
+    let claimed: usize = err.rsplit("after ").next().unwrap().split(' ').next().unwrap().parse().unwrap();
     assert!(!steps.is_empty() && steps.len() <= claimed, "{err}");
 }
 

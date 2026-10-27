@@ -47336,7 +47336,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "authorityMapping_inclusion_narrowing_meaning_restriction",
-        "line": 718,
+        "line": 719,
         "verdict": "performed",
         "proved": false
       }
@@ -47354,7 +47354,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "attenuateAll_permits_every_parent_block",
-        "line": 703,
+        "line": 704,
         "verdict": "performed",
         "proved": true
       }
@@ -48702,7 +48702,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "template_allowlist",
-        "line": 556,
+        "line": 557,
         "verdict": "performed",
         "proved": true
       }

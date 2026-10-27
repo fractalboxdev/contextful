@@ -89,7 +89,7 @@ negative  = """
 Leaves open: the duration and byte ceilings at execution, which no modeled request carries; that the parsed patterns, tenant scopes, allowlists and aggregate constraints are the ones the credential carries; that the engine enforces a request's tenant partition, template, aggregate release, row count and availability instant as the request states them; that the engine consults the check before admitting a request.
 """
 
-[constant."Authority.ceilings_take_effect_as_named"]
+[constant."Authority.grant_under_keeps_named_max_ceilings"]
 module    = "Contextful.Authority"
 statement = "∀ (c p : Authority.Grant), c.includedIn p = true → (c.under p).maxRows = c.maxRows.or p.maxRows ∧ (c.under p).maxDurationMs = c.maxDurationMs.or p.maxDurationMs ∧ (c.under p).maxResponseBytes = c.maxResponseBytes.or p.maxResponseBytes"
 assumptions    = ["propext", "Quot.sound"]
