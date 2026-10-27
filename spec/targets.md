@@ -60,22 +60,24 @@ The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to t
 
 Cloudflare Queues carries receive batches and object-arrival notifications. The Rust engine writes the store. A separate Durable Object manages hibernating WebSocket connections for run updates. Workers Secrets supplies credentials to configured bindings. The optional console server runs on a Node.js host. The React assets provide a static browser preview without that server.
 
+The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The routing Worker sends a caller whose credential maps to an export namespace to Basin SQL over REST, holding a read-only token as a Worker secret, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
+
 The example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`. Its Container runs `contextful-conformance` against the packaged Linux `contextful` binary. This endpoint tests execution storage; it serves no query or orchestration routes. `status.md` records clause implementation evidence.
 
-| Role | `worker-container-d1` (default) |
-| --- | --- |
-| cron tick | Cron Trigger |
-| reconciler | Worker |
-| durable orchestrator | Workflows |
-| single-writer catalog | D1 through a private Worker outbound binding |
-| object store | R2 |
-| hot-path query face | Worker router → warm contextful-full Container |
-| heavy compute | Container with cloudflare-d1 storage profile |
-| secrets | Workers Secrets |
-| realtime run projection | Durable Object with a hibernating WebSocket |
-| queue | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival |
-| kind · profiles | orchestrated · full |
-| wall-clock cap · excluded | none · nothing |
+| Role | `worker-container-d1` (default) | `worker-container-d1-basin` |
+| --- | --- | --- |
+| cron tick | Cron Trigger | Cron Trigger |
+| reconciler | Worker | Worker |
+| durable orchestrator | Workflows | Workflows |
+| single-writer catalog | D1 through a private Worker outbound binding | D1 through a private Worker outbound binding |
+| object store | R2 | R2, with one Basin Catalog bucket per exported audience |
+| hot-path query face | Worker router → warm contextful-full Container | Worker router → warm contextful-full Container, or Basin SQL for an exported audience |
+| heavy compute | Container with cloudflare-d1 storage profile | Container with cloudflare-d1 storage profile, which also runs Iceberg exports |
+| secrets | Workers Secrets | Workers Secrets |
+| realtime run projection | Durable Object with a hibernating WebSocket | Durable Object with a hibernating WebSocket |
+| queue | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival |
+| kind · profiles | orchestrated · full | orchestrated · full |
+| wall-clock cap · excluded | none · nothing | none · nothing |
 
 The `worker-container-d1` runtime and process boundaries:
 

@@ -19,6 +19,7 @@ normalize     = {}
 guard-secrets = {}
 land          = {}
 export        = {}
+export-iceberg = {}
 backfill      = {}
 seed          = {}
 model         = {}
@@ -95,6 +96,9 @@ ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", glo
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }
 ExportEventTooLarge            = { clause = "run.export.typed-event-too-large", gloss = "One typed event exceeding the delivery request ceiling." }
 ExportIdentityChanged          = { clause = "run.export.typed-identity-changed", gloss = "A pending typed export under another read identity, or its target redirected under the same name." }
+ExportTypeUnsupported          = { clause = "run.export-iceberg.type-refused", gloss = "An Iceberg export column no lossless cast maps under its declared format version." }
+ExportCommitConflict           = { clause = "run.export-iceberg.commit-retry", gloss = "An Iceberg snapshot commit still conflicting after its last attempt." }
+ExportNamespaceShared          = { clause = "run.export-iceberg.namespace-shared", gloss = "Two Iceberg exports under different credentials naming one namespace." }
 PublicationIncompatible        = { clause = "run.export.group-incompatible", gloss = "A coordinated publication, predecessor, membership or checkpoint differs from its durable binding." }
 PublicationHeaderTooLarge      = { clause = "run.export.group-request-bound", gloss = "A coordinated group header leaving no room for one event under the typed request ceiling." }
 PublicationInputsBusy          = { clause = "run.export.group-quiesce-wait", gloss = "A coordinated export whose publication inputs a running unit or another export still holds past the wait bound." }
@@ -195,6 +199,8 @@ export-batch-rows          = { clause = "run.export.batch-rows", value = 500, un
 typed-export-request-bytes = { clause = "run.export.typed-byte-limit", value = 65536, unit = "B", basis = "chosen", gloss = "Largest typed export request body." }
 d1-group-state-bytes       = { clause = "run.export.group-storage", value = 8, unit = "MiB", basis = "chosen", gloss = "Largest coordinated sender state the D1 profile stages." }
 publication-quiesce-wait   = { clause = "run.export.group-quiesce-wait", value = 300, unit = "s", basis = "chosen", gloss = "Longest a coordinated export waits for its publication intent and inputs.", const = "crates/contextful-cli/src/export/publication.rs::QUIESCE_WAIT_SECS" }
+iceberg-commit-attempts    = { clause = "run.export-iceberg.commit-retry", value = 3, unit = "attempts", basis = "chosen", gloss = "Snapshot commits one Iceberg export attempts before refusing." }
+iceberg-data-file-bytes    = { clause = "run.export-iceberg.file-size", value = 128, unit = "MiB", basis = "chosen", gloss = "Largest data file an Iceberg export writes." }
 d1-group-row-bytes         = { clause = "run.export.group-d1-spill", value = 64, unit = "KiB", basis = "chosen", gloss = "Largest sender body one D1 row holds inline." }
 publication-completions    = { clause = "run.export.group-source-latest", value = 1, unit = "completion", basis = "chosen", gloss = "Producer completions a publication ledger keeps per publication." }
 run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to.", const = "crates/contextful-core/src/run/record.rs::ERROR_CAP_BYTES" }

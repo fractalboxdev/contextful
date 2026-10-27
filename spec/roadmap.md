@@ -285,3 +285,13 @@ Acceptance: `contextful_acceptance::m22::m22_drive_changes`
 Reach: A delegated Workspace connection reads only as its admitted domain user and refuses a subject outside the approved domain before token minting.
 
 Acceptance: `contextful_acceptance::m23::m23_workspace_delegation`
+
+## 24 — Iceberg export
+
+| Operations | Intent |
+| --- | --- |
+| `run.export-iceberg` | One audience's admitted rows of a landed table, published as an Iceberg table a catalog query engine reads without reaching the store. |
+
+Reach: Two exports of one table commit two overwrite snapshots to a local Iceberg REST catalog, and a reader of the namespace sees the second export's rows alone.
+
+Acceptance: `contextful_acceptance::m24::m24_iceberg_export`
