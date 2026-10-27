@@ -19,10 +19,10 @@
     {
       "name": "contextful-execution",
       "class_name": "D1ExecutionContainer",
-      "image": "./Dockerfile.conformance",
-      "image_build_context": "../../.tmp/cloudflare-conformance-image",
-      "max_instances": 1,
-      "instance_type": "standard-1"
+      "scheduling_policy": "durable_object",
+      "images": {
+        "execution": { "dockerfile": "./Dockerfile.conformance", "build_context": "../../.tmp/cloudflare-conformance-image" }
+      }
     }
   ],
   "durable_objects": {

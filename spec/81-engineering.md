@@ -634,8 +634,14 @@ The one GitHub Actions workflow, its trigger, permission and credential shape, a
   *because wrangler otherwise falls back to an interactive login or a cached account*
 - `resources` — The command creates each D1 database and R2 bucket the app's `wrangler.example.jsonc` binds when absent, named after the Worker and binding, and writes their identifiers only into the untracked `wrangler.deploy.jsonc` beside it.
   *because an identifier belongs to one account, and the committed template serves every account*
-- `container-image` — For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares the image context from that archive before `wrangler deploy`.
+- `container-image` — For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares each `images` build context from that archive before `wrangler deploy`.
   *because the image then carries the exact binary its release metadata and compatibility report name*
+- `builder-jobs` — The builder compiles with the caller's `CARGO_BUILD_JOBS` when set, and otherwise with one job per 1536 MiB of the memory `docker info` reports, at least one.
+  *because one job per CPU in a smaller Docker VM gets the C++ compiler killed during the SQL engine and link-time optimization builds*
+- `worktree-mount` — From a git worktree, the builder also mounts the common git directory `git rev-parse --git-common-dir` names, read-only at its own path.
+  *because a worktree's `.git` file points outside the source mount, and the release records the source commit*
+- `scheduling-policy` — The execution app's container declares the `durable_object` scheduling policy and an `images` map, and its container class starts each instance with that map's image and the `standard-1` instance type.
+  *because an account may refuse the default policy, and the container library passes neither image nor instance type to a Durable Object-managed start*
 - `health` — After `wrangler deploy`, the command repeats an anonymous `GET /` to the URL wrangler reports until a status in the app's expected set arrives or `--health-wait` elapses, printing each status alone; the wait elapsing raises `DeployUnhealthy`, naming the last status.
   *because wrangler reports success before the Worker answers, and a fresh `workers.dev` route answers a redirect first*
 - `expected-status` — The execution app answers `GET /` with 404, the gateway with 404 or 503, and the console with 200 or 302.

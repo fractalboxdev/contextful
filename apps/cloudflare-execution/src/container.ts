@@ -1,10 +1,16 @@
 import { Container } from "@cloudflare/containers";
 import { handleExecutionBinding, type ExecutionBindings } from "./binding.ts";
 import { admitConformanceRun, completeConformanceReport, type ReleaseProvenance } from "./conformance.ts";
+import { CONTAINER_INSTANCE, pinImage } from "./pin-image.ts";
 
 /** The Container's outbound virtual host resolves D1 and R2 inside its Worker. */
 export class D1ExecutionContainer extends Container<ContextfulExecutionEnv> {
   private conformanceRunning = false;
+
+  constructor(ctx: DurableObjectState<{}>, env: ContextfulExecutionEnv) {
+    pinImage(ctx.container, CONTAINER_INSTANCE);
+    super(ctx, env);
+  }
 
   async runConformance() {
     if (this.conformanceRunning) throw new Error("ConformanceAlreadyRunning");

@@ -31,6 +31,8 @@ const IMAGE_TARGET: &str = "x86_64-unknown-linux-musl";
 const DEPLOY_TMP: &str = ".tmp/deploy";
 /// The rendered config beside an app's template; `.gitignore` holds it untracked.
 const RENDERED: &str = "wrangler.deploy.jsonc";
+/// The Docker memory one builder job takes, 1536 MiB (`assurance.deploy-apps.builder-jobs`).
+const BYTES_PER_JOB: u64 = 3 << 29;
 /// How long the health check waits for an expected status, by default.
 pub const HEALTH_WAIT_SECS: u64 = 120;
 /// The pause between health requests: a fresh `workers.dev` route redirects for a few seconds.
@@ -399,32 +401,73 @@ fn render(root: &Path, dir: &Path, wrangler: &Wrangler) -> Result<String> {
     }
     // The conformance route answers its token alone; every other route answers 404.
     config["workers_dev"] = json!(true);
-    if let Some(context) = config["containers"].as_array().and_then(|c| c.first()).and_then(|c| c["image_build_context"].as_str()) {
-        image(root, dir, &dir.join(context))?;
+    let contexts: Vec<String> = config["containers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|c| c["images"].as_object().into_iter().flat_map(|images| images.values()))
+        .filter_map(|image| image["build_context"].as_str().map(str::to_string))
+        .collect();
+    if !contexts.is_empty() {
+        package(root)?;
+    }
+    for context in contexts {
+        prepare(root, dir, &dir.join(context))?;
     }
     std::fs::write(dir.join(RENDERED), serde_json::to_string_pretty(&config)? + "\n")?;
     Ok(RENDERED.to_string())
 }
 
-/// Package the `contextful-full` musl release inside the Dockerfile's builder, then write
-/// the image context `prepare-image` derives from that archive.
-fn image(root: &Path, dir: &Path, context: &Path) -> Result<()> {
-    let tmp = root.join(DEPLOY_TMP);
-    std::fs::create_dir_all(&tmp)?;
+/// `assurance.deploy-apps.builder-jobs`: the caller's `CARGO_BUILD_JOBS`, else one job per
+/// [`BYTES_PER_JOB`] of the memory `docker info` reports, at least one.
+fn builder_jobs() -> Result<u64> {
+    if let Some(jobs) = std::env::var("CARGO_BUILD_JOBS").ok().filter(|v| !v.trim().is_empty()) {
+        return jobs.trim().parse().with_context(|| format!("CARGO_BUILD_JOBS `{jobs}` is no job count"));
+    }
+    let out = Command::new("docker").args(["info", "--format", "{{.MemTotal}}"]).output().context("running docker info")?;
+    let memory: u64 = String::from_utf8_lossy(&out.stdout).trim().parse().context("`docker info` reports no memory total")?;
+    Ok((memory / BYTES_PER_JOB).max(1))
+}
+
+/// `assurance.deploy-apps.worktree-mount`: the common git directory, when it lies outside
+/// `root`, as a read-only mount at its own path.
+fn git_mount(root: &Path) -> Result<Option<String>> {
+    let out = Command::new("git").args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).current_dir(root).output().context("running git rev-parse")?;
+    if !out.status.success() {
+        bail!("`git rev-parse --git-common-dir` exited {}", out.status.code().unwrap_or(-1));
+    }
+    let common = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    let inside = |p: &Path| p.canonicalize().ok();
+    Ok(match (inside(&common), inside(root)) {
+        (Some(c), Some(r)) if c.starts_with(&r) => None,
+        _ => Some(format!("{0}:{0}:ro", common.display())),
+    })
+}
+
+/// Package the `contextful-full` musl release inside the Dockerfile's builder.
+fn package(root: &Path) -> Result<()> {
+    std::fs::create_dir_all(root.join(DEPLOY_TMP))?;
     let builder = builder_image(root)?;
     let script = format!(
-        "apk add --no-cache build-base git && git config --global --add safe.directory /src && \
+        "apk add --no-cache build-base git && git config --global --add safe.directory '*' && \
          cargo run --locked -q -p contextful-ci -- release --profile {IMAGE_PROFILE} --target {IMAGE_TARGET} --target-dir {DEPLOY_TMP}/target --out {DEPLOY_TMP}/dist"
     );
     let mount = format!("{}:/src", root.display());
     let target_dir = format!("CARGO_TARGET_DIR=/src/{DEPLOY_TMP}/target");
-    step(
-        "package the release in the builder image",
-        root,
-        Path::new("docker"),
-        &["run", "--rm", "--platform", "linux/amd64", "-v", &mount, "-w", "/src", "-e", &target_dir, &builder, "sh", "-c", &script],
-    )?;
-    let dist = tmp.join("dist");
+    let jobs = format!("CARGO_BUILD_JOBS={}", builder_jobs()?);
+    let git = git_mount(root)?;
+    let mut args = vec!["run", "--rm", "--platform", "linux/amd64", "-v", &mount];
+    if let Some(git) = &git {
+        args.extend(["-v", git.as_str()]);
+    }
+    args.extend(["-w", "/src", "-e", &target_dir, "-e", &jobs, &builder, "sh", "-c", &script]);
+    step("package the release in the builder image", root, Path::new("docker"), &args)?;
+    Ok(())
+}
+
+/// Write the image context `prepare-image` derives from the packaged release archive.
+fn prepare(root: &Path, dir: &Path, context: &Path) -> Result<()> {
+    let dist = root.join(DEPLOY_TMP).join("dist");
     let stem = release::stem(IMAGE_PROFILE, &release::version(root)?, IMAGE_TARGET);
     let path = |suffix: &str| dist.join(format!("{stem}{suffix}")).display().to_string();
     if context.exists() {

@@ -102,6 +102,7 @@ ReleaseTagVersionMismatch        = { clause = "assurance.release.release-tag-ver
 
 [limit]
 assurance-deploy-job-timeout     = { clause = "assurance.deploy-apps.job-timeout", value = 90, unit = "min", basis = "chosen", gloss = "Wall clock of the deploy workflow's one job." }
+assurance-deploy-builder-job-memory = { clause = "assurance.deploy-apps.builder-jobs", value = 1536, unit = "MiB", basis = "chosen", gloss = "Docker memory one release builder job takes when the caller sets no job count." }
 assurance-d1-admission-lease     = { clause = "assurance.consumer.d1-admission", value = 120, unit = "s", basis = "chosen", gloss = "Life of a suite's D1 admission lease past its last renewal." }
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
 assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 2048, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }

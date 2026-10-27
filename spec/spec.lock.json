@@ -32719,10 +32719,43 @@
       "operation": "deploy-apps",
       "subject": "container-image",
       "kind": "behavior",
-      "statement": "For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares the image context from that archive before `wrangler deploy`.",
+      "statement": "For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares each `images` build context from that archive before `wrangler deploy`.",
       "why": "because the image then carries the exact binary its release metadata and compatibility report name",
       "file": "spec/81-engineering.md",
       "line": 637
+    },
+    {
+      "id": "assurance.deploy-apps.builder-jobs",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "builder-jobs",
+      "kind": "limit",
+      "statement": "The builder compiles with the caller's `CARGO_BUILD_JOBS` when set, and otherwise with one job per 1536 MiB of the memory `docker info` reports, at least one.",
+      "why": "because one job per CPU in a smaller Docker VM gets the C++ compiler killed during the SQL engine and link-time optimization builds",
+      "file": "spec/81-engineering.md",
+      "line": 639
+    },
+    {
+      "id": "assurance.deploy-apps.worktree-mount",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "worktree-mount",
+      "kind": "behavior",
+      "statement": "From a git worktree, the builder also mounts the common git directory `git rev-parse --git-common-dir` names, read-only at its own path.",
+      "why": "because a worktree's `.git` file points outside the source mount, and the release records the source commit",
+      "file": "spec/81-engineering.md",
+      "line": 641
+    },
+    {
+      "id": "assurance.deploy-apps.scheduling-policy",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "scheduling-policy",
+      "kind": "behavior",
+      "statement": "The execution app's container declares the `durable_object` scheduling policy and an `images` map, and its container class starts each instance with that map's image and the `standard-1` instance type.",
+      "why": "because an account may refuse the default policy, and the container library passes neither image nor instance type to a Durable Object-managed start",
+      "file": "spec/81-engineering.md",
+      "line": 643
     },
     {
       "id": "assurance.deploy-apps.health",
@@ -32733,7 +32766,7 @@
       "statement": "After `wrangler deploy`, the command repeats an anonymous `GET /` to the URL wrangler reports until a status in the app's expected set arrives or `--health-wait` elapses, printing each status alone; the wait elapsing raises `DeployUnhealthy`, naming the last status.",
       "why": "because wrangler reports success before the Worker answers, and a fresh `workers.dev` route answers a redirect first",
       "file": "spec/81-engineering.md",
-      "line": 639
+      "line": 645
     },
     {
       "id": "assurance.deploy-apps.expected-status",
@@ -32744,7 +32777,7 @@
       "statement": "The execution app answers `GET /` with 404, the gateway with 404 or 503, and the console with 200 or 302.",
       "why": "because each answer is the app's unauthenticated default: no route, no configured store, the prerendered page",
       "file": "spec/81-engineering.md",
-      "line": 641
+      "line": 647
     },
     {
       "id": "assurance.deploy-apps.quiet-output",
@@ -32755,7 +32788,7 @@
       "statement": "The command prints its step names and the health status; wrangler's output prints only on failure, with each URL and each run of 32 or more hex digits replaced.",
       "why": "because a public repository's Actions logs are public, and wrangler's output names the account's subdomain and resource identifiers",
       "file": "spec/81-engineering.md",
-      "line": 643
+      "line": 649
     },
     {
       "id": "assurance.consumer.suite",
@@ -37288,6 +37321,13 @@
             "unit": "percent",
             "basis": "chosen",
             "gloss": "Dead band of a rate entry with no override."
+          },
+          "assurance-deploy-builder-job-memory": {
+            "clause": "assurance.deploy-apps.builder-jobs",
+            "value": 1536,
+            "unit": "MiB",
+            "basis": "chosen",
+            "gloss": "Docker memory one release builder job takes when the caller sets no job count."
           },
           "assurance-deploy-job-timeout": {
             "clause": "assurance.deploy-apps.job-timeout",
