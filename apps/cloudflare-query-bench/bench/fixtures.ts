@@ -9,14 +9,14 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { AUDIENCE, FIXTURES, PROJECT, PROJECT_DECLARATION, SEED, planFixture, storeConfig, type SyncTarget } from "../src/plan.ts";
-import { contextful, filesUnder, landSession, parseArgs, sessionLine, Stream, type FixtureManifest } from "./support.ts";
+import { AUDIENCE, DIM_TABLE, FIXTURES, PROJECT, PROJECT_DECLARATION, SEED, planFixture, storeConfig, type Fixture, type SyncTarget } from "../src/plan.ts";
+import { contextful, dimensionLine, filesUnder, landSession, parseArgs, sessionLine, Stream, type FixtureManifest } from "./support.ts";
 
 const args = parseArgs(process.argv.slice(2));
 const bin = args.get("contextful") ?? "contextful";
-const endpoint = args.get("endpoint");
-const bucket = args.get("bucket");
-if (!endpoint || !bucket) throw new Error("FixtureArgsMissing: --endpoint and --bucket are required");
+const endpoint = args.get("endpoint") ?? process.env.CORPUS_R2_ENDPOINT ?? "";
+const bucket = args.get("bucket") ?? process.env.CORPUS_R2_BUCKET ?? "";
+if (!endpoint || !bucket) throw new Error("FixtureArgsMissing: --endpoint and --bucket, or CORPUS_R2_ENDPOINT and CORPUS_R2_BUCKET, are required");
 const root = args.get("prefix-root") ?? "bench";
 const scale = Number(args.get("scale") ?? "1");
 const out = resolve(args.get("out") ?? "../../.tmp/cloudflare-query-bench");
@@ -41,7 +41,7 @@ function project(dir: string, sync: SyncTarget | null) {
 const calibrationRows = 2_000;
 const scratch = mkdtempSync(join(out, ".calibrate-"));
 project(scratch, null);
-await landSession(bin, scratch, PROJECT, [sessionLine(new Stream(SEED, "calibrate"), 0, 0, calibrationRows)]);
+await landSession(bin, scratch, PROJECT, [sessionLine(new Stream(SEED, "calibrate"), 0, 1, 0, calibrationRows)]);
 const calibrated = filesUnder(join(scratch, ".contextful/context", PROJECT), ".parquet");
 rmSync(scratch, { recursive: true, force: true });
 const bytesPerRow = calibrated.bytes / calibrationRows;
@@ -59,7 +59,8 @@ const publicKey = readFileSync(join(issuerDir, "issuer.pub"), "utf8").trim();
 const manifest: FixtureManifest = {
   seed: SEED, endpoint, bucket, scale, bytes_per_row: bytesPerRow, issuer_dir: issuerDir, public_key: publicKey, fixtures: [],
 };
-for (const fixture of FIXTURES.filter((f) => selected.includes(f.name))) {
+/** Land one fixture's event runs and its dimension table, then push them to its prefix. */
+async function build(fixture: Fixture): Promise<FixtureManifest["fixtures"][number]> {
   const plan = planFixture(fixture, bytesPerRow, scale);
   const prefix = `${root}/${fixture.name}`;
   const dir = join(out, "stores", fixture.name);
@@ -67,19 +68,23 @@ for (const fixture of FIXTURES.filter((f) => selected.includes(f.name))) {
   project(dir, { endpoint, bucket, prefix, lazyParts: false, credentials });
   const stream = new Stream(SEED, fixture.name);
   function* runs() {
-    for (let run = 0; run < plan.runs; run++) yield sessionLine(stream, run, run * plan.rowsPerRun, plan.rowsPerRun);
+    for (let run = 0; run < plan.runs; run++) yield sessionLine(stream, run, plan.runs, run * plan.rowsPerRun, plan.rowsPerRun);
   }
   const started = Date.now();
   await landSession(bin, dir, PROJECT, runs());
+  await landSession(bin, dir, PROJECT, [dimensionLine()], DIM_TABLE);
   const pushed = /pushed (\d+) objects/.exec(contextful(bin, dir, ["sync", "push", "--project", PROJECT]));
   const parquet = filesUnder(join(dir, ".contextful/context", PROJECT), ".parquet");
   const entry = {
     name: fixture.name, prefix, runs: plan.runs, rows: plan.runs * plan.rowsPerRun,
     objects: pushed ? Number(pushed[1]) : -1, parquet_bytes: parquet.bytes,
   };
-  manifest.fixtures.push(entry);
   console.log(`${fixture.name}: ${entry.rows} rows in ${entry.runs} runs, ${entry.objects} objects, ` +
     `${(entry.parquet_bytes / 1e6).toFixed(1)} MB Parquet, built and pushed in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  return entry;
 }
+
+// Each fixture lands in its own process, so the fixtures build concurrently.
+manifest.fixtures = await Promise.all(FIXTURES.filter((f) => selected.includes(f.name)).map(build));
 writeFileSync(join(out, "fixtures.json"), JSON.stringify(manifest, null, 2) + "\n");
 console.log(`issuer public key (the ISSUER_PUBLIC_KEY secret): ${publicKey}`);

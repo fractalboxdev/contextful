@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ledgerRecords, renderTable, type Results } from "../bench/report.ts";
-import { rows, Stream } from "../bench/support.ts";
+import { dimensionRows, rows, Stream } from "../bench/support.ts";
 
 const results: Results = {
   target: "cloudflare",
@@ -37,9 +37,16 @@ test("the three trend entries take the ready p50, the 1gb-8k hydration median an
 });
 
 test("fixture rows replay from their seed", () => {
-  const a = rows(new Stream(1, "x"), 10, 3);
-  assert.deepEqual(a, rows(new Stream(1, "x"), 10, 3));
-  assert.notDeepEqual(a, rows(new Stream(2, "x"), 10, 3));
+  const a = rows(new Stream(1, "x"), 10, 3, "2026-01-01");
+  assert.deepEqual(a, rows(new Stream(1, "x"), 10, 3, "2026-01-01"));
+  assert.notDeepEqual(a, rows(new Stream(2, "x"), 10, 3, "2026-01-01"));
   assert.deepEqual(a.map((r) => [r.id, r.k]), [[10, 10], [11, 11], [12, 12]]);
   assert.equal(Buffer.from(a[0].pad, "base64").byteLength, 768);
+});
+
+test("every event key joins one of 1,000 dimension rows", () => {
+  const dims = dimensionRows();
+  assert.equal(new Set(dims.map((d) => d.k)).size, 1_000);
+  assert.equal(new Set(dims.map((d) => d.name)).size, 37);
+  assert.ok(rows(new Stream(1, "x"), 999, 2, "2026-01-01").every((r) => dims.some((d) => d.k === r.k)));
 });

@@ -12,10 +12,23 @@ export const SERVE_PORT = 8080;
 /** The seed every fixture row derives from. */
 export const SEED = 0x5eed_0733;
 
+/** The dimension table the join reads: one row per `k`. */
+export const DIM_TABLE = "dims";
+export const DIM_ROWS = 1_000;
+/** Days the event rows spread over, in run order; each run's rows share one `day`. */
+export const DAYS = 100;
+const DAY_ZERO = Date.UTC(2026, 0, 1);
+
+/** The `day` value of day index `index`. */
+export const dayOf = (index: number) => new Date(DAY_ZERO + index * 86_400_000).toISOString().slice(0, 10);
+
 /** Bucket objects one landed run adds: its Parquet part and its run manifest. */
 export const OBJECTS_PER_RUN = 2;
-/** Bucket objects a single push adds besides runs: run state, schema, bucket manifest, generation manifest. */
-export const OBJECTS_PER_PUSH = 4;
+/**
+ * Bucket objects a push adds besides the event runs: run state, bucket manifest and
+ * generation manifest, the event schema, and the dimension table's run and schema.
+ */
+export const OBJECTS_PER_PUSH = 7;
 
 export type Fixture = { name: string; bytes: number; objects: number };
 
@@ -74,13 +87,26 @@ export function storeConfig(node: string, sync: SyncTarget | null, pullBeforeRun
   return lines.join("\n") + "\n";
 }
 
-/** The project's `contextful.toml`: one undeclared-key table. */
-export const PROJECT_DECLARATION = `authoring_posture = "per_request"\n[[pipeline.tables]]\nname = ${quoted(TABLE)}\n`;
+/** The project's `contextful.toml`: the event table and its dimension table. */
+export const PROJECT_DECLARATION =
+  `authoring_posture = "per_request"\n[[pipeline.tables]]\nname = ${quoted(TABLE)}\n[[pipeline.tables]]\nname = ${quoted(DIM_TABLE)}\n`;
 
-/** The SQL each read measurement sends through `context.query`. */
+/**
+ * The SQL each read measurement sends through `context.query`. `aggregate` and `join`
+ * answer `[group, n, …]` rows whose counts sum to every event row.
+ */
 export const QUERIES = {
-  point: (id: number) => `SELECT id, k, v FROM ${TABLE} WHERE id = ${Math.trunc(id)}`,
+  /** A point lookup on `id`, which ascends across runs. */
+  point: (id: number) => `SELECT id, k, v, day FROM ${TABLE} WHERE id = ${Math.trunc(id)}`,
+  /** One day of events; each part's `day` statistics let the scan skip the others. */
+  range: (day: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("BenchDayInvalid");
+    return `SELECT count(*) AS n, avg(v) AS mean FROM ${TABLE} WHERE day = '${day}'`;
+  },
+  /** A GROUP BY over every event row. */
   aggregate: `SELECT k, count(*) AS n, avg(v) AS mean FROM ${TABLE} GROUP BY k ORDER BY k`,
+  /** Every event row joined to its dimension row, grouped by the dimension's name. */
+  join: `SELECT d.name, count(*) AS n, avg(e.v) AS mean FROM ${TABLE} e JOIN ${DIM_TABLE} d ON e.k = d.k GROUP BY d.name ORDER BY d.name`,
 } as const;
 
 /** One JSON-RPC `tools/call` of `context.query`. */

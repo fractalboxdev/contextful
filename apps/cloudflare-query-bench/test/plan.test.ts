@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FIXTURES, healthHolds, OBJECTS_PER_PUSH, OBJECTS_PER_RUN, parseServeLog, planFixture, quantile, sameSecret, storeConfig, summarize } from "../src/plan.ts";
+import { dayOf, FIXTURES, healthHolds, QUERIES, OBJECTS_PER_PUSH, OBJECTS_PER_RUN, parseServeLog, planFixture, quantile, sameSecret, storeConfig, summarize } from "../src/plan.ts";
 
 test("each fixture plan reaches its object count and Parquet bytes", () => {
   for (const fixture of FIXTURES) {
@@ -61,4 +61,11 @@ test("hydration holds only once the health body names it complete", () => {
   assert.equal(healthHolds("hydrated", 200, `{"hydration":"complete"}`), true);
   assert.equal(healthHolds("hydrated", 503, `{"hydration":"complete"}`), false);
   assert.equal(healthHolds("hydrated", 200, "not json"), false);
+});
+
+test("the range shape reads one day and refuses anything but a date", () => {
+  assert.equal(dayOf(0), "2026-01-01");
+  assert.equal(dayOf(50), "2026-02-20");
+  assert.match(QUERIES.range(dayOf(50)), /WHERE day = '2026-02-20'$/);
+  assert.throws(() => QUERIES.range("2026-01-01' OR 1=1 --"), /BenchDayInvalid/);
 });

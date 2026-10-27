@@ -3,7 +3,7 @@ import { createCipheriv } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { TABLE } from "../src/plan.ts";
+import { DAYS, dayOf, DIM_ROWS, TABLE } from "../src/plan.ts";
 
 /** Bytes of seeded padding each row carries; base64 keeps them near-incompressible. */
 export const PAD_BYTES = 768;
@@ -26,23 +26,35 @@ export class Stream {
   }
 }
 
-export type Row = { id: number; k: number; v: number; pad: string };
+export type Row = { id: number; k: number; day: string; v: number; pad: string };
 
-/** Rows `[first, first + count)` of the table every fixture lands. */
-export function rows(stream: Stream, first: number, count: number): Row[] {
+/** Event rows `[first, first + count)`, all on `day`; `k` cycles through the dimension keys. */
+export function rows(stream: Stream, first: number, count: number, day: string): Row[] {
   const out: Row[] = [];
   for (let id = first; id < first + count; id++) {
     const block = stream.bytes(PAD_BYTES + 4);
-    out.push({ id, k: id % 64, v: block.readUInt32BE(0) / 2 ** 32, pad: block.subarray(4).toString("base64") });
+    out.push({ id, k: id % DIM_ROWS, day, v: block.readUInt32BE(0) / 2 ** 32, pad: block.subarray(4).toString("base64") });
   }
   return out;
 }
 
-/** One `context land --session` input line: a run of `count` rows starting at `first`. */
-export function sessionLine(stream: Stream, run: number, first: number, count: number): string {
-  const now = new Date(Date.UTC(2026, 0, 1) + run * 1000).toISOString();
-  return JSON.stringify({ run_id: `run-${String(run).padStart(6, "0")}`, rows: rows(stream, first, count), now }) + "\n";
+/** The dimension table: one row per `k`, grouped under 37 names. */
+export function dimensionRows(): Array<{ k: number; name: string }> {
+  return Array.from({ length: DIM_ROWS }, (_, k) => ({ k, name: `group-${String(k % 37).padStart(2, "0")}` }));
 }
+
+const runLine = (run: number, rows: unknown[]) => {
+  const now = new Date(Date.UTC(2026, 0, 1) + run * 1000).toISOString();
+  return JSON.stringify({ run_id: `run-${String(run).padStart(6, "0")}`, rows, now }) + "\n";
+};
+
+/** One `context land --session` input line: run `run` of `runs`, `count` rows from `first`. */
+export function sessionLine(stream: Stream, run: number, runs: number, first: number, count: number): string {
+  return runLine(run, rows(stream, first, count, dayOf(Math.floor((run * DAYS) / runs))));
+}
+
+/** The dimension table's single run. */
+export const dimensionLine = () => runLine(0, dimensionRows());
 
 /** Run `contextful` in `cwd` and return its stdout; a nonzero exit throws with stderr. */
 export function contextful(bin: string, cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env): string {
@@ -53,8 +65,8 @@ export function contextful(bin: string, cwd: string, args: string[], env: NodeJS
 }
 
 /** Feed `lines` to `contextful context land --session`, honouring stdin backpressure. */
-export async function landSession(bin: string, cwd: string, project: string, lines: Iterable<string>): Promise<void> {
-  const child = spawn(bin, ["context", "land", TABLE, "--project", project, "--site-id", "fixture", "--session"],
+export async function landSession(bin: string, cwd: string, project: string, lines: Iterable<string>, table = TABLE): Promise<void> {
+  const child = spawn(bin, ["context", "land", table, "--project", project, "--site-id", "fixture", "--session"],
     { cwd, stdio: ["pipe", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-4096); });

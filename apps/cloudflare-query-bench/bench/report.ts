@@ -14,7 +14,7 @@ export type Results = {
   hydrate: Array<{ fixture: string; runs: Hydration[] }>;
   lazy: Array<{ fixture: string; runs: Lazy[] }>;
   idle: { fixture: string; e2e_ms: number; attempts: number } | null;
-  warm: { fixture: string; point: Summary; aggregate: Summary } | null;
+  warm: { fixture: string; point: Summary; range: Summary; aggregate: Summary; join: Summary } | null;
 };
 
 /** The ledger entries a run fills (`evals/ledger.toml`, trend tier). */
@@ -67,9 +67,14 @@ export function renderTable(results: Results): string {
       `${s(results.idle.e2e_ms)} end to end ${results.target === "cloudflare" ? "through the routing Worker" : "on loopback"}, ${results.idle.attempts} request(s), sleepAfter ${results.sleep_after_secs} s`]);
   }
   if (results.warm) {
-    const { point, aggregate } = results.warm;
-    rows.push(["Warm read", `Point lookup, ${fixtureCell(results, results.warm.fixture)}`, `p50 ${ms(point.p50)}, p99 ${ms(point.p99)} over ${point.n}`]);
-    rows.push(["Warm read", `Aggregate over every row, ${fixtureCell(results, results.warm.fixture)}`, `p50 ${ms(aggregate.p50)}, p99 ${ms(aggregate.p99)} over ${aggregate.n}`]);
+    const cell = fixtureCell(results, results.warm.fixture);
+    const shapes: Array<[string, Summary]> = [
+      ["Point lookup on the sorted `id`", results.warm.point],
+      ["One-day range (`day =`)", results.warm.range],
+      ["GROUP BY `k` over every row", results.warm.aggregate],
+      ["Join to the 1,000-row `dims`, grouped by name", results.warm.join],
+    ];
+    for (const [shape, x] of shapes) rows.push(["Warm read", `${shape}, ${cell}`, `p50 ${ms(x.p50)}, p99 ${ms(x.p99)} over ${x.n}`]);
   }
   const header = "| Measurement | Fixture | Result |\n| --- | --- | --- |\n";
   return `Target: ${results.target} (${results.runner})\n\n` + header + rows.map((r) => `| ${r.join(" | ")} |`).join("\n") + "\n";

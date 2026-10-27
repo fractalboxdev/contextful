@@ -13,7 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { join, resolve } from "node:path";
-import { FIXTURES, IDLE_FIXTURE, QUERIES, queryCall, summarize, TABLE, WARM_FIXTURE, ZONE } from "../src/plan.ts";
+import { DAYS, dayOf, DIM_TABLE, FIXTURES, IDLE_FIXTURE, QUERIES, queryCall, summarize, TABLE, WARM_FIXTURE, ZONE } from "../src/plan.ts";
 import { ledgerRecords, renderTable, type Hydration, type Lazy, type Results } from "./report.ts";
 import { contextful, parseArgs, Stream, type FixtureManifest } from "./support.ts";
 import { CloudflareTarget, LocalTarget, type Target } from "./targets.ts";
@@ -54,7 +54,7 @@ const token = () => {
   if (Date.now() - minted.at > 50 * 60_000) {
     minted = {
       token: contextful(bin, manifest.issuer_dir, ["token", "mint", "--issuer-key", ".contextful/issuer.seed",
-        "--on-behalf-of", "user://bench@example.test", "--zone", ZONE, "--table", TABLE, "--ttl", "3600"]).trim(),
+        "--on-behalf-of", "user://bench@example.test", "--zone", ZONE, "--table", TABLE, "--table", DIM_TABLE, "--ttl", "3600"]).trim(),
       at: Date.now(),
     };
   }
@@ -139,11 +139,18 @@ try {
     await hydrated(f.prefix, false);
     await read(QUERIES.aggregate, f.rows);
     const ids = new Stream(manifest.seed, "point");
-    const point: number[] = [];
-    const aggregate: number[] = [];
-    for (let i = 0; i < warmReads; i++) point.push(await read(QUERIES.point(ids.below(f.rows))));
-    for (let i = 0; i < warmReads; i++) aggregate.push(await read(QUERIES.aggregate, f.rows));
-    results.warm = { fixture: warmFixture, point: summarize(point), aggregate: summarize(aggregate) };
+    const days = new Stream(manifest.seed, "range");
+    const shapes = { point: [] as number[], range: [] as number[], aggregate: [] as number[], join: [] as number[] };
+    for (let i = 0; i < warmReads; i++) {
+      shapes.point.push(await read(QUERIES.point(ids.below(f.rows))));
+      shapes.range.push(await read(QUERIES.range(dayOf(days.below(DAYS)))));
+      shapes.aggregate.push(await read(QUERIES.aggregate, f.rows));
+      shapes.join.push(await read(QUERIES.join, f.rows));
+    }
+    results.warm = {
+      fixture: warmFixture, point: summarize(shapes.point), range: summarize(shapes.range),
+      aggregate: summarize(shapes.aggregate), join: summarize(shapes.join),
+    };
     log(`warm ${JSON.stringify(results.warm)}`);
   }
   if (sections.has("idle") && built.includes(idleFixture)) {
