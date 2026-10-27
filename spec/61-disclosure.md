@@ -54,6 +54,8 @@ The two deployment settings a derived result is computed in, the offline diagnos
 - `pepper-version` — A cross-owner join accepts only rows carrying its pair's current pepper version; rotation re-lands both owners' join keys before the next release.
   *A-disclosure#cross-owner-release*
 
+unsettled: Which CLI or MCP verb opens a cross-owner store and runs `hashed-join` and `pepper-version`, given that no production path reaches `open_cross_owner`? owner: disclosure affects: disclosure.set-mode
+
 ## release
 
 The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation.
