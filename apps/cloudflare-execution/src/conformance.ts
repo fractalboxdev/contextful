@@ -52,3 +52,13 @@ export async function admitConformanceRun(exec: ContainerExec) {
   const swept = await exec(["/usr/bin/pkill", "-KILL", "-f", "/usr/local/bin/contextful"]);
   if (swept.exitCode !== 0 && swept.exitCode !== 1) throw new Error("ConformanceContainerUnavailable");
 }
+
+/** A changed container binding starts a fresh object with the current environment. */
+export async function conformanceInstanceName(bindings: readonly string[]) {
+  if (bindings.length !== 5 || !bindings.every((value) => typeof value === "string" && value.length > 0)) {
+    throw new Error("ConformanceCapabilityMissing");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(bindings)));
+  const suffix = Array.from(new Uint8Array(digest).slice(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `conformance-${suffix}`;
+}
