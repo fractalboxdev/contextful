@@ -95,7 +95,7 @@ Two items stay unknown:
 
 ## DuckDB Iceberg REST catalogs
 
-- **Citation** — DuckDB, [Iceberg REST catalogs](https://duckdb.org/docs/current/core_extensions/iceberg/iceberg_rest_catalogs); Cloudflare, [DuckDB with R2 Data Catalog](https://developers.cloudflare.com/r2-data-catalog/config-examples/duckdb/).
+- **Citation** — DuckDB, [Iceberg REST catalogs](https://duckdb.org/docs/current/core_extensions/iceberg/iceberg_rest_catalogs); Cloudflare, [DuckDB with Basin Catalog, formerly R2 Data Catalog](https://developers.cloudflare.com/r2-data-catalog/config-examples/duckdb/).
 - **Priority** — should-read.
 - **Informs** — `run.export-iceberg`.
 - **Question** — Which format version keeps an export readable by DuckDB?

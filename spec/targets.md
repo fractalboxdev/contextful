@@ -54,13 +54,13 @@ flowchart LR
 
 Cloudflare deployments with a Linux Container, D1 execution metadata and R2 objects.
 
-Cloudflare uses one deployment configuration, `worker-container-d1`. TypeScript routing and reconciliation run in Workers' V8 isolates. Cron Triggers schedule work; Workflows coordinates execution. A Durable Object controls the Linux Container's lifecycle. The Container runs the native `contextful-full` executable with embedded DuckDB and Wasmtime. Workers and Workflows call the Container through requests.
+Cloudflare's default deployment configuration is `worker-container-d1`. TypeScript routing and reconciliation run in Workers' V8 isolates. Cron Triggers schedule work; Workflows coordinates execution. A Durable Object controls the Linux Container's lifecycle. The Container runs the native `contextful-full` executable with embedded DuckDB and Wasmtime. Workers and Workflows call the Container through requests.
 
 The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to the private `contextful.d1` host call a Worker binding handler. The handler reads and writes execution metadata in D1 and execution blobs in R2. A separate R2 bucket stores corpus parts and manifests through its S3-compatible API. Files inside the Container are a replaceable working copy.
 
 Cloudflare Queues carries receive batches and object-arrival notifications. The Rust engine writes the store. A separate Durable Object manages hibernating WebSocket connections for run updates. Workers Secrets supplies credentials to configured bindings. The optional console server runs on a Node.js host. The React assets provide a static browser preview without that server.
 
-The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The routing Worker sends a caller whose credential maps to an export namespace to Basin SQL over REST, holding a read-only token as a Worker secret, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
+The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The routing Worker sends a caller whose credential maps to an export namespace to Basin SQL over REST with that audience's read-only token, one Worker secret per audience bucket, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
 
 The example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`. Its Container runs `contextful-conformance` against the packaged Linux `contextful` binary. This endpoint tests execution storage; it serves no query or orchestration routes. `status.md` records clause implementation evidence.
 

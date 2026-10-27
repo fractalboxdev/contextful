@@ -98,7 +98,8 @@ ExportEventTooLarge            = { clause = "run.export.typed-event-too-large", 
 ExportIdentityChanged          = { clause = "run.export.typed-identity-changed", gloss = "A pending typed export under another read identity, or its target redirected under the same name." }
 ExportTypeUnsupported          = { clause = "run.export-iceberg.type-refused", gloss = "An Iceberg export column no lossless cast maps under its declared format version." }
 ExportCommitConflict           = { clause = "run.export-iceberg.commit-retry", gloss = "An Iceberg snapshot commit still conflicting after its last attempt." }
-ExportNamespaceShared          = { clause = "run.export-iceberg.namespace-shared", gloss = "Two Iceberg exports under different credentials naming one namespace." }
+ExportStorageUndeclared        = { clause = "run.export-iceberg.egress", gloss = "An Iceberg table configuration naming a storage host its export block does not declare." }
+ExportNamespaceShared          = { clause = "run.export-iceberg.namespace-shared", gloss = "Two Iceberg exports sharing a namespace across credentials, a credential across namespaces, or one table." }
 PublicationIncompatible        = { clause = "run.export.group-incompatible", gloss = "A coordinated publication, predecessor, membership or checkpoint differs from its durable binding." }
 PublicationHeaderTooLarge      = { clause = "run.export.group-request-bound", gloss = "A coordinated group header leaving no room for one event under the typed request ceiling." }
 PublicationInputsBusy          = { clause = "run.export.group-quiesce-wait", gloss = "A coordinated export whose publication inputs a running unit or another export still holds past the wait bound." }
