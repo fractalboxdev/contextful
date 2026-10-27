@@ -156,3 +156,27 @@ fn a_limit_pin_performs_only_while_non_test_source_uses_its_registered_const() {
     s.write("crates/x/src/lib.rs", "pub const OTHER: usize = 40;\n");
     assert_eq!(verdict(&s, clause), "broken", "a const path resolving to nothing exercises nothing");
 }
+
+#[test]
+fn a_limit_const_named_only_in_comments_strings_or_a_const_assert_is_unread() {
+    let s = Scratch::copy();
+    implemented(&s);
+    let clause = "corpus.anatomy.statement-words";
+    let terms = s.read("spec/terms/corpus.toml");
+    let entry = terms.lines().find(|l| l.starts_with("corpus-statement-words ")).unwrap().to_string();
+    s.write("spec/terms/corpus.toml", &terms.replacen(&entry, &entry.replacen(" }", ", const = \"crates/x/src/lib.rs::MAX_WORDS\" }", 1), 1));
+    s.write("crates/x/src/lib.rs", "pub const MAX_WORDS: usize = 40;\n");
+    for unread in [
+        "// MAX_WORDS bounds a statement.\n",
+        "/// Refuses past MAX_WORDS.\npub fn admitted() {}\n",
+        "/* MAX_WORDS */\n",
+        "pub fn named() -> &'static str {\n    \"MAX_WORDS\"\n}\n",
+        "pub fn raw() -> &'static str {\n    r#\"MAX_WORDS\"#\n}\n",
+        "const _: () = assert!(MAX_WORDS == 40, \"forty words\");\n",
+    ] {
+        s.write("crates/x/src/other.rs", unread);
+        assert_eq!(verdict(&s, clause), "broken", "{unread}");
+    }
+    s.write("crates/x/src/other.rs", "// MAX_WORDS\npub fn admitted(words: usize) -> bool {\n    words <= crate::MAX_WORDS // the bound\n}\n");
+    assert_eq!(verdict(&s, clause), "performed");
+}

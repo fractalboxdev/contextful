@@ -454,19 +454,57 @@ fn a_module_filter_selects_that_module_alone() {
     assert!(err.contains("TestNotFirst"), "{err}");
 }
 
-// spec: corpus.state.slice-diff@f46eee8e
-#[test]
-fn the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log() {
+/// The gate run from a copy of `contextful-ci` in its own directory, beside `spec` as a
+/// `contextful-spec` script when one is given, with every `cargo` invocation logged to
+/// `cargo.log` there and refused.
+fn gate_beside(r: &Repo, spec: Option<&str>, args: &[&str]) -> (std::process::Output, String) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let ci = bin.path().join("contextful-ci");
+    std::fs::copy(env!("CARGO_BIN_EXE_contextful-ci"), &ci).unwrap();
+    let log = bin.path().join("cargo.log");
+    let mut scripts = vec![("cargo", format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()))];
+    if let Some(spec) = spec {
+        scripts.push(("contextful-spec", format!("#!/bin/sh\n{spec}")));
+    }
+    for (name, script) in scripts {
+        std::fs::write(bin.path().join(name), script).unwrap();
+        std::fs::set_permissions(bin.path().join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default());
+    let o = std::process::Command::new(&ci).arg("gate").args(args).current_dir(&r.root).env_remove("CARGO_TARGET_DIR").env("PATH", path).output().unwrap();
+    (o, std::fs::read_to_string(&log).unwrap_or_default())
+}
+
+/// A repository whose last commit edits a test, and the commit before it.
+fn a_test_edit() -> (Repo, String) {
     let r = Repo::init();
     r.write("spec/spec.lock.json", "{}\n");
     r.commit("a corpus");
     let base = r.head();
     r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(3), 6);\n}\n");
     r.commit("a test edit");
-    let cargo = "case \"$*\" in *\"slice --diff\"*) echo \"- \\`demo.double.doubles\\` — called with $*\" ;; *) exit 1 ;; esac\n";
-    let o = r.gate_with_cargo(cargo, &["--stage", "test-first", "--base", &base]);
+    (r, base)
+}
+
+// spec: corpus.state.slice-diff@fc464d78
+#[test]
+fn the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log() {
+    let (r, base) = a_test_edit();
+    let spec = "case \"$*\" in \"slice --diff\"*) echo \"- \\`demo.double.doubles\\` — called with $*\" ;; *) exit 1 ;; esac\n";
+    let (o, cargo) = gate_beside(&r, Some(spec), &["--stage", "test-first", "--base", &base]);
     assert!(o.status.success(), "{}", stderr(&o));
     let log = stderr(&o);
     assert!(log.contains("demo.double.doubles"), "{log}");
     assert!(log.contains(&format!("slice --diff {base}")), "{log}");
+    assert!(!cargo.contains("slice"), "the listing runs the built binary, not cargo: {cargo}");
+}
+
+#[test]
+fn without_a_built_contextful_spec_the_stage_prints_no_listing_and_builds_none() {
+    let (r, base) = a_test_edit();
+    let (o, cargo) = gate_beside(&r, None, &["--stage", "test-first", "--base", &base]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!stderr(&o).contains("confirm each clause"), "{}", stderr(&o));
+    assert!(!cargo.contains("contextful-spec"), "{cargo}");
 }

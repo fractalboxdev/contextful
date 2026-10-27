@@ -68,7 +68,7 @@ fn page(c: &Corpus, contract: &str) -> String {
         s.push_str("## Types\n\nEach struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` reads and their doc comments.\n\n");
         for (path, t) in types {
             let named: Vec<String> = t.clauses.iter().map(|id| format!("`{id}`")).collect();
-            let _ = writeln!(s, "### `{path}`\n\nThe {} at `{}:{}`, named by {}.\n", t.kind, t.file, t.line, named.join(", "));
+            let _ = writeln!(s, "### `{path}`\n\nThe {} at `{}`, named by {}.\n", t.kind, t.file, named.join(", "));
             s.push_str("| Key | Doc |\n| --- | --- |\n");
             for m in &t.members {
                 let _ = writeln!(s, "| `{}` | {} |", m.name, m.doc.replace('|', "\\|"));

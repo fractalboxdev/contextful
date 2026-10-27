@@ -1325,28 +1325,144 @@ pub fn owned_consts(c: &Corpus, cl: &Clause) -> Vec<String> {
     c.reg.fragments.get(&cl.contract).map(|f| f.limit.values().filter(|l| l.clause == cl.id).filter_map(|l| l.constant.clone()).collect()).unwrap_or_default()
 }
 
-/// `corpus.state.limit-const`: the const at `path` resolves, and source under
-/// `crates/*/src` or `tools/*/src` names it outside its own definition line and before any
-/// `#[cfg(test)]` item of its file.
+/// `corpus.state.limit-const`: the const at `path` resolves, and code under
+/// `crates/*/src` or `tools/*/src` reads it outside its own definition line and before any
+/// `#[cfg(test)]` item of its file. Comments, string and char literals, and `const _`
+/// assertions read nothing.
 fn used(c: &Corpus, path: &str) -> bool {
     let Some(site) = crate::pins::locate(c, "item", path, &PIN_ROOTS).into_iter().next() else { return false };
     let name = path.rsplit("::").next().unwrap_or(path);
     let word = Regex::new(&format!(r"\b{}\b", regex::escape(name))).unwrap();
-    for root in ["crates", "tools"] {
-        for package in std::fs::read_dir(c.root.join(root)).into_iter().flatten().flatten() {
-            let walk = walkdir::WalkDir::new(package.path().join("src")).into_iter().flatten();
-            for e in walk.filter(|e| e.path().extension().is_some_and(|x| x == "rs")) {
-                let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
-                let rel = e.path().strip_prefix(&c.root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
-                let live = text.split("#[cfg(test)]").next().unwrap_or_default();
-                let defined = (rel == site.file).then(|| text[..site.offset].matches('\n').count());
-                if live.lines().enumerate().any(|(n, l)| Some(n) != defined && word.is_match(l)) {
-                    return true;
+    source_code(c).iter().any(|(rel, live)| {
+        let defined = (*rel == site.file).then(|| std::fs::read_to_string(c.root.join(rel)).map(|t| t[..site.offset.min(t.len())].matches('\n').count()).ok()).flatten();
+        live.lines().enumerate().any(|(n, l)| Some(n) != defined && word.is_match(l))
+    })
+}
+
+/// Each `.rs` file under `crates/*/src` and `tools/*/src` by relative path, as the code
+/// before its first `#[cfg(test)]` with comments, literals and `const _` assertions
+/// blanked; read once per run.
+fn source_code(c: &Corpus) -> &'static Vec<(String, String)> {
+    static CODE: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+    CODE.get_or_init(|| {
+        let mut out = Vec::new();
+        for root in ["crates", "tools"] {
+            for package in std::fs::read_dir(c.root.join(root)).into_iter().flatten().flatten() {
+                let walk = walkdir::WalkDir::new(package.path().join("src")).sort_by_file_name().into_iter().flatten();
+                for e in walk.filter(|e| e.path().extension().is_some_and(|x| x == "rs")) {
+                    let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
+                    let rel = e.path().strip_prefix(&c.root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
+                    let code = without_const_asserts(&rust_code(&text));
+                    let live = code.split("#[cfg(test)]").next().unwrap_or_default().to_string();
+                    out.push((rel, live));
                 }
             }
         }
+        out
+    })
+}
+
+/// `text` with every comment, string literal and char literal blanked to spaces, its
+/// line breaks kept, so a line number in the result names the same line in `text`.
+fn rust_code(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = b.to_vec();
+    let blank = |out: &mut Vec<u8>, from: usize, to: usize| {
+        for ch in &mut out[from..to.min(b.len())] {
+            if *ch != b'\n' {
+                *ch = b' ';
+            }
+        }
+    };
+    let mut i = 0;
+    while i < b.len() {
+        let start = i;
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'/') => i = text[i..].find('\n').map_or(b.len(), |n| i + n),
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                let mut depth = 0usize;
+                while i < b.len() {
+                    if b[i..].starts_with(b"/*") {
+                        depth += 1;
+                        i += 2;
+                    } else if b[i..].starts_with(b"*/") {
+                        depth -= 1;
+                        i += 2;
+                        if depth == 0 {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'r' | b'b' if i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_') => {
+                let prefix = if b[i] == b'b' && b.get(i + 1) == Some(&b'r') { 2 } else { 1 };
+                let hashes = text[i + prefix..].bytes().take_while(|c| *c == b'#').count();
+                let raw = b[i] == b'r' || prefix == 2;
+                if raw && b.get(i + prefix + hashes) == Some(&b'"') {
+                    let close = format!("\"{}", "#".repeat(hashes));
+                    let body = i + prefix + hashes + 1;
+                    i = text[body..].find(&close).map_or(b.len(), |n| body + n + close.len());
+                } else {
+                    i += 1;
+                    continue;
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'\'' => {
+                // A char literal `'x'` or `'\x..'`; a lifetime `'a` has no closing quote.
+                let len = text[i + 1..].chars().next().map_or(0, char::len_utf8);
+                if b.get(i + 1) == Some(&b'\\') {
+                    i = text.get(i + 3..).and_then(|rest| rest.find('\'')).map_or(b.len(), |n| i + 3 + n + 1);
+                } else if len > 0 && b.get(i + 1 + len) == Some(&b'\'') {
+                    i += len + 2;
+                } else {
+                    i += 1;
+                    continue;
+                }
+            }
+            _ => {
+                i += 1;
+                continue;
+            }
+        }
+        blank(&mut out, start, i);
     }
-    false
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `code` with each `const _: … = …;` item blanked: a compile-time assertion reads its
+/// operands at build time only.
+fn without_const_asserts(code: &str) -> String {
+    static ASSERT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bconst\s+_\s*:").unwrap());
+    let mut out = code.as_bytes().to_vec();
+    for m in ASSERT.find_iter(code) {
+        let mut depth = 0i32;
+        let end = code.as_bytes()[m.start()..]
+            .iter()
+            .position(|ch| {
+                match ch {
+                    b'(' | b'[' | b'{' => depth += 1,
+                    b')' | b']' | b'}' => depth -= 1,
+                    _ => {}
+                }
+                *ch == b';' && depth == 0
+            })
+            .map_or(code.len(), |n| m.start() + n + 1);
+        for ch in &mut out[m.start()..end] {
+            if *ch != b'\n' {
+                *ch = b' ';
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// `corpus.state.unexercised`: a test pin of a refusal clause names one of the clause's
@@ -1424,12 +1540,35 @@ pub fn pin_states(c: &Corpus, pins: &[Pin]) -> Vec<PinState> {
     states
 }
 
+/// One pinned clause, judged once per run: its pins, each pin's state, its verdict and
+/// whether it computes proved.
+pub struct Judged {
+    pub pins: Vec<Pin>,
+    pub states: Vec<PinState>,
+    pub verdict: &'static str,
+    pub proved: bool,
+}
+
+/// Every pinned clause by id, judged once per run.
+pub fn judged(c: &Corpus) -> &'static BTreeMap<String, Judged> {
+    static JUDGED: std::sync::OnceLock<BTreeMap<String, Judged>> = std::sync::OnceLock::new();
+    JUDGED.get_or_init(|| {
+        pins_by_clause(c)
+            .into_iter()
+            .map(|(id, pins)| {
+                let states = pin_states(c, &pins);
+                let (verdict, proved) = (verdict(&pins, &states), proved(&pins, &states));
+                (id, Judged { pins, states, verdict, proved })
+            })
+            .collect()
+    })
+}
+
 /// `performed` when every counted pin of the clause performs and at most one theorem pins
 /// it; `broken` otherwise. A clause takes any number of test pins; an `Unbound` theorem is
 /// not counted.
-pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
+fn verdict(pins: &[Pin], states: &[PinState]) -> &'static str {
     let single = pinned_theorems(pins).len() <= 1;
-    let states = pin_states(c, pins);
     if single && states.iter().all(|s| matches!(s, PinState::Performed | PinState::Unbound)) && states.contains(&PinState::Performed) {
         "performed"
     } else {
@@ -1439,10 +1578,9 @@ pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
 
 /// `corpus.state.proved`: the clause performs and a counted theorem pin and a test pin of
 /// it both perform.
-pub fn proved(c: &Corpus, pins: &[Pin]) -> bool {
-    let states = pin_states(c, pins);
-    let performing = |kind: &str| pins.iter().zip(&states).any(|(p, s)| p.kind == kind && *s == PinState::Performed);
-    clause_verdict(c, pins) == "performed" && performing("theorem") && performing("test")
+fn proved(pins: &[Pin], states: &[PinState]) -> bool {
+    let performing = |kind: &str| pins.iter().zip(states).any(|(p, s)| p.kind == kind && *s == PinState::Performed);
+    verdict(pins, states) == "performed" && performing("theorem") && performing("test")
 }
 
 /// The clause ids `formal/obligations.toml` lists, each with its line.
@@ -1504,8 +1642,7 @@ pub fn milestone_closed(c: &Corpus, acceptance: Option<&str>, ops: &[&String], v
 
 /// Every operation a milestone computing `open` names, as `<contract>.<operation>`.
 pub fn open_operations(c: &Corpus) -> BTreeSet<String> {
-    let all = pins_by_clause(c);
-    let verdicts: BTreeMap<&String, &str> = all.iter().map(|(id, g)| (id, clause_verdict(c, g))).collect();
+    let verdicts: BTreeMap<&String, &str> = judged(c).iter().map(|(id, j)| (id, j.verdict)).collect();
     let (claim, _) = expand_roadmap(c);
     let mut open = BTreeSet::new();
     for ml in milestone_lines(c) {
@@ -1590,10 +1727,11 @@ pub fn expand_roadmap(c: &Corpus) -> (BTreeMap<String, String>, Vec<Finding>) {
 fn state(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
     let pins = load_pins(c);
-    let all = pins_by_clause(c);
+    let all = judged(c);
     let clauses = c.clause_map();
     let mut count: BTreeMap<String, i64> = BTreeMap::new();
-    for (id, group) in &all {
+    for (id, j) in all {
+        let group = &j.pins;
         let Some(cl) = clauses.get(id) else {
             for p in group {
                 let what = if p.tag.is_some() { "tag" } else { "pin" };
@@ -1601,7 +1739,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
             }
             continue;
         };
-        for (p, state) in group.iter().zip(pin_states(c, group)) {
+        for (p, state) in group.iter().zip(j.states.iter().copied()) {
             if p.kind == "item" && cl.kind != "behavior" {
                 out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
             }
@@ -1631,7 +1769,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
             let names: Vec<&str> = theorems.into_iter().collect();
             out.push(f("state", &group[0].file, group[0].line, "SpecBrokenPin", format!("`{id}` is pinned to two theorems, {}", names.join(" and "))));
         }
-        if clause_verdict(c, group) == "performed" {
+        if j.verdict == "performed" {
             *count.entry(cl.contract.clone()).or_default() += 1;
         }
     }
@@ -1645,7 +1783,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
         }
     }
     for (id, line) in obligations(c) {
-        if !all.get(&id).is_some_and(|group| proved(c, group)) {
+        if !all.get(&id).is_some_and(|j| j.proved) {
             out.push(f("state", OBLIGATIONS, line, "SpecProofObligationUnpinned", format!("`{id}` is listed as a proof obligation but does not compute proved")));
         }
     }

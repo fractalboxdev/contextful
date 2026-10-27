@@ -1746,9 +1746,11 @@ impl Syncer {
     }
 
     /// Run `work` while a background thread renews `held`, `table`'s lease, every `every`, timing each
-    /// renewal as `start` plus the monotonic time elapsed. Renewal stops when `work`
-    /// returns or a renewal fails; a holder that stops renewing loses at publish once a
-    /// successor acquires (`store.lease.stale-fence`).
+    /// renewal as `start` plus the monotonic time elapsed. A failed renewal prints one
+    /// warning line to stderr and retries on the next tick. Renewal stops when `work`
+    /// returns, when the lease is fenced or no longer held, or once its expiry passes; a
+    /// holder that stops renewing loses at publish once a successor acquires
+    /// (`store.lease.stale-fence`).
     pub fn renewing<T>(&self, table: &str, held: &Held, start: Instant, every: std::time::Duration, work: impl FnOnce() -> T) -> T {
         let path = self.held_path(table);
         let bucket = self.bucket.clone();
@@ -1760,9 +1762,17 @@ impl Syncer {
                 while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every) {
                     let elapsed = i128::try_from(began.elapsed().as_nanos()).unwrap_or(i128::MAX);
                     let Ok(now) = Instant::from_unix_nanos(start.unix_nanos().saturating_add(elapsed)) else { return };
+                    if current.lease.expires_at.is_some_and(|expiry| now >= expiry) {
+                        eprintln!("warning: the compaction lease `{}` expired at fence {}; renewal stops", current.key, current.lease.fence);
+                        return;
+                    }
                     match renew_at(bucket.as_ref(), &path, &current, now) {
                         Ok(next) => current = next,
-                        Err(_) => return,
+                        Err(e @ SyncError::Store(StoreError::LeaseFenced(_) | StoreError::LeaseNotHeld(_))) => {
+                            eprintln!("warning: renewing the compaction lease `{}` stopped: {e}", current.key);
+                            return;
+                        }
+                        Err(e) => eprintln!("warning: renewing the compaction lease `{}` failed, retrying next tick: {e}", current.key),
                     }
                 }
             });

@@ -191,12 +191,12 @@ export const lockPins = (lock) => {
         })
       : [entries].flat();
     out.set(id, list.map((pin) => {
-      const { kind = "test", path, file = path, name, test, theorem, line } = typeof pin === "string" ? { name: pin } : pin;
+      const { kind = "test", path, file = path, name, test, theorem } = typeof pin === "string" ? { name: pin } : pin;
       const target = name ?? test ?? theorem ?? "";
       return {
         kind,
         label: [file, target].filter(Boolean).join(" — "),
-        href: file ? `${REPOSITORY}/blob/main/${file}${line ? `#L${line}` : ""}` : undefined,
+        href: file ? `${REPOSITORY}/blob/main/${file}` : undefined,
       };
     }));
   }
@@ -229,10 +229,7 @@ export const corpusIndex = (lock = readLock()) => {
   const records = new Map();
   for (const f of mdFiles(ADR_DIR)) records.set(recordId(f), routeFor(join(ADR_DIR, f)));
   const types = new Map(
-    Object.entries(lock.types ?? {}).map(([path, { file, line, kind }]) => [
-      path,
-      { kind, href: `${REPOSITORY}/blob/main/${file}${line ? `#L${line}` : ""}` },
-    ]),
+    Object.entries(lock.types ?? {}).map(([path, { file, kind }]) => [path, { kind, href: `${REPOSITORY}/blob/main/${file}` }]),
   );
   return { clauses, operations, records, errors: registeredErrors(), sections: new Map(Object.entries(lock.sections ?? {})), types };
 };

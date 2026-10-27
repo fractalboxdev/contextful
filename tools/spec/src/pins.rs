@@ -420,7 +420,8 @@ fn span(text: &str, pin: &Pin) -> (usize, usize) {
 }
 
 /// `slice --diff <rev>`: each clause whose tag, or the definition under it, a line the
-/// working tree changes against the merge base of `rev` and `HEAD` falls within.
+/// working tree changes against the merge base of `rev` and `HEAD` falls within. An
+/// untracked file counts as wholly added.
 pub fn by_diff(c: &Corpus, rev: &str) -> Result<Vec<Reached>> {
     let base = git(c, &["merge-base", rev, "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_else(|_| rev.to_string());
     let diff = git(c, &["-c", "core.quotepath=off", "diff", "-U0", "--no-color", "--no-ext-diff", &base, "--"])?;
@@ -435,6 +436,9 @@ pub fn by_diff(c: &Corpus, rev: &str) -> Result<Vec<Reached>> {
             let range = if count == 0 { (start, start + 1) } else { (start, start + count - 1) };
             changed.entry(f.clone()).or_default().push(range);
         }
+    }
+    for f in git(c, &["-c", "core.quotepath=off", "ls-files", "--others", "--exclude-standard"])?.lines() {
+        changed.entry(f.to_string()).or_default().push((1, usize::MAX));
     }
     let mut pins = Vec::new();
     for (file, ranges) in changed {

@@ -58,7 +58,7 @@ fn add_clause(s: &Scratch, subject: &str, statement: &str) {
     s.write(STORE, &format!("{}- `{subject}` — {statement}\n{}", &body[..list], &body[list..]));
 }
 
-// spec: corpus.reference.type-pointer@6f839257
+// spec: corpus.reference.type-pointer@29024c4b
 #[test]
 fn a_type_pointer_records_each_member_with_its_spelling_and_doc() {
     let s = with_shape();
@@ -69,7 +69,7 @@ fn a_type_pointer_records_each_member_with_its_spelling_and_doc() {
     let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
     let shape = &lock["types"]["contextful_demo::shape::Shape"];
     assert_eq!(shape["file"], "crates/demo/src/shape.rs", "{shape}");
-    assert_eq!(shape["line"], 6);
+    assert!(shape["line"].is_null(), "a type records its file, not a line: {shape}");
     assert_eq!(shape["kind"], "struct");
     assert_eq!(shape["clauses"], serde_json::json!(["store.fold.shape-keys"]));
     let members: Vec<(String, String)> = shape["members"]
@@ -90,6 +90,7 @@ fn a_type_pointer_records_each_member_with_its_spelling_and_doc() {
     let card = s.read("spec/cards/store.md");
     assert!(card.contains("## Types"), "{card}");
     assert!(card.contains("`contextful_demo::shape::Shape`"), "{card}");
+    assert!(card.contains("The struct at `crates/demo/src/shape.rs`, named by"), "{card}");
     for line in ["| `sort_columns` | Columns the shape sorts by, first to last. |", "| `max-rows` |  |", "| `carry_forward` | Carry the last value forward. |"] {
         assert!(card.contains(line), "{line}\n{card}");
     }

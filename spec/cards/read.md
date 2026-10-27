@@ -138,7 +138,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_core::memory::revise::Tier`
 
-The enum at `crates/contextful-core/src/memory/revise.rs:18`, named by `read.revise.tier`.
+The enum at `crates/contextful-core/src/memory/revise.rs`, named by `read.revise.tier`.
 
 | Key | Doc |
 | --- | --- |
@@ -148,7 +148,7 @@ The enum at `crates/contextful-core/src/memory/revise.rs:18`, named by `read.rev
 
 ### `contextful_core::read::subscribe::Notification`
 
-The struct at `crates/contextful-core/src/read/subscribe.rs:26`, named by `read.subscribe.notification`.
+The struct at `crates/contextful-core/src/read/subscribe.rs`, named by `read.subscribe.notification`.
 
 | Key | Doc |
 | --- | --- |

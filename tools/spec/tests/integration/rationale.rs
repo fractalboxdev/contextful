@@ -266,6 +266,19 @@ fn why_migrate_rewrites_a_citation_one_section_names_and_prints_the_rest() {
     assert!(!s.cmd(&["why-migrate", "A-nowhere"]).status.success());
 }
 
+#[test]
+fn why_migrate_rewrites_every_named_adr_a_why_cites_on_one_line() {
+    let s = Scratch::copy();
+    cite_bare(&s, "non-blocking");
+    s.write(STORE, &s.read(STORE).replacen("\n  *A-store*\n", "\n  *A-store, A-run*\n", 1));
+    append(&s, "spec/adr/A-store.md", &format!("## non-blocking-pass — `store.fold.non-blocking` keeps reads off the pass\n\nText.\n\n{OPTIONS}"));
+    append(&s, "spec/adr/A-run.md", &format!("## non-blocking-run — `store.fold.non-blocking` keeps runs off the pass\n\nText.\n\n{OPTIONS}"));
+    let out = s.cmd(&["why-migrate", "A-store", "A-run"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(why_of(&s.read(STORE), "non-blocking"), "  *A-store#non-blocking-pass, A-run#non-blocking-run*");
+    assert!(String::from_utf8_lossy(&out.stdout).starts_with("rewrote 2 citations"), "{}", String::from_utf8_lossy(&out.stdout));
+}
+
 // spec: corpus.rationale.cited-by@9aea4abe
 #[test]
 fn each_adr_section_lists_the_clauses_citing_it_in_the_card_and_the_lock() {

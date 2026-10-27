@@ -199,7 +199,7 @@ fn status_is_regenerated_from_pins_alone() {
     let pins = s.pin_row(LIMIT_CLAUSE);
     assert_eq!(
         pins,
-        serde_json::json!([{ "kind": "test", "path": "crates/x/src/lib.rs", "name": "words_over_forty_refused", "line": 2, "verdict": "performed", "proved": false }])
+        serde_json::json!([{ "kind": "test", "path": "crates/x/src/lib.rs", "name": "words_over_forty_refused", "verdict": "performed", "proved": false }])
     );
     s.write("crates/x/src/lib.rs", "#[test]\n#[ignore]\nfn words_over_forty_refused() {}\n");
     assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("broken"));

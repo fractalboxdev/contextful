@@ -42,7 +42,26 @@ fn a_committed_render_differing_from_regeneration_is_stale() {
     }
 }
 
-// spec: corpus.render.lock-file@97a36957
+#[test]
+fn a_line_shift_in_a_tagged_test_leaves_the_generated_files_current() {
+    let s = Scratch::copy();
+    s.scaffold("corpus.anatomy", "crates/x");
+    s.implement("crates/x/tests/integration/anatomy.rs");
+    assert!(s.cmd(&["state"]).status.success());
+    assert!(s.cmd(&["extract"]).status.success());
+    let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+    let pin = &lock["pins"]["corpus.anatomy.statement-words"][0];
+    assert_eq!(pin["path"], "crates/x/tests/integration/anatomy.rs", "{pin}");
+    assert!(pin["line"].is_null(), "a pin records its file and name, not a line: {pin}");
+    let test = s.read("crates/x/tests/integration/anatomy.rs");
+    s.write("crates/x/tests/integration/anatomy.rs", &format!("// A line above every tag.
+
+{test}"));
+    let found = codes(&s.lint("render"), "SpecStaleRender");
+    assert!(found.is_empty(), "{found:?}");
+}
+
+// spec: corpus.render.lock-file@b5bf98d5
 #[test]
 fn the_lock_carries_clauses_ledes_owns_registry_and_pointers() {
     let s = Scratch::copy();

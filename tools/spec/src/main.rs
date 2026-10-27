@@ -238,14 +238,13 @@ pub fn lock_text(c: &Corpus) -> String {
 }
 
 /// One pin in the lock file's `pins` list for its clause: the artifact's kind, the file
-/// defining it, its name, the line of its tag or definition, and its clause's verdict and
-/// proof.
+/// defining it, its name, and its clause's verdict and proof. No line number, so a line
+/// shift in the file leaves the lock current.
 #[derive(Serialize, Clone)]
 pub struct PinEntry {
     pub kind: String,
     pub path: String,
     pub name: String,
-    pub line: usize,
     pub verdict: &'static str,
     pub proved: bool,
 }
@@ -257,36 +256,29 @@ pub struct PinRow {
     pub proved: bool,
 }
 
-/// Where a pin sits: a tag's own file and line, or the definition a `spec/pins.toml` path
-/// resolves to (`spec/pins.toml`, line 0, when it resolves to none).
+/// Where a pin sits: a tag's own file, or the file of the definition a `spec/pins.toml`
+/// path resolves to (`spec/pins.toml` when it resolves to none).
 fn entry(c: &Corpus, p: &checks::Pin, verdict: &'static str, proved: bool) -> PinEntry {
     let name = match &p.tag {
         Some(t) => t.function.clone().unwrap_or_default(),
         None => p.path.rsplit(if p.kind == "theorem" { "." } else { "::" }).next().unwrap_or_default().to_string(),
     };
-    let (path, line) = match &p.tag {
-        Some(_) => (p.file.clone(), p.line),
-        None => pins::locate(c, &p.kind, &p.path, &checks::PIN_ROOTS)
-            .first()
-            .and_then(|site| {
-                let text = std::fs::read_to_string(c.root.join(&site.file)).ok()?;
-                Some((site.file.clone(), text[..site.offset].matches('\n').count() + 1))
-            })
-            .unwrap_or((p.file.clone(), 0)),
+    let path = match &p.tag {
+        Some(_) => p.file.clone(),
+        None => pins::locate(c, &p.kind, &p.path, &checks::PIN_ROOTS).first().map_or_else(|| p.file.clone(), |site| site.file.clone()),
     };
-    PinEntry { kind: p.kind.clone(), path, name, line, verdict, proved }
+    PinEntry { kind: p.kind.clone(), path, name, verdict, proved }
 }
 
 /// Every pinned clause by id (`corpus.state.status-is-computed`), computed once per run.
 pub fn pin_rows(c: &Corpus) -> &'static BTreeMap<String, PinRow> {
     static ROWS: std::sync::OnceLock<BTreeMap<String, PinRow>> = std::sync::OnceLock::new();
     ROWS.get_or_init(|| {
-        checks::pins_by_clause(c)
-            .into_iter()
-            .map(|(id, group)| {
-                let (verdict, proved) = (checks::clause_verdict(c, &group), checks::proved(c, &group));
-                let pins = group.iter().map(|p| entry(c, p, verdict, proved)).collect();
-                (id, PinRow { pins, verdict, proved })
+        checks::judged(c)
+            .iter()
+            .map(|(id, j)| {
+                let pins = j.pins.iter().map(|p| entry(c, p, j.verdict, j.proved)).collect();
+                (id.clone(), PinRow { pins, verdict: j.verdict, proved: j.proved })
             })
             .collect()
     })

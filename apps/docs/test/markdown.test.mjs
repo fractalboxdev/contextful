@@ -76,10 +76,11 @@ test("a clause's pins from the lock render in its margin beside the id", async (
   const html = await render(fixture("grouped-operation.md"), "10-store.md", { lock });
   const margin = /<span class="clause-margin">([\s\S]*?)<\/span><span class="clause-statement">/.exec(clauseItem(html, "store.reserve.commit-wait"))?.[1];
   assert.ok(margin?.includes('class="clause-pins"'));
-  assert.ok(margin.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/contextful-context/tests/integration/commit.rs#L42"'));
+  assert.ok(margin.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/contextful-context/tests/integration/commit.rs"'));
+  assert.ok(!margin.includes("#L"), "a pin links to its file, not a line");
   assert.ok(margin.includes('class="clause-pin pin-theorem"'));
   assert.ok(!clauseItem(html, "store.reserve.column-name").includes("clause-pins"));
-  // A pin whose path resolves to nothing names spec/pins.toml at line 0, and links to no line.
+  // A pin whose path resolves to nothing names spec/pins.toml.
   assert.ok(clauseItem(html, "store.reserve.table-name").includes('href="https://github.com/fractalboxdev/contextful/blob/main/spec/pins.toml"'));
   // The verdict stays off the page: the site renders where a clause is pinned, not its state.
   assert.ok(!html.includes("performed") && !html.includes("broken"));
@@ -123,14 +124,14 @@ test("an ADR section lists the clauses the lock records citing it", async () => 
   assert.equal(adr.match(/class="cited-by"/g).length, 1);
 });
 
-test("a type pointer renders the type's name linked to its source line from the lock", async () => {
+test("a type pointer renders the type's name linked to its source file from the lock", async () => {
   const types = {
-    "contextful_demo::shape::Shape": { file: "crates/demo/src/shape.rs", line: 6, kind: "struct", members: [{ name: "name" }], clauses: ["store.fold.shape-keys"] },
+    "contextful_demo::shape::Shape": { file: "crates/demo/src/shape.rs", kind: "struct", members: [{ name: "name" }], clauses: ["store.fold.shape-keys"] },
   };
   const html = await render(fixture("type-pointer.md"), "10-store.md", { lock: { ...readLock(), types } });
   const link = /<a\b[^>]*class="type-ref"[^>]*><code>Shape<\/code><\/a>/.exec(clauseItem(html, "store.fold.shape-keys"))?.[0];
   assert.ok(link, html);
-  assert.ok(link.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/demo/src/shape.rs#L6"'), link);
+  assert.ok(link.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/demo/src/shape.rs"'), link);
   assert.ok(link.includes('title="contextful_demo::shape::Shape — struct"'), link);
   // A pointer the lock does not resolve stays as written.
   assert.ok(clauseItem(html, "store.fold.fill-modes").includes("{{type:contextful_demo::shape::Fill}}"));

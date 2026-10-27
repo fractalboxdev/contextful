@@ -141,7 +141,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_cli::connection::Declaration`
 
-The struct at `crates/contextful-cli/src/connection.rs:59`, named by `surface.connection.malformed`.
+The struct at `crates/contextful-cli/src/connection.rs`, named by `surface.connection.malformed`.
 
 | Key | Doc |
 | --- | --- |
@@ -154,7 +154,7 @@ The struct at `crates/contextful-cli/src/connection.rs:59`, named by `surface.co
 
 ### `contextful_core::surface::delegate::Answer`
 
-The enum at `crates/contextful-core/src/surface/delegate.rs:221`, named by `run.items.delegated-item`, `surface.delegate.outcome`.
+The enum at `crates/contextful-core/src/surface/delegate.rs`, named by `run.items.delegated-item`, `surface.delegate.outcome`.
 
 | Key | Doc |
 | --- | --- |
@@ -165,7 +165,7 @@ The enum at `crates/contextful-core/src/surface/delegate.rs:221`, named by `run.
 
 ### `contextful_core::surface::delegate::Envelope`
 
-The struct at `crates/contextful-core/src/surface/delegate.rs:157`, named by `surface.delegate.envelope`.
+The struct at `crates/contextful-core/src/surface/delegate.rs`, named by `surface.delegate.envelope`.
 
 | Key | Doc |
 | --- | --- |
@@ -185,7 +185,7 @@ The struct at `crates/contextful-core/src/surface/delegate.rs:157`, named by `su
 
 ### `contextful_core::surface::external::External`
 
-The struct at `crates/contextful-core/src/surface/external.rs:46`, named by `surface.visualize.external-shape`.
+The struct at `crates/contextful-core/src/surface/external.rs`, named by `surface.visualize.external-shape`.
 
 | Key | Doc |
 | --- | --- |

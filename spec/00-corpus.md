@@ -150,7 +150,7 @@ The one legal way a statement reaches a fact another clause or a code type owns,
   *P8*
 - `dangling` — A `{{id}}` naming no clause raises `SpecDanglingReference`.
   *P8*
-- `type-pointer` — `{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file, line and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.
+- `type-pointer` — `{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.
   *because a key list copied from code drifts from the code, and the type already holds every key with its gloss*
 - `type-unresolved` — A type pointer whose crate and module part names no file defining that struct or enum raises `SpecTypeUnresolved`.
   *because a pointer to a moved or renamed type shows the reader no keys*
@@ -245,7 +245,7 @@ The commands that write tags, rewrite revisions and list the clauses a test file
   *because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev*
 - `slice-file` — `contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.
   *because a reviewer of a test reads what it claims to demonstrate*
-- `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.
+- `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage logs it from a built binary.
   *because an edited test can stop demonstrating its clause while every pin still computes performed*
 
 ### milestones
@@ -271,7 +271,7 @@ The generated files, and the vocabulary no authored file carries.
 
 - `generated` — `contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.
   *P8, A-assurance#generated-artifacts-prove*
-- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, line, verdict, proof.
+- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, verdict, proof.
   *P8*
 - `card` — `contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.
   *A-corpus#teaching-reference-live*

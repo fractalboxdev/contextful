@@ -123,7 +123,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_core::disclosure::declare::RawBinding`
 
-The struct at `crates/contextful-core/src/disclosure/declare.rs:122`, named by `disclosure.mirror.binding-keys`.
+The struct at `crates/contextful-core/src/disclosure/declare.rs`, named by `disclosure.mirror.binding-keys`.
 
 | Key | Doc |
 | --- | --- |
@@ -137,7 +137,7 @@ The struct at `crates/contextful-core/src/disclosure/declare.rs:122`, named by `
 
 ### `contextful_core::disclosure::pack::RawMapping`
 
-The struct at `crates/contextful-core/src/disclosure/pack.rs:105`, named by `disclosure.pack.mapping-keys`.
+The struct at `crates/contextful-core/src/disclosure/pack.rs`, named by `disclosure.pack.mapping-keys`.
 
 | Key | Doc |
 | --- | --- |
@@ -151,7 +151,7 @@ The struct at `crates/contextful-core/src/disclosure/pack.rs:105`, named by `dis
 
 ### `contextful_core::disclosure::sweep::GrantLine`
 
-The struct at `crates/contextful-core/src/disclosure/sweep.rs:196`, named by `disclosure.sweep.grants-file`.
+The struct at `crates/contextful-core/src/disclosure/sweep.rs`, named by `disclosure.sweep.grants-file`.
 
 | Key | Doc |
 | --- | --- |
@@ -162,7 +162,7 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:196`, named by `di
 
 ### `contextful_core::disclosure::sweep::LinkLine`
 
-The struct at `crates/contextful-core/src/disclosure/sweep.rs:321`, named by `disclosure.sweep.directory-file`.
+The struct at `crates/contextful-core/src/disclosure/sweep.rs`, named by `disclosure.sweep.directory-file`.
 
 | Key | Doc |
 | --- | --- |
@@ -173,7 +173,7 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:321`, named by `di
 
 ### `contextful_core::disclosure::sweep::Membership`
 
-The struct at `crates/contextful-core/src/disclosure/sweep.rs:303`, named by `disclosure.sweep.directory-file`.
+The struct at `crates/contextful-core/src/disclosure/sweep.rs`, named by `disclosure.sweep.directory-file`.
 
 | Key | Doc |
 | --- | --- |
@@ -183,7 +183,7 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:303`, named by `di
 
 ### `contextful_core::disclosure::sweep::RawBlock`
 
-The struct at `crates/contextful-core/src/disclosure/sweep.rs:102`, named by `disclosure.sweep.sweep-block`.
+The struct at `crates/contextful-core/src/disclosure/sweep.rs`, named by `disclosure.sweep.sweep-block`.
 
 | Key | Doc |
 | --- | --- |
@@ -196,7 +196,7 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:102`, named by `di
 
 ### `contextful_policy::audit::AuditEntry`
 
-The struct at `crates/contextful-policy/src/audit.rs:486`, named by `disclosure.record.entry-format`, `disclosure.record.entry-fields`.
+The struct at `crates/contextful-policy/src/audit.rs`, named by `disclosure.record.entry-format`, `disclosure.record.entry-fields`.
 
 | Key | Doc |
 | --- | --- |
@@ -208,7 +208,7 @@ The struct at `crates/contextful-policy/src/audit.rs:486`, named by `disclosure.
 
 ### `contextful_policy::audit::ChainHeader`
 
-The struct at `crates/contextful-policy/src/audit.rs:227`, named by `disclosure.record.header-unsupported`.
+The struct at `crates/contextful-policy/src/audit.rs`, named by `disclosure.record.header-unsupported`.
 
 | Key | Doc |
 | --- | --- |
