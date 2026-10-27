@@ -163,16 +163,18 @@ fn fake_wrangler(r: &Repo, log: &Path, url: &str, fail: bool) {
     std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 }
 
-/// A local server answering every request with `status`, at most `n` times.
-fn answering(status: u16, n: usize) -> String {
+/// A local server answering its requests with `statuses` in order, the last repeating.
+fn answering(statuses: &[u16]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
+    let statuses = statuses.to_vec();
     std::thread::spawn(move || {
-        for stream in listener.incoming().take(n).flatten() {
+        for (i, stream) in listener.incoming().flatten().enumerate() {
             let mut stream = stream;
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
-            let _ = write!(stream, "HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let status = statuses[i.min(statuses.len() - 1)];
+            let _ = write!(stream, "HTTP/1.1 {status} X\r\nContent-Length: 0\r\nLocation: /\r\nConnection: close\r\n\r\n");
         }
     });
     format!("http://{addr}")
@@ -202,9 +204,14 @@ fn apps_repo() -> Repo {
 }
 
 fn deploy(r: &Repo, app: &str, bin: &Path, env: &[(&str, &str)]) -> Output {
+    deploy_with(r, app, bin, env, &[])
+}
+
+/// [`deploy`] with `extra` options after `--app`.
+fn deploy_with(r: &Repo, app: &str, bin: &Path, env: &[(&str, &str)], extra: &[&str]) -> Output {
     let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful-ci"));
-    cmd.args(["deploy", "cloudflare", "--app", app]).current_dir(&r.root).env_remove("CARGO_TARGET_DIR").env("PATH", path);
+    cmd.args(["deploy", "cloudflare", "--app", app]).args(extra).current_dir(&r.root).env_remove("CARGO_TARGET_DIR").env("PATH", path);
     cmd.env_remove("CLOUDFLARE_API_TOKEN").env_remove("CLOUDFLARE_ACCOUNT_ID");
     for (k, v) in env {
         cmd.env(k, v);
@@ -246,7 +253,7 @@ fn the_execution_deploy_creates_absent_resources_packages_the_release_and_prints
     let bin = tempfile::tempdir().unwrap();
     let log = bin.path().join("calls.log");
     fakes(bin.path(), &log);
-    let url = answering(404, 4);
+    let url = answering(&[404]);
     fake_wrangler(&r, &log, &url, false);
     let creds = [("CLOUDFLARE_API_TOKEN", "t"), ("CLOUDFLARE_ACCOUNT_ID", "a")];
     let o = deploy(&r, "cloudflare-execution", bin.path(), &creds);
@@ -286,33 +293,39 @@ fn the_execution_deploy_creates_absent_resources_packages_the_release_and_prints
 
     // A second deploy finds the database and creates none.
     std::fs::remove_file(&log).unwrap();
-    let url = answering(404, 4);
+    let url = answering(&[404]);
     fake_wrangler(&r, &log, &url, false);
     let o = deploy(&r, "cloudflare-execution", bin.path(), &creds);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(!std::fs::read_to_string(&log).unwrap().contains("d1 create"));
 }
 
-/// A status outside the app's expected set raises `DeployUnhealthy`; a failing wrangler prints with its URL and identifier replaced.
-// spec: assurance.deploy-apps.health@1d82ce42
+/// The health check repeats `GET /` until an expected status arrives; `--health-wait` elapsing raises `DeployUnhealthy` naming the last status; a failing wrangler prints with its URL and identifier replaced.
+// spec: assurance.deploy-apps.health@d481057c
 #[test]
-fn an_unexpected_status_is_unhealthy_and_a_failed_deploy_prints_redacted() {
+fn health_retries_past_a_fresh_route_redirect_and_refuses_the_last_status_after_the_wait() {
     let r = apps_repo();
     let bin = tempfile::tempdir().unwrap();
     let log = bin.path().join("calls.log");
     fakes(bin.path(), &log);
     let creds = [("CLOUDFLARE_API_TOKEN", "t"), ("CLOUDFLARE_ACCOUNT_ID", "a")];
 
-    let url = answering(503, 4);
+    // A fresh workers.dev route redirects before the Worker serves.
+    let url = answering(&[301, 301, 503]);
     fake_wrangler(&r, &log, &url, false);
-    let o = deploy(&r, "gateway", bin.path(), &creds);
-    assert!(o.status.success(), "the gateway's unconfigured 503 is unhealthy: {}", stderr(&o));
+    let o = deploy_with(&r, "gateway", bin.path(), &creds, &["--health-wait", "30"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "a redirect then the unconfigured gateway's 503 is unhealthy: {}", stderr(&o));
+    assert_eq!(out.matches("deploy: health 301").count(), 2, "{out}");
+    assert!(out.contains("deploy: health 503"), "{out}");
 
-    let url = answering(500, 4);
+    let url = answering(&[301]);
     fake_wrangler(&r, &log, &url, false);
-    let o = deploy(&r, "gateway", bin.path(), &creds);
+    let started = std::time::Instant::now();
+    let o = deploy_with(&r, "gateway", bin.path(), &creds, &["--health-wait", "3"]);
     let err = stderr(&o);
-    assert!(!o.status.success() && err.contains("DeployUnhealthy") && err.contains("500"), "{err}");
+    assert!(!o.status.success() && err.contains("DeployUnhealthy") && err.contains("301"), "{err}");
+    assert!(started.elapsed() >= std::time::Duration::from_secs(3), "refused before the wait elapsed");
     assert!(!err.contains("127.0.0.1"), "{err}");
 
     fake_wrangler(&r, &log, "https://contextful-gateway.example.workers.dev", true);

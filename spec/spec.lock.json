@@ -32730,8 +32730,8 @@
       "operation": "deploy-apps",
       "subject": "health",
       "kind": "refusal",
-      "statement": "After `wrangler deploy`, the command sends one anonymous `GET /` to the URL wrangler reports, retrying while no answer arrives, and prints the status alone; a status outside the app's expected set raises `DeployUnhealthy`.",
-      "why": "because wrangler reports success before the Worker answers",
+      "statement": "After `wrangler deploy`, the command repeats an anonymous `GET /` to the URL wrangler reports until a status in the app's expected set arrives or `--health-wait` elapses, printing each status alone; the wait elapsing raises `DeployUnhealthy`, naming the last status.",
+      "why": "because wrangler reports success before the Worker answers, and a fresh `workers.dev` route answers a redirect first",
       "file": "spec/81-engineering.md",
       "line": 639
     },

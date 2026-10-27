@@ -31,9 +31,10 @@ const IMAGE_TARGET: &str = "x86_64-unknown-linux-musl";
 const DEPLOY_TMP: &str = ".tmp/deploy";
 /// The rendered config beside an app's template; `.gitignore` holds it untracked.
 const RENDERED: &str = "wrangler.deploy.jsonc";
-/// How long the health check waits for a first answer.
-const HEALTH_WAIT: Duration = Duration::from_secs(120);
-const HEALTH_INTERVAL: Duration = Duration::from_secs(5);
+/// How long the health check waits for an expected status, by default.
+pub const HEALTH_WAIT_SECS: u64 = 120;
+/// The pause between health requests: a fresh `workers.dev` route redirects for a few seconds.
+const HEALTH_INTERVAL: Duration = Duration::from_secs(2);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A Cloudflare app the deploy command ships, named by its directory under `apps/`.
@@ -354,7 +355,7 @@ fn builder_image(root: &Path) -> Result<String> {
 }
 
 /// `contextful-ci deploy cloudflare --app <app>`.
-pub fn cloudflare(root: &Path, app: App) -> Result<()> {
+pub fn cloudflare(root: &Path, app: App, health_wait: Duration) -> Result<()> {
     credentials()?;
     let dir = root.join(app.dir());
     let tools = root.join(WRANGLER_APP);
@@ -376,7 +377,7 @@ pub fn cloudflare(root: &Path, app: App) -> Result<()> {
         .find(|w| w.starts_with("https://") || w.starts_with("http://"))
         .map(|w| w.trim_end_matches(|c: char| !c.is_ascii_alphanumeric()).to_string())
         .ok_or_else(|| refuse("DeployUnhealthy", format!("wrangler reported no URL for {}", app.name())))?;
-    health(app, &url)
+    health(app, &url, health_wait)
 }
 
 /// `assurance.deploy-apps.resources` and `container-image`: ensure the bound resources,
@@ -438,22 +439,27 @@ fn image(root: &Path, dir: &Path, context: &Path) -> Result<()> {
     Ok(())
 }
 
-/// `assurance.deploy-apps.health`: the first answer to an anonymous `GET /`, judged against
-/// the app's expected statuses; the URL is never printed.
-fn health(app: App, url: &str) -> Result<()> {
+/// `assurance.deploy-apps.health`: anonymous `GET /` requests until a status in the app's
+/// expected set arrives or `wait` elapses; each status prints, the URL never does.
+fn health(app: App, url: &str, wait: Duration) -> Result<()> {
     let agent: ureq::Agent = ureq::Agent::config_builder().max_redirects(0).http_status_as_error(false).timeout_global(Some(HEALTH_TIMEOUT)).build().into();
+    let expected: Vec<String> = app.expected().iter().map(u16::to_string).collect();
     let start = Instant::now();
-    let status = loop {
-        match agent.get(format!("{}/", url.trim_end_matches('/'))).call() {
-            Ok(response) => break response.status().as_u16(),
-            Err(_) if start.elapsed() < HEALTH_WAIT => std::thread::sleep(HEALTH_INTERVAL),
-            Err(e) => return Err(refuse("DeployUnhealthy", format!("{} gave no answer within {}s ({})", app.name(), HEALTH_WAIT.as_secs(), redact(&e.to_string())))),
+    loop {
+        let last = match agent.get(format!("{}/", url.trim_end_matches('/'))).call() {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                println!("deploy: health {status}");
+                if app.expected().contains(&status) {
+                    return Ok(());
+                }
+                status.to_string()
+            }
+            Err(e) => format!("no answer ({})", redact(&e.to_string())),
+        };
+        if start.elapsed() >= wait {
+            return Err(refuse("DeployUnhealthy", format!("{} answered {last} after {}s, where it answers {}", app.name(), wait.as_secs(), expected.join(" or "))));
         }
-    };
-    println!("deploy: health {status}");
-    if !app.expected().contains(&status) {
-        let expected: Vec<String> = app.expected().iter().map(u16::to_string).collect();
-        return Err(refuse("DeployUnhealthy", format!("{} answered {status}, where it answers {}", app.name(), expected.join(" or "))));
+        std::thread::sleep(HEALTH_INTERVAL);
     }
-    Ok(())
 }

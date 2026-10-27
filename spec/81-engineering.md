@@ -636,8 +636,8 @@ The one GitHub Actions workflow, its trigger, permission and credential shape, a
   *because an identifier belongs to one account, and the committed template serves every account*
 - `container-image` — For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares the image context from that archive before `wrangler deploy`.
   *because the image then carries the exact binary its release metadata and compatibility report name*
-- `health` — After `wrangler deploy`, the command sends one anonymous `GET /` to the URL wrangler reports, retrying while no answer arrives, and prints the status alone; a status outside the app's expected set raises `DeployUnhealthy`.
-  *because wrangler reports success before the Worker answers*
+- `health` — After `wrangler deploy`, the command repeats an anonymous `GET /` to the URL wrangler reports until a status in the app's expected set arrives or `--health-wait` elapses, printing each status alone; the wait elapsing raises `DeployUnhealthy`, naming the last status.
+  *because wrangler reports success before the Worker answers, and a fresh `workers.dev` route answers a redirect first*
 - `expected-status` — The execution app answers `GET /` with 404, the gateway with 404 or 503, and the console with 200 or 302.
   *because each answer is the app's unauthenticated default: no route, no configured store, the prerendered page*
 - `quiet-output` — The command prints its step names and the health status; wrangler's output prints only on failure, with each URL and each run of 32 or more hex digits replaced.

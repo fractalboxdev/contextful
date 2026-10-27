@@ -320,6 +320,9 @@ enum DeployCmd {
         /// The app, by its directory under `apps/`.
         #[arg(long, value_enum)]
         app: deploy::App,
+        /// Seconds the health check waits for one of the app's expected statuses.
+        #[arg(long, default_value_t = deploy::HEALTH_WAIT_SECS)]
+        health_wait: u64,
     },
     /// Hold the probe table to the hostname descriptors, then send each published hostname
     /// one anonymous `GET /` and judge its answer against the descriptor's gate.
@@ -444,7 +447,7 @@ fn main() {
         Cmd::Deploy { cmd: DeployCmd::Probe { dir, resolve } } => repo_root().and_then(|root| probe::run(&root.join(dir), &resolve)),
         Cmd::Deploy { cmd: DeployCmd::Parity { reference, target } } => parity::run(&reference, &target),
         Cmd::Deploy { cmd: DeployCmd::Workflow } => repo_root().and_then(|root| deploy::workflow(&root)),
-        Cmd::Deploy { cmd: DeployCmd::Cloudflare { app } } => repo_root().and_then(|root| deploy::cloudflare(&root, app)),
+        Cmd::Deploy { cmd: DeployCmd::Cloudflare { app, health_wait } } => repo_root().and_then(|root| deploy::cloudflare(&root, app, std::time::Duration::from_secs(health_wait))),
         Cmd::Measure { tiers, status, check, since } => repo_root().and_then(|root| {
             if let Some(rev) = &since {
                 measure::raises(&root, rev)?;
