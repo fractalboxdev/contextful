@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { admitConformanceRun, completeConformanceReport } from "../src/conformance.ts";
+import { admitConformanceRun, completeConformanceReport, conformanceInstanceName } from "../src/conformance.ts";
 
 const source = {
   artifact_digest: "a".repeat(64),
@@ -61,4 +61,18 @@ test("a suite refuses while another suite process still drives the bindings", as
 
 test("a container that cannot list its processes admits no suite", async () => {
   await assert.rejects(admitConformanceRun(async () => ({ exitCode: 127 })), /ConformanceContainerUnavailable/);
+});
+
+test("the conformance instance changes with each container binding", async () => {
+  const bindings = ["r2://account", "bucket", "access", "secret", "recovery"];
+  const name = await conformanceInstanceName(bindings);
+  assert.match(name, /^conformance-[a-f0-9]{32}$/);
+  assert.equal(await conformanceInstanceName(bindings), name);
+  for (let i = 0; i < bindings.length; i++) {
+    const changed = [...bindings];
+    changed[i] += "-rotated";
+    assert.notEqual(await conformanceInstanceName(changed), name);
+  }
+  await assert.rejects(conformanceInstanceName(["r2://account", "bucket", "access", "", "recovery"]),
+    /ConformanceCapabilityMissing/);
 });
