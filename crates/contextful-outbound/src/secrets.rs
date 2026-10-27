@@ -15,7 +15,7 @@ use contextful_core::run::{Failure, FailureTag};
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Condvar, Mutex, Once};
 use url::Url;
 
 /// Re-admits the environment adapter to template hydration (`connector.reference.environment-is-a-miss`).
@@ -169,8 +169,35 @@ struct Cached {
     retires_at: Instant,
 }
 
-// The per-name gate lets one caller mint while the others wait for its cached answer.
-const _: () = assert!(MINT_CALLS_PER_WINDOW == 1, "the single-flight gate admits one mint per name per window");
+/// A name's mint gate: it admits `MINT_CALLS_PER_WINDOW` callers to the chain at once, and
+/// the others wait for a cached answer (`connector.lease.calls-per-resolver`).
+#[derive(Default)]
+struct Gate {
+    minting: Mutex<u32>,
+    freed: Condvar,
+}
+
+/// One caller's admission through a [`Gate`], returned when it drops.
+struct Admitted(Arc<Gate>);
+
+impl Gate {
+    fn enter(self: Arc<Self>) -> Admitted {
+        let mut minting = self.minting.lock().unwrap_or_else(|e| e.into_inner());
+        while *minting >= MINT_CALLS_PER_WINDOW {
+            minting = self.freed.wait(minting).unwrap_or_else(|e| e.into_inner());
+        }
+        *minting += 1;
+        drop(minting);
+        Admitted(self)
+    }
+}
+
+impl Drop for Admitted {
+    fn drop(&mut self) {
+        *self.0.minting.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        self.0.freed.notify_one();
+    }
+}
 
 /// One resolver per source: the chain, a cache, a single-flight gate per name, and the
 /// adapter that answered each name.
@@ -179,7 +206,7 @@ pub struct Resolver {
     allow_env_templates: bool,
     clock: Arc<dyn Clock + Send + Sync>,
     cache: Mutex<HashMap<SecretName, Cached>>,
-    gates: Mutex<HashMap<SecretName, Arc<Mutex<()>>>>,
+    gates: Mutex<HashMap<SecretName, Arc<Gate>>>,
     answered_by: Mutex<BTreeMap<String, String>>,
     /// The names the lease provider mints (`connector.lease.calls-per-resolver`).
     leased: Vec<SecretName>,
@@ -210,7 +237,7 @@ impl Resolver {
         self.cache.lock().unwrap_or_else(|e| e.into_inner()).remove(name);
     }
 
-    fn gate(&self, name: &SecretName) -> Arc<Mutex<()>> {
+    fn gate(&self, name: &SecretName) -> Arc<Gate> {
         let mut gates = self.gates.lock().unwrap_or_else(|e| e.into_inner());
         gates.entry(name.clone()).or_default().clone()
     }
@@ -228,8 +255,7 @@ impl Resolver {
         if let Some(v) = self.cached(name, self.clock.now()) {
             return Ok(v);
         }
-        let gate = self.gate(name);
-        let _held = gate.lock().unwrap_or_else(|e| e.into_inner());
+        let _admitted = self.gate(name).enter();
         let now = self.clock.now();
         if let Some(v) = self.cached(name, now) {
             return Ok(v);
