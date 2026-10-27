@@ -296,6 +296,19 @@ impl ColumnPolicy {
         self.selected.as_ref().and_then(|s| selected.and_then(|name| s.masks.get(name))).or(self.mask.as_ref())
     }
 
+    /// The type the session projection reads the column as: [`ColumnPolicy::sql`] keeps the
+    /// stored type under `drop` alone, and casts every other strategy, and an exception arm
+    /// beside a row-selected mask, to text (`authority.mask.projected-type`).
+    pub fn projected_type(&self, ty: &ColumnType) -> ColumnType {
+        let Some(mask) = self.mask.as_ref() else { return ty.clone() };
+        let dropped = mask.primary == Strategy::Drop && self.selected.as_ref().is_none_or(|s| s.masks.values().all(|m| m.primary == Strategy::Drop));
+        if dropped && (self.exceptions.is_empty() || self.selected.is_none()) {
+            ty.clone()
+        } else {
+            ColumnType::Utf8
+        }
+    }
+
     pub fn sql(&self, column: &str, ty: &ColumnType) -> Option<String> {
         let mask = self.mask.as_ref()?;
         let fallback = mask.sql(column, ty);

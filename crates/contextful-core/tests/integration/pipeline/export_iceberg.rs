@@ -162,6 +162,8 @@ fn a_namespace_serves_one_credential_and_a_credential_one_namespace() {
         (block("a", "svc://one", "shared", "events"), block("b", "svc://two", "shared", "notes")),
         (block("a", "svc://one", "one", "events"), block("b", "svc://one", "two", "notes")),
         (block("a", "svc://one", "one", "events"), block("b", "svc://one", "one", "events")),
+        // One catalog spelled with a trailing slash is still one catalog.
+        (block("a", "svc://one", "shared", "events"), block("b", "svc://two", "shared", "notes").replace("example.com/iceberg\"", "example.com/iceberg/\"")),
     ] {
         match two(a, b) {
             Err(ExportError::ExportNamespaceShared(m)) => assert!(m.contains("`a`") && m.contains("`b`"), "{m}"),

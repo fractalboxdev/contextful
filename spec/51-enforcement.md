@@ -184,6 +184,8 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority#exhaustible-digest*
 - `drop` — `drop` nulls the cell, or yields an empty string for a string column.
   *A-authority#exhaustible-digest*
+- `projected-type` — A masked column reads as text under every strategy but `drop`, which keeps the stored type; an exception beside a row-selected mask reads as text.
+  *because both arms of an exception share one projected type, and a digest or token is text whatever it digests*
 - `one-value` — A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.
   *A-authority#exhaustible-digest*
 - `digest-alone` — `hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.

@@ -27,6 +27,8 @@ pub enum Script {
     AppliedThenAnswer(u16),
     /// Refuse the commit with `status`, applying nothing.
     Refuse(u16),
+    /// Apply nothing and answer `status` with no body, as a timeout before the catalog acts leaves it.
+    NotAppliedThenAnswer(u16),
 }
 
 #[derive(Default)]
@@ -38,6 +40,8 @@ struct State {
     commits: usize,
     /// The `s3.endpoint` a table configuration names, when a test overrides it.
     storage: Option<String>,
+    /// Vend credentials in the table `config` rather than in `storage-credentials`.
+    vend_in_config: bool,
 }
 
 /// A running catalog. Every request must carry `Authorization: Bearer <token>`.
@@ -78,6 +82,12 @@ impl Catalog {
     /// Name `endpoint` as every table configuration's `s3.endpoint`.
     pub fn name_storage(&self, endpoint: &str) {
         self.state.lock().unwrap().storage = Some(endpoint.to_string());
+    }
+
+    /// Vend storage credentials in the table `config`, as some catalogs do, rather than in
+    /// the REST specification's `storage-credentials`.
+    pub fn vend_in_config(&self) {
+        self.state.lock().unwrap().vend_in_config = true;
     }
 
     /// Commit requests received.
@@ -135,16 +145,20 @@ impl Catalog {
     }
 }
 
-fn load_result(state: &State, bucket: &str, s3: &str, namespace: &str, name: &str, metadata: &TableMetadata) -> Response {
-    let config = json!({
-        "s3.endpoint": state.storage.clone().unwrap_or_else(|| s3.to_string()),
-        "s3.access-key-id": ACCESS_KEY,
-        "s3.secret-access-key": SECRET_KEY,
-        "s3.region": "us-east-1",
-        "s3.path-style-access": "true",
-    });
+/// A load result. Credentials are vended only to a request asking for them with
+/// `X-Iceberg-Access-Delegation: vended-credentials`, as the REST specification has it.
+fn load_result(state: &State, bucket: &str, s3: &str, namespace: &str, name: &str, metadata: &TableMetadata, request: &Request) -> Response {
+    let mut config = json!({ "s3.endpoint": state.storage.clone().unwrap_or_else(|| s3.to_string()), "s3.path-style-access": "true" });
+    let credentials = json!({ "s3.access-key-id": ACCESS_KEY, "s3.secret-access-key": SECRET_KEY, "s3.region": "us-east-1" });
+    let delegated = request.header("x-iceberg-access-delegation").is_some_and(|h| h.split(',').any(|m| m.trim() == "vended-credentials"));
+    let mut storage_credentials = json!([]);
+    if delegated && state.vend_in_config {
+        config.as_object_mut().unwrap().extend(credentials.as_object().unwrap().clone());
+    } else if delegated {
+        storage_credentials = json!([{ "prefix": format!("s3://{bucket}/"), "config": credentials }]);
+    }
     let location = format!("s3://{bucket}/{namespace}/{name}/metadata/{}.metadata.json", metadata.last_updated_ms());
-    Response::json(200, &json!({ "metadata-location": location, "metadata": metadata, "config": config }).to_string())
+    Response::json(200, &json!({ "metadata-location": location, "metadata": metadata, "config": config, "storage-credentials": storage_credentials }).to_string())
 }
 
 fn route(state: &mut State, bucket: &str, s3: &str, request: &Request) -> Response {
@@ -197,13 +211,17 @@ fn route(state: &mut State, bucket: &str, s3: &str, request: &Request) -> Respon
                 Err(e) => return error(400, "BadRequestException", &e.to_string()),
             };
             state.tables.insert((ns.to_string(), name.clone()), metadata.clone());
-            load_result(state, bucket, s3, ns, &name, &metadata)
+            load_result(state, bucket, s3, ns, &name, &metadata, request)
         }
         ("GET", ["v1", _, "namespaces", ns, "tables", name]) => match state.tables.get(&(ns.to_string(), name.to_string())) {
-            Some(metadata) => load_result(state, bucket, s3, ns, name, metadata),
+            Some(metadata) => load_result(state, bucket, s3, ns, name, metadata, request),
             None => error(404, "NoSuchTableException", &format!("table `{ns}.{name}` does not exist")),
         },
         ("POST", ["v1", _, "namespaces", ns, "tables", name]) => commit(state, ns, name, request),
+        ("DELETE", ["v1", _, "namespaces", ns, "tables", name]) => match state.tables.remove(&(ns.to_string(), name.to_string())) {
+            Some(_) => Response { status: 204, headers: Vec::new(), body: Vec::new() },
+            None => error(404, "NoSuchTableException", &format!("table `{ns}.{name}` does not exist")),
+        },
         _ => error(404, "NoSuchEndpoint", request.path()),
     }
 }
@@ -243,6 +261,9 @@ fn commit(state: &mut State, ns: &str, name: &str, request: &Request) -> Respons
     let script = state.scripts.pop_front();
     if let Some(Script::Refuse(status)) = script {
         return error(status, "ServiceFailureException", "scripted refusal");
+    }
+    if let Some(Script::NotAppliedThenAnswer(status)) = script {
+        return Response { status, headers: Vec::new(), body: Vec::new() };
     }
     if script == Some(Script::Compact) {
         current = compact(&current);

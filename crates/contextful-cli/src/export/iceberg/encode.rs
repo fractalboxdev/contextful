@@ -25,6 +25,8 @@ use std::sync::Arc;
 
 /// Rows per Parquet row group.
 const ROW_GROUP_ROWS: usize = 131_072;
+/// The in-memory size of one slice written at a time: an eighth of the data file ceiling.
+const SLICE_BYTES: u64 = ICEBERG_DATA_FILE_BYTES / 8;
 
 fn iceberg_type(ty: &IcebergType, next: &mut i32) -> Type {
     let mut id = || {
@@ -244,22 +246,35 @@ impl<'a> Files<'a> {
         WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::try_new(1).unwrap_or_default())).set_max_row_group_row_count(Some(ROW_GROUP_ROWS)).build()
     }
 
+    /// Write `batch` in slices, closing the open file before a slice, at its in-memory size,
+    /// would carry it past the ceiling (`run.export-iceberg.file-size`). Encoded Parquet is no
+    /// larger than the Arrow buffers it encodes, so the estimate keeps each file under it.
     pub fn write(&mut self, batch: &RecordBatch, uploaded: &mut Vec<String>) -> Result<()> {
-        if batch.num_rows() == 0 {
+        let rows = batch.num_rows();
+        if rows == 0 {
             return Ok(());
         }
-        if self.open.is_none() {
-            let path = format!("{}/data/{}-{:05}.parquet", self.location, self.export, self.count);
-            self.count += 1;
-            let output = self.io.new_output(&path)?;
-            let builder = ParquetWriterBuilder::new(Self::properties(), self.schema.clone());
-            self.open = Some(self.rt.block_on(builder.build(output))?);
-        }
-        let Some(writer) = self.open.as_mut() else { bail!("no data file is open") };
-        self.rt.block_on(writer.write(batch))?;
-        // A file reaching the ceiling closes; the next row opens another (`run.export-iceberg.file-size`).
-        if writer.current_written_size() as u64 >= ICEBERG_DATA_FILE_BYTES {
-            self.close(uploaded)?;
+        let per_row = (batch.get_array_memory_size() as u64).div_ceil(rows as u64).max(1);
+        let step = usize::try_from((SLICE_BYTES / per_row).max(1)).unwrap_or(rows).min(rows);
+        let mut offset = 0;
+        while offset < rows {
+            let len = step.min(rows - offset);
+            let estimate = per_row * len as u64;
+            if let Some(open) = &self.open {
+                if open.current_written_size() as u64 + estimate > ICEBERG_DATA_FILE_BYTES {
+                    self.close(uploaded)?;
+                }
+            }
+            if self.open.is_none() {
+                let path = format!("{}/data/{}-{:05}.parquet", self.location, self.export, self.count);
+                self.count += 1;
+                let output = self.io.new_output(&path)?;
+                let builder = ParquetWriterBuilder::new(Self::properties(), self.schema.clone());
+                self.open = Some(self.rt.block_on(builder.build(output))?);
+            }
+            let Some(writer) = self.open.as_mut() else { bail!("no data file is open") };
+            self.rt.block_on(writer.write(&batch.slice(offset, len)))?;
+            offset += len;
         }
         Ok(())
     }
@@ -269,8 +284,10 @@ impl<'a> Files<'a> {
         let path = writer.current_file_path();
         let builders = self.rt.block_on(writer.close())?;
         let bytes = self.rt.block_on(async { self.io.new_input(&path)?.read().await })?;
-        self.storage.put(&path, &bytes)?;
+        // Recorded before the upload: a store that kept the object while the answer was lost
+        // still has it deleted.
         uploaded.push(path.clone());
+        self.storage.put(&path, &bytes)?;
         self.rt.block_on(self.io.delete(&path))?;
         for mut builder in builders {
             self.done.push(builder.content(DataContentType::Data).partition_spec_id(self.spec_id).build().map_err(|e| anyhow!("building the data file entry: {e}"))?);

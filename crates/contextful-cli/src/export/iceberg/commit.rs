@@ -6,7 +6,7 @@
 //! (`A-run#iceberg-overwrite-commit`).
 
 use super::remote::Storage;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use iceberg::io::FileIO;
 use iceberg::spec::{
     DataFile, FormatVersion, ManifestContentType, ManifestListWriter, ManifestWriterBuilder, Operation, Snapshot, SnapshotReference, SnapshotRetention, Summary, TableMetadata, MAIN_BRANCH,
@@ -35,9 +35,9 @@ async fn fetch(io: &FileIO, storage: &Storage, location: &str) -> Result<()> {
 
 async fn upload(io: &FileIO, storage: &Storage, location: &str, uploaded: &mut Vec<String>) -> Result<()> {
     let bytes = io.new_input(location)?.read().await?;
-    storage.put(location, &bytes)?;
+    // Recorded before the upload, so a lost answer to a kept object still deletes it.
     uploaded.push(location.to_string());
-    Ok(())
+    storage.put(location, &bytes)
 }
 
 /// Build and upload one attempt's manifests and manifest list against `metadata`'s current
@@ -93,8 +93,10 @@ async fn build(meta: &TableMetadata, namespace: &str, name: &str, storage: &Stor
         let list = table.manifest_list_reader(snapshot).load().await?;
         let (path, mut writer) = manifest(1)?;
         for file in list.entries() {
+            // Delete files another engine wrote apply to the data this export replaces; the new
+            // snapshot's manifest list leaves them out, so they stop applying with it.
             if file.content != ManifestContentType::Data {
-                bail!("the parent snapshot carries delete files, which an export never writes");
+                continue;
             }
             fetch(&io, storage, &file.manifest_path).await?;
             for entry in file.load_manifest(&io).await?.entries() {

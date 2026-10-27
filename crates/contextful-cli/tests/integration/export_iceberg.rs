@@ -154,6 +154,8 @@ fn two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second
 #[test]
 fn an_unchanged_export_commits_nothing() {
     let remote = Remote::start();
+    // This catalog vends its credentials in the table `config`.
+    remote.catalog.vend_in_config();
     let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
     let p = dir.path();
     land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
@@ -226,6 +228,18 @@ fn an_unknown_commit_outcome_keeps_its_files_and_the_next_run_records_it() {
     assert_eq!(remote.s3.keys(), before);
     ok(&export(p, "spans-lake", &public, &token));
     assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "a001", "b000"]);
+
+    // An unknown outcome the catalog never applied: the next run finds no such snapshot and deletes its files.
+    land(p, "load-3", "2030-01-01T00:02:00Z", &ids("c", 1));
+    let before = remote.s3.keys();
+    remote.catalog.script(&[Script::NotAppliedThenAnswer(504)]);
+    assert!(err(&export(p, "spans-lake", &public, &token)).contains("outcome is unknown"));
+    let unknown: Vec<String> = remote.s3.keys().into_iter().filter(|k| !before.contains(k)).collect();
+    assert!(!unknown.is_empty(), "the unknown attempt keeps its files");
+    ok(&export(p, "spans-lake", &public, &token));
+    let after = remote.s3.keys();
+    assert!(unknown.iter().all(|k| !after.contains(k)), "the untaken attempt's files are deleted: {unknown:?}");
+    assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "a001", "b000", "c000"]);
 }
 
 /// A source whose columns no longer match the table's current schema raises `ExportSchemaChanged` before any file is
@@ -262,6 +276,7 @@ fn a_table_configuration_naming_an_undeclared_storage_host_refuses() {
     assert!(refused.contains("ExportStorageUndeclared"), "{refused}");
     assert!(remote.s3.keys().is_empty());
     assert_eq!(remote.s3.puts(), 0);
+    assert!(remote.catalog.metadata(NS, TABLE).is_none(), "the table the export created for it is dropped");
 }
 
 /// A token reference no adapter resolves refuses at preflight, before any row is read or any catalog request leaves.
@@ -307,4 +322,23 @@ fn the_published_copy_holds_the_credential_s_masks() {
     for id in &published {
         assert!(!ids("a", 2).contains(id), "the mask did not hold: `{id}` left unmasked");
     }
+}
+
+/// A column the credential's mask rewrites publishes as the text the read face answers, never as its stored type.
+// spec: run.export-iceberg.masked@93752243
+#[test]
+fn a_masked_column_publishes_as_the_text_the_read_face_answers() {
+    let remote = Remote::start();
+    let manifest = format!("[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.columns]\nduration_ms = {{ strategy = \"hash\" }}\n\n{}", remote.block("spans-lake", "svc://mirror", 2));
+    let (dir, public, token) = project(&manifest);
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    ok(&export(p, "spans-lake", &public, &token));
+    let digests = strings(&remote.scan(), "duration_ms");
+    assert_eq!(digests.len(), 2);
+    for digest in &digests {
+        assert_eq!(digest.len(), 32, "{digest}");
+        assert!(digest.bytes().all(|b| b.is_ascii_hexdigit()), "{digest}");
+    }
+    assert_eq!(strings(&remote.scan(), "span_id"), ids("a", 2));
 }

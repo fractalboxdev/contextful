@@ -191,13 +191,18 @@ pub(super) fn check(name: String, block: Block) -> Result<Export, ExportError> {
     Ok(Export { name, table: block.table, endpoint, signal: Signal::Iceberg, key: Vec::new(), schedule: None, headers: BTreeMap::new(), iceberg: Some(target) })
 }
 
+/// One catalog however its URI is spelled: scheme, host, port and path, a trailing `/` dropped.
+fn catalog_key(url: &Url) -> String {
+    format!("{}://{}:{}{}", url.scheme(), url.host_str().unwrap_or_default().to_ascii_lowercase(), url.port_or_known_default().unwrap_or_default(), url.path().trim_end_matches('/'))
+}
+
 /// Refuse two Iceberg exports sharing one namespace under different credentials, one
 /// credential under two namespaces, or one table (`run.export-iceberg.namespace-shared`).
 pub(super) fn namespace_shared(exports: &[Export]) -> Result<(), ExportError> {
     let targets: Vec<(&str, &IcebergTarget)> = exports.iter().filter_map(|e| e.iceberg.as_ref().map(|t| (e.name.as_str(), t))).collect();
     for (i, (a, ta)) in targets.iter().enumerate() {
         for (b, tb) in &targets[i + 1..] {
-            let namespace = |t: &IcebergTarget| (t.catalog.as_str().to_string(), t.warehouse.clone(), t.namespace.clone());
+            let namespace = |t: &IcebergTarget| (catalog_key(&t.catalog), t.warehouse.clone(), t.namespace.clone());
             let why = if namespace(ta) == namespace(tb) && ta.table_name == tb.table_name {
                 Some(format!("both publish table `{}.{}`", ta.namespace, ta.table_name))
             } else if namespace(ta) == namespace(tb) && ta.credential != tb.credential {

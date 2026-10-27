@@ -14009,6 +14009,17 @@
       "line": 484
     },
     {
+      "id": "run.export-iceberg.masked",
+      "contract": "run",
+      "operation": "export-iceberg",
+      "subject": "masked",
+      "kind": "behavior",
+      "statement": "A column the credential's mask rewrites exports at the type {{authority.mask.projected-type}} reads it as, so a masked cell publishes as the read face answers it.",
+      "why": "because a digest published under its column's stored type decodes as bytes it never held",
+      "file": "spec/31-pipeline.md",
+      "line": 486
+    },
+    {
       "id": "run.export-iceberg.fixed-list",
       "contract": "run",
       "operation": "export-iceberg",
@@ -14017,7 +14028,7 @@
       "statement": "A `FixedSizeList<T, n>` column exports as `list<T>`, the exporter reattaching the element's field id and recording `n` in the table property `contextful.fixed-size-list.<column>`.",
       "why": "because Iceberg has no fixed-size list in any format version, and the width is the one fact the cast drops",
       "file": "spec/31-pipeline.md",
-      "line": 486
+      "line": 488
     },
     {
       "id": "run.export-iceberg.timestamp-ns",
@@ -14028,7 +14039,7 @@
       "statement": "Under `format_version = 3`, a nanosecond timestamp column exports as `timestamp_ns` or `timestamptz_ns`, keeping every digit.",
       "why": "because a microsecond cast loses the digit a key or an ordering may depend on",
       "file": "spec/31-pipeline.md",
-      "line": 488
+      "line": 490
     },
     {
       "id": "run.export-iceberg.type-refused",
@@ -14039,7 +14050,7 @@
       "statement": "A nanosecond timestamp column, top-level or nested, under `format_version = 2` raises `ExportTypeUnsupported` naming the column at preflight, before any row is read.",
       "why": "P1",
       "file": "spec/31-pipeline.md",
-      "line": 490,
+      "line": 492,
       "scenarios": [
         "WHEN a table holding a nanosecond timestamp column exports under `format_version = 2`, THEN preflight refuses naming the column and no Parquet file is written."
       ]
@@ -14050,10 +14061,10 @@
       "operation": "export-iceberg",
       "subject": "file-size",
       "kind": "limit",
-      "statement": "The exporter writes data files of at most 128 MiB and opens a new file only when the current one reaches that size.",
+      "statement": "The exporter writes data files of at most 128 MiB, opening a new file before the next rows carry the current one past that size; one row larger than that fills a file alone.",
       "why": "A-topology#catalog-read-add-on",
       "file": "spec/31-pipeline.md",
-      "line": 492
+      "line": 494
     },
     {
       "id": "run.export-iceberg.create",
@@ -14064,7 +14075,7 @@
       "statement": "An export finding no table creates it at the declared format version and commits its files as one `append` snapshot, requiring that `main` does not exist.",
       "why": "A-run#iceberg-overwrite-commit",
       "file": "spec/31-pipeline.md",
-      "line": 494
+      "line": 496
     },
     {
       "id": "run.export-iceberg.overwrite",
@@ -14075,7 +14086,7 @@
       "statement": "Each later export commits one `overwrite` snapshot that adds its new data files and marks every live file of the parent snapshot deleted, requiring the table uuid and `main` at the parent snapshot id.",
       "why": "A-run#iceberg-overwrite-commit",
       "file": "spec/31-pipeline.md",
-      "line": 496
+      "line": 498
     },
     {
       "id": "run.export-iceberg.commit-retry",
@@ -14086,7 +14097,7 @@
       "statement": "A conflicting commit reloads the table and, while the parent's schema and partition spec ids are unchanged, retries with the written files, at most 3 attempts; a changed id or the last conflict raises `ExportCommitConflict`.",
       "why": "A-run#iceberg-overwrite-commit",
       "file": "spec/31-pipeline.md",
-      "line": 498,
+      "line": 500,
       "scenarios": [
         "WHEN catalog compaction commits between the export's table load and its commit, THEN the export reloads, marks the compacted files deleted and commits on its second attempt."
       ]
@@ -14100,7 +14111,7 @@
       "statement": "After {{run.export-iceberg.commit-retry}} refuses, the exporter deletes every data and manifest file that export wrote; a retry deletes only the manifests it supersedes, keeping the data files it reuses.",
       "why": "because catalog maintenance removes only files some snapshot referenced, so an uncommitted file stays until its writer removes it",
       "file": "spec/31-pipeline.md",
-      "line": 500
+      "line": 502
     },
     {
       "id": "run.export-iceberg.commit-unknown",
@@ -14111,7 +14122,7 @@
       "statement": "A commit whose outcome is unknown deletes no file; the next run reloads the table and records the commit as taken when `main` names its snapshot id.",
       "why": "because a commit the catalog applied before the connection dropped references every file it added",
       "file": "spec/31-pipeline.md",
-      "line": 502
+      "line": 504
     },
     {
       "id": "run.export-iceberg.retention",
@@ -14122,7 +14133,7 @@
       "statement": "The exporter expires no snapshot and deletes no committed file; the catalog's snapshot expiration owns retention.",
       "why": "because a reader may still plan a query against the previous snapshot while the next export commits",
       "file": "spec/31-pipeline.md",
-      "line": 504
+      "line": 506
     },
     {
       "id": "run.export-iceberg.frontier",
@@ -14133,7 +14144,7 @@
       "statement": "The export records its committed snapshot id, source frontier, read identity and declared target, and commits nothing when all four equal the table's current snapshot id and the export's present values.",
       "why": "because each retained snapshot holds a full copy, and an unchanged export buys a reader nothing",
       "file": "spec/31-pipeline.md",
-      "line": 506,
+      "line": 508,
       "scenarios": [
         "WHEN an export runs twice with no commit and no grant change between, THEN the second run commits no snapshot."
       ]
@@ -14147,7 +14158,7 @@
       "statement": "A source whose columns or types no longer match the Iceberg table's current schema raises `ExportSchemaChanged` before any file is written; the export evolves no schema.",
       "why": "because a reader's queries name the columns they were written against, and an evolution the exporter chooses changes them unannounced",
       "file": "spec/31-pipeline.md",
-      "line": 508
+      "line": 510
     },
     {
       "id": "run.export-iceberg.audience",
@@ -14158,7 +14169,7 @@
       "statement": "Each Iceberg export publishes for exactly one admitted credential, which maps to exactly one namespace; the route derives the namespace from the caller's credential, and the caller never names one.",
       "why": "A-run#iceberg-audience",
       "file": "spec/31-pipeline.md",
-      "line": 510
+      "line": 512
     },
     {
       "id": "run.export-iceberg.namespace-shared",
@@ -14169,7 +14180,7 @@
       "statement": "Two Iceberg exports naming one namespace under different credentials, one credential under two namespaces, or one table raise `ExportNamespaceShared` at preflight, naming both exports.",
       "why": "A-run#iceberg-audience",
       "file": "spec/31-pipeline.md",
-      "line": 512
+      "line": 514
     },
     {
       "id": "run.export-iceberg.caller-sql",
@@ -14180,7 +14191,7 @@
       "statement": "Caller-written SQL reaches the catalog's query engine only when the warehouse holds one audience; otherwise the route runs fixed query templates against the mapped namespace.",
       "why": "A-run#iceberg-audience",
       "file": "spec/31-pipeline.md",
-      "line": 514
+      "line": 516
     },
     {
       "id": "run.export-iceberg.route",
@@ -14191,7 +14202,7 @@
       "statement": "Where a deployment adds a catalog query engine, the routing Worker sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.",
       "why": "A-topology#catalog-read-add-on",
       "file": "spec/31-pipeline.md",
-      "line": 516
+      "line": 518
     },
     {
       "id": "run.backfill.phase",
@@ -14202,7 +14213,7 @@
       "statement": "A run row records the {{type:contextful_core::run::backfill::PipelinePhase}} it ran under by its snake-case name, and a row without a phase carries no field.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 529
+      "line": 531
     },
     {
       "id": "run.backfill.chunk-plan",
@@ -14213,7 +14224,7 @@
       "statement": "Plan shape follows {{type:contextful_core::run::advance::CursorKind}}: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 530
+      "line": 532
     },
     {
       "id": "run.backfill.chunk",
@@ -14224,7 +14235,7 @@
       "statement": "A chunk row is {{type:contextful_core::run::backfill::ChunkRow}}; an interrupted plan resumes at the first chunk not done.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 531
+      "line": 533
     },
     {
       "id": "run.backfill.chunk-lease",
@@ -14235,7 +14246,7 @@
       "statement": "A worker leases a chunk row, recording node id and attempt, for a 300 s time-to-live renewed every 60 s, and writes under a path segmented by run, node, chunk and attempt.",
       "why": "because an unquantified lease cannot be tested against a paused worker",
       "file": "spec/31-pipeline.md",
-      "line": 532
+      "line": 534
     },
     {
       "id": "run.backfill.fenced-commit",
@@ -14246,7 +14257,7 @@
       "statement": "A chunk commits in one catalog update conditioned on `attempt = :mine AND status != 'done'`; an update matching no row leaves that worker's files uncommitted.",
       "why": "because an expired holder otherwise commits over its successor",
       "file": "spec/31-pipeline.md",
-      "line": 534
+      "line": 536
     },
     {
       "id": "run.backfill.commit-signal",
@@ -14257,7 +14268,7 @@
       "statement": "The catalog row signals commit; directory presence does not. Retention collects files under paths without a done row according to a retention window.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 536
+      "line": 538
     },
     {
       "id": "run.backfill.attempt-isolation",
@@ -14268,7 +14279,7 @@
       "statement": "An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 537
+      "line": 539
     },
     {
       "id": "run.backfill.block",
@@ -14279,7 +14290,7 @@
       "statement": "`[pipeline.backfill]` takes {{type:contextful_core::run::backfill::BackfillBlock}}; `start_from` defaults to zero.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 538
+      "line": 540
     },
     {
       "id": "run.backfill.rewind",
@@ -14290,7 +14301,7 @@
       "statement": "A rewind returns every chunk overlapping the half-open range to pending.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 539
+      "line": 541
     },
     {
       "id": "run.backfill.rewind-invalid",
@@ -14301,7 +14312,7 @@
       "statement": "An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 540
+      "line": 542
     },
     {
       "id": "run.backfill.available-instant",
@@ -14312,7 +14323,7 @@
       "statement": "A backfill lands each row's availability column as {{store.available-time.declaration}} resolves it from the source, while `_ingested_at` stays the commit instant {{run.own.stage-instant}} writes.",
       "why": "because a 2026 backfill of 2014 history stamped with its commit instant answers no availability bound before 2026",
       "file": "spec/31-pipeline.md",
-      "line": 542
+      "line": 544
     },
     {
       "id": "run.seed.block",
@@ -14323,7 +14334,7 @@
       "statement": "`[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 551
+      "line": 553
     },
     {
       "id": "run.seed.one-land-path",
@@ -14334,7 +14345,7 @@
       "statement": "Seeded rows travel {{run.land.stage-order}} unchanged, landing availability and `_ingested_at` as {{run.backfill.available-instant}} does; attribution survives only in the load id and a run recorded under the `seeding` phase.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 552
+      "line": 554
     },
     {
       "id": "run.seed.declaration-missing",
@@ -14345,7 +14356,7 @@
       "statement": "A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/31-pipeline.md",
-      "line": 553
+      "line": 555
     },
     {
       "id": "run.seed.ceiling-breached",
@@ -14356,7 +14367,7 @@
       "statement": "A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/31-pipeline.md",
-      "line": 555
+      "line": 557
     },
     {
       "id": "run.seed.ceiling-point",
@@ -14367,7 +14378,7 @@
       "statement": "The engine evaluates the ceiling on the root batch after normalization and the transform chain, before writing.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 557
+      "line": 559
     },
     {
       "id": "run.seed.ceiling-unevaluable",
@@ -14378,7 +14389,7 @@
       "statement": "A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/31-pipeline.md",
-      "line": 558
+      "line": 560
     },
     {
       "id": "run.seed.scope",
@@ -14389,7 +14400,7 @@
       "statement": "Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 560
+      "line": 562
     },
     {
       "id": "run.seed.connector-pin",
@@ -14400,7 +14411,7 @@
       "statement": "A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 561
+      "line": 563
     },
     {
       "id": "run.seed.ceiling-binding",
@@ -14411,7 +14422,7 @@
       "statement": "On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the other cursor kinds the live position stays unset and starts from the source's beginning.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 562
+      "line": 564
     },
     {
       "id": "run.seed.fingerprint",
@@ -14422,7 +14433,7 @@
       "statement": "Each run probes the seed source for a cheap fingerprint, a stat or a HEAD and never a download, and compares it with the one stamped at commit.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 563
+      "line": 565
     },
     {
       "id": "run.seed.source-changed",
@@ -14433,7 +14444,7 @@
       "statement": "A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/31-pipeline.md",
-      "line": 564
+      "line": 566
     },
     {
       "id": "run.seed.commands",
@@ -14444,7 +14455,7 @@
       "statement": "`seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan and commit stamp, so the next run loads it again.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 566
+      "line": 568
     },
     {
       "id": "run.seed.compaction-cadence",
@@ -14455,7 +14466,7 @@
       "statement": "A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing` at validate and before a fire, naming the table.",
       "why": "A-store#keyed-table-covered",
       "file": "spec/31-pipeline.md",
-      "line": 567
+      "line": 569
     },
     {
       "id": "run.model.model-block",
@@ -14466,7 +14477,7 @@
       "statement": "A `[[model]]` block takes {{type:contextful_core::pipeline::model::ModelSpec}}, with {{run.model.statement-source}}, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.",
       "why": "A-run#model-declared-sql",
       "file": "spec/31-pipeline.md",
-      "line": 574
+      "line": 576
     },
     {
       "id": "run.model.statement-source",
@@ -14477,7 +14488,7 @@
       "statement": "A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.",
       "why": "because a manifest-relative statement file keeps a model portable across project roots",
       "file": "spec/31-pipeline.md",
-      "line": 576
+      "line": 578
     },
     {
       "id": "run.model.top-level-block",
@@ -14488,7 +14499,7 @@
       "statement": "A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.",
       "why": "because a misspelled block parses as nothing, and its declaration silently never runs",
       "file": "spec/31-pipeline.md",
-      "line": 578
+      "line": 580
     },
     {
       "id": "run.model.model-id",
@@ -14499,7 +14510,7 @@
       "statement": "A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 580
+      "line": 582
     },
     {
       "id": "run.model.sql",
@@ -14510,7 +14521,7 @@
       "statement": "A model statement is one read-only `SELECT` over store tables. The engine admits the statement under {{read.guard.whole-tree-walk}} before reading any row. A model reads another model's last published table.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 581
+      "line": 583
     },
     {
       "id": "run.model.validate-statements",
@@ -14521,7 +14532,7 @@
       "statement": "`pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 582
+      "line": 584
     },
     {
       "id": "run.model.validate-undeclared",
@@ -14532,7 +14543,7 @@
       "statement": "`pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.",
       "why": "because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`",
       "file": "spec/31-pipeline.md",
-      "line": 583
+      "line": 585
     },
     {
       "id": "run.model.restricted-input",
@@ -14543,7 +14554,7 @@
       "statement": "A build reading a table whose {{type:contextful_core::store::declare::TableDecl}} declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.",
       "why": "because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader",
       "file": "spec/31-pipeline.md",
-      "line": 585
+      "line": 587
     },
     {
       "id": "run.model.materialized",
@@ -14554,7 +14565,7 @@
       "statement": "`materialized` is `table`, the default: each build replaces the model's rows whole.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 587
+      "line": 589
     },
     {
       "id": "run.model.unique-key",
@@ -14565,7 +14576,7 @@
       "statement": "`unique_key` defines the model's row identity. A build with duplicate key values or a null in a key column refuses as {{run.publish.contract-mismatch}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 588
+      "line": 590
     },
     {
       "id": "run.model.contract-block",
@@ -14576,7 +14587,7 @@
       "statement": "`[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a {{type:contextful_core::pipeline::model::ContractColumn}} with `type` spelled as {{store.reconcile.typed-landing}} reads it and `nullable` defaulting to true.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 594,
+      "line": 596,
       "group": "contracts"
     },
     {
@@ -14588,7 +14599,7 @@
       "statement": "A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.",
       "why": "because a published table without a declared contract has no identity a reader can pin against",
       "file": "spec/31-pipeline.md",
-      "line": 595,
+      "line": 597,
       "group": "contracts"
     },
     {
@@ -14600,7 +14611,7 @@
       "statement": "A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 597,
+      "line": 599,
       "group": "contracts"
     },
     {
@@ -14612,7 +14623,7 @@
       "statement": "Under the published build's major, a contract that drops or retypes a published column, makes a non-null one nullable, adds a non-null column or changes the grain refuses as {{run.publish.contract-mismatch}}, naming the column and the major to bump.",
       "why": "A-run#minor-contract-bump",
       "file": "spec/31-pipeline.md",
-      "line": 598,
+      "line": 600,
       "group": "contracts"
     },
     {
@@ -14624,7 +14635,7 @@
       "statement": "Under the published build's major, a contract that only adds nullable columns or makes nullable ones non-null publishes once its minor exceeds the published one, else refuses as {{run.publish.contract-mismatch}}, naming the added or tightened column and the bumped minor.",
       "why": "A-run#minor-contract-bump",
       "file": "spec/31-pipeline.md",
-      "line": 600,
+      "line": 602,
       "group": "contracts"
     },
     {
@@ -14636,7 +14647,7 @@
       "statement": "A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 602,
+      "line": 604,
       "group": "contracts"
     },
     {
@@ -14648,7 +14659,7 @@
       "statement": "`[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 608,
+      "line": 610,
       "group": "builds"
     },
     {
@@ -14660,7 +14671,7 @@
       "statement": "A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.",
       "why": "because a test must inspect the candidate build before its rows become visible to readers",
       "file": "spec/31-pipeline.md",
-      "line": 609,
+      "line": 611,
       "group": "builds"
     },
     {
@@ -14672,7 +14683,7 @@
       "statement": "A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.",
       "why": "because a test exists to stop a build before readers trust it",
       "file": "spec/31-pipeline.md",
-      "line": 611,
+      "line": 613,
       "group": "builds"
     },
     {
@@ -14684,7 +14695,7 @@
       "statement": "`contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 613,
+      "line": 615,
       "group": "builds"
     },
     {
@@ -14696,7 +14707,7 @@
       "statement": "A guarded model build admits its caller's execution boundary after staging and before changing the persistent schema or published pointer; a refusal discards staging and preserves prior schema, membership and watermark.",
       "why": "because a stopped execution must not publish its staged model",
       "file": "spec/31-pipeline.md",
-      "line": 614,
+      "line": 616,
       "group": "builds"
     },
     {
@@ -14708,7 +14719,7 @@
       "statement": "`build` naming no declared model raises `ModelUndeclared`, naming the declared models.",
       "why": "because a build of a misspelled id otherwise reports nothing to do",
       "file": "spec/31-pipeline.md",
-      "line": 616,
+      "line": 618,
       "group": "builds"
     },
     {
@@ -14720,7 +14731,7 @@
       "statement": "`build` reads each input at its committed frontier and fires no pipeline; a build ordered after a landing is a `build` job naming that pipeline in `after`, under {{surface.fire.build-dependency}}.",
       "why": "because `after` already orders builds behind pipelines, and a verb firing sources needs their credentials and quota, and repeats paid calls on every retry",
       "file": "spec/31-pipeline.md",
-      "line": 618,
+      "line": 620,
       "group": "builds",
       "scenarios": [
         "WHEN a `build` job naming `orders` in `after` fires in the cycle that lands `orders` run `r`, THEN the published build's watermark `through` under `orders_items` reaches the `commit_seq` of `r`."
@@ -14735,7 +14746,7 @@
       "statement": "If a model's `sql` reaches its own id through one or more other models, `pipeline validate`, import, apply and `build` raise `ModelCycle`. The engine names every model on the cycle and reads no store.",
       "why": "because no member of a cycle has a first build, and once one exists each build folds in the other's previous output",
       "file": "spec/31-pipeline.md",
-      "line": 620,
+      "line": 622,
       "group": "builds"
     },
     {
@@ -14747,7 +14758,7 @@
       "statement": "A build's id is the snapshot id it publishes.",
       "why": "A-run#model-declared-sql",
       "file": "spec/31-pipeline.md",
-      "line": 622,
+      "line": 624,
       "group": "builds"
     },
     {
@@ -14759,7 +14770,7 @@
       "statement": "A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.",
       "why": "because a list of omitted runs grows by one key per run on an input no fold covers",
       "file": "spec/31-pipeline.md",
-      "line": 624,
+      "line": 626,
       "group": "builds"
     },
     {
@@ -14771,7 +14782,7 @@
       "statement": "`omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 626,
+      "line": 628,
       "group": "builds"
     },
     {
@@ -14783,7 +14794,7 @@
       "statement": "A watermark input carrying a `runs` list and no `omitted` reads with those runs included under {{run.publish.staleness}}; no build writes `runs`, and every echo of that watermark keeps the list.",
       "why": "because a manifest committed with listed runs stays readable",
       "file": "spec/31-pipeline.md",
-      "line": 627,
+      "line": 629,
       "group": "builds"
     },
     {
@@ -14795,7 +14806,7 @@
       "statement": "`contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.",
       "why": "because a build is reused across horizons only when its own bound is recorded beside it",
       "file": "spec/31-pipeline.md",
-      "line": 629,
+      "line": 631,
       "group": "builds"
     },
     {
@@ -14807,7 +14818,7 @@
       "statement": "`build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 636,
+      "line": 638,
       "group": "holds and status"
     },
     {
@@ -14819,7 +14830,7 @@
       "statement": "`build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 637,
+      "line": 639,
       "group": "holds and status"
     },
     {
@@ -14831,7 +14842,7 @@
       "statement": "A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.",
       "why": "because a hold on a build that does not exist protects nothing and reads as protection",
       "file": "spec/31-pipeline.md",
-      "line": 638,
+      "line": 640,
       "group": "holds and status"
     },
     {
@@ -14843,7 +14854,7 @@
       "statement": "The snapshot manifest commit publishes a table's data, contract identity, freshness and current build together. No separate file is authoritative for these values.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 653
+      "line": 655
     },
     {
       "id": "run.publish.contract-identity",
@@ -14854,7 +14865,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 655
+      "line": 657
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -14865,7 +14876,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 656
+      "line": 658
     },
     {
       "id": "run.publish.staging",
@@ -14876,7 +14887,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 658
+      "line": 660
     },
     {
       "id": "run.publish.history-logs",
@@ -14887,7 +14898,7 @@
       "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` in the model's table directory hold append-only history derived from committed manifests and build-attempt records; each build and hold regenerates them, replacing an entry a source record disagrees with and keeping collected builds' entries.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 660
+      "line": 662
     },
     {
       "id": "run.publish.build-entry",
@@ -14898,7 +14909,7 @@
       "statement": "A `builds.jsonl` entry is a {{type:contextful_core::pipeline::model::BuildEntry}}, its status published, refused, partial or failed.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 661
+      "line": 663
     },
     {
       "id": "run.publish.failed-attempt",
@@ -14909,7 +14920,7 @@
       "statement": "A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.",
       "why": "because a process killed before publication cannot write its own failure, while its attempt record and released lock survive",
       "file": "spec/31-pipeline.md",
-      "line": 662
+      "line": 664
     },
     {
       "id": "run.publish.staleness",
@@ -14920,7 +14931,7 @@
       "statement": "A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 664,
+      "line": 666,
       "scenarios": [
         "WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.",
         "WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `[\"events\"]`, 1 second later.",
@@ -14936,7 +14947,7 @@
       "statement": "An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 666,
+      "line": 668,
       "scenarios": [
         "WHEN a run merged from another node carries a `commit_seq` below `through` and the build never read it, THEN status reports the input stale at once.",
         "WHEN a relational run's group marker lands after a build read a plain run committed above it, THEN status reports the input stale at once."
@@ -14951,7 +14962,7 @@
       "statement": "A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.",
       "why": "because a run manifest may carry no sequence, and {{run.publish.staleness-omitted-check}} catches one the build never read",
       "file": "spec/31-pipeline.md",
-      "line": 668
+      "line": 670
     },
     {
       "id": "run.publish.staleness-collected-covered",
@@ -14962,7 +14973,7 @@
       "statement": "A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.",
       "why": "because a snapshot's `commit_seq` bounds every run it folds",
       "file": "spec/31-pipeline.md",
-      "line": 670
+      "line": 672
     },
     {
       "id": "run.publish.staleness-model-input",
@@ -14973,7 +14984,7 @@
       "statement": "An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 672,
+      "line": 674,
       "scenarios": [
         "WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `[\"daily\"]`, 1 day after the rebuild."
       ]
@@ -14987,7 +14998,7 @@
       "statement": "A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 674
+      "line": 676
     },
     {
       "id": "run.publish.hold",
@@ -14998,7 +15009,7 @@
       "statement": "A hold is a {{type:contextful_core::pipeline::model::HoldRecord}} committed as `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build; collection skips a held build, and a hold confers no other authority.",
       "why": "A-run#model-declared-sql",
       "file": "spec/31-pipeline.md",
-      "line": 676
+      "line": 678
     },
     {
       "id": "run.publish.manifest-section",
@@ -15009,7 +15020,7 @@
       "statement": "The manifest section is the newest publishing build's {{type:contextful_core::pipeline::model::PublishSection}}, its `watermark` as {{run.model.watermark}}; freshness reads off it, and staleness follows {{run.publish.staleness}}, never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 678
+      "line": 680
     },
     {
       "id": "run.publish.semantics-version",
@@ -15020,7 +15031,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 679
+      "line": 681
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -15031,7 +15042,7 @@
       "statement": "A build records a digest over its table's {{type:contextful_core::store::declare::TableDecl}} `class`, `policy` and `visibility`, sorting set-valued fields; the manifest and build log carry it, and any declaration sets `withheld_cells`.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 680
+      "line": 682
     },
     {
       "id": "run.select.required-key",
@@ -22632,6 +22643,17 @@
       "line": 185
     },
     {
+      "id": "authority.mask.projected-type",
+      "contract": "authority",
+      "operation": "mask",
+      "subject": "projected-type",
+      "kind": "behavior",
+      "statement": "A masked column reads as text under every strategy but `drop`, which keeps the stored type; an exception beside a row-selected mask reads as text.",
+      "why": "because both arms of an exception share one projected type, and a digest or token is text whatever it digests",
+      "file": "spec/51-enforcement.md",
+      "line": 187
+    },
+    {
       "id": "authority.mask.one-value",
       "contract": "authority",
       "operation": "mask",
@@ -22640,7 +22662,7 @@
       "statement": "A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 187
+      "line": 189
     },
     {
       "id": "authority.mask.digest-alone",
@@ -22651,7 +22673,7 @@
       "statement": "`hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 189
+      "line": 191
     },
     {
       "id": "authority.mask.high-entropy",
@@ -22662,7 +22684,7 @@
       "statement": "A column of random identifiers or opaque tokens carries `hash` with no combine.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 191
+      "line": 193
     },
     {
       "id": "authority.mask.combine-generalizes",
@@ -22673,7 +22695,7 @@
       "statement": "A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 193
+      "line": 195
     },
     {
       "id": "authority.mask.subject-exception",
@@ -22684,7 +22706,7 @@
       "statement": "A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "authority.mask.in-place",
@@ -22695,7 +22717,7 @@
       "statement": "The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "authority.mask.equality",
@@ -22706,7 +22728,7 @@
       "statement": "An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "authority.mask.aggregates",
@@ -22717,7 +22739,7 @@
       "statement": "Aggregation reads the masked column.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "authority.mask.summarize-only",
@@ -22728,7 +22750,7 @@
       "statement": "`summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "authority.mask.typed-strategy",
@@ -22739,7 +22761,7 @@
       "statement": "A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.",
       "why": "A-store#binary-fixed-size",
       "file": "spec/51-enforcement.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "authority.mask.absent-column",
@@ -22750,7 +22772,7 @@
       "statement": "A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.",
       "why": "because a skipped declaration serves reads under a policy its author believed covered a column",
       "file": "spec/51-enforcement.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "authority.mask.masks-per-table",
@@ -22761,7 +22783,7 @@
       "statement": "A table carries at most 128 entries in its column mask set.",
       "why": "because a table beyond it needs a drop, not a mask per column",
       "file": "spec/51-enforcement.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "authority.mask.hash-width",
@@ -22772,7 +22794,7 @@
       "statement": "`hash` emits 32 chars of hexadecimal.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 216,
+      "line": 218,
       "group": "keyed digest"
     },
     {
@@ -22784,7 +22806,7 @@
       "statement": "`tokenize` emits 20 chars.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 218,
+      "line": 220,
       "group": "keyed digest"
     },
     {
@@ -22796,7 +22818,7 @@
       "statement": "A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 220,
+      "line": 222,
       "group": "keyed digest"
     },
     {
@@ -22808,7 +22830,7 @@
       "statement": "A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 222,
+      "line": 224,
       "group": "keyed digest"
     },
     {
@@ -22820,7 +22842,7 @@
       "statement": "Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 224,
+      "line": 226,
       "group": "keyed digest"
     },
     {
@@ -22832,7 +22854,7 @@
       "statement": "One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 226,
+      "line": 228,
       "group": "keyed digest"
     },
     {
@@ -22844,7 +22866,7 @@
       "statement": "Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 228,
+      "line": 230,
       "group": "keyed digest"
     },
     {
@@ -22856,7 +22878,7 @@
       "statement": "`hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 230,
+      "line": 232,
       "group": "keyed digest"
     },
     {
@@ -22868,7 +22890,7 @@
       "statement": "Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 232,
+      "line": 234,
       "group": "keyed digest"
     },
     {
@@ -22880,7 +22902,7 @@
       "statement": "A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 234,
+      "line": 236,
       "group": "keyed digest"
     },
     {
@@ -22892,7 +22914,7 @@
       "statement": "A tenant-scoped credential reading another tenant's rows on a granted table raises `EnforceScopeDenied`, as wire code `scope_denied`, HTTP `403` or an in-band tool error, naming the table and both scopes.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "authority.refuse.not-empty",
@@ -22903,7 +22925,7 @@
       "statement": "A scope refusal is a typed error, never an empty result.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "authority.refuse.echo",
@@ -22914,7 +22936,7 @@
       "statement": "The requested scope in a refusal echoes the statement's value, never a stored value.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "authority.refuse.ungranted-table",
@@ -22925,7 +22947,7 @@
       "statement": "A relation the caller holds no grant on, whether or not a table of that name exists, raises `EnforceUnknownRelation` and is absent from listings and descriptions.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "authority.refuse.payload",
@@ -22936,7 +22958,7 @@
       "statement": "A refusal payload carries at most 512 B.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "authority.refuse.scope-guard",
@@ -22947,7 +22969,7 @@
       "statement": "The scope guard walks the engine's parse once, deciding literal equalities and membership lists over the tenant column and bound template parameters destined for it.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "authority.refuse.top-level",
@@ -22958,7 +22980,7 @@
       "statement": "The guard reads top-level conjuncts of a statement whose own FROM names a scoped table.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "authority.refuse.guard-walk",
@@ -22969,7 +22991,7 @@
       "statement": "The guard visits at most 4096 entries of one parse tree.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 255
+      "line": 257
     },
     {
       "id": "authority.refuse.undecidable",
@@ -22980,7 +23002,7 @@
       "statement": "A constraint the guard cannot settle composes as an ordinary conjunct; the engine-applied equality isolates.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 257
+      "line": 259
     },
     {
       "id": "authority.refuse.drifted-scope",
@@ -22991,7 +23013,7 @@
       "statement": "A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.",
       "why": "A-authority#one-credential",
       "file": "spec/51-enforcement.md",
-      "line": 259
+      "line": 261
     },
     {
       "id": "authority.bound-redistribution.withhold",
@@ -23002,7 +23024,7 @@
       "statement": "A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "authority.bound-redistribution.before-diff",
@@ -23013,7 +23035,7 @@
       "statement": "The exclusion applies before the object diff is computed.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "authority.bound-redistribution.outranks-grants",
@@ -23024,7 +23046,7 @@
       "statement": "The bound holds against a credential granted everything.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "authority.bound-redistribution.envelopes",
@@ -23035,7 +23057,7 @@
       "statement": "The bound covers the table's columnar files and each pull's verbatim record.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "authority.bound-redistribution.root-allowlist",
@@ -23046,7 +23068,7 @@
       "statement": "While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "authority.bound-redistribution.root-not-allowlisted",
@@ -23057,7 +23079,7 @@
       "statement": "A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 276
+      "line": 278
     },
     {
       "id": "authority.bound-redistribution.left-behind",
@@ -23068,7 +23090,7 @@
       "statement": "Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 278
+      "line": 280
     },
     {
       "id": "authority.bound-redistribution.manifest-is-an-index",
@@ -23079,7 +23101,7 @@
       "statement": "An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "authority.bound-redistribution.report",
@@ -23090,7 +23112,7 @@
       "statement": "A left-behind report names at most 100 files and states the total found.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "authority.bound-redistribution.two-checks",
@@ -23101,7 +23123,7 @@
       "statement": "The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "authority.bound-redistribution.edge-filter",
@@ -23112,7 +23134,7 @@
       "statement": "A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "authority.bound-redistribution.edge-whole-table",
@@ -23123,7 +23145,7 @@
       "statement": "The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object outside `access/`, `control/` and `stale_memory.idx` only under such a grant on `*`.",
       "why": "because a table's files hold every row a narrowing grant removes, run states and cursor logs name tables, and a query re-applies only what the replica holds",
       "file": "spec/51-enforcement.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "authority.place.zone-string",
@@ -23134,7 +23156,7 @@
       "statement": "A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "authority.place.allow-set-entry",
@@ -23145,7 +23167,7 @@
       "statement": "An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "authority.place.unparsed-pattern",
@@ -23156,7 +23178,7 @@
       "statement": "An allow-set entry matching no entry form raises `EnforceZonePatternUnparsed`, naming the entry.",
       "why": "because an unparsed entry matching nothing hides a policy error; a new zone category updates the grammar first",
       "file": "spec/51-enforcement.md",
-      "line": 299
+      "line": 301
     },
     {
       "id": "authority.place.disjunctive",
@@ -23167,7 +23189,7 @@
       "statement": "A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "authority.place.undeclared",
@@ -23178,7 +23200,7 @@
       "statement": "Only `*` admits an undeclared zone.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 303
+      "line": 305
     },
     {
       "id": "authority.place.caller-zone",
@@ -23189,7 +23211,7 @@
       "statement": "The calling process declares its zone per request; the store carries none.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 305
+      "line": 307
     },
     {
       "id": "authority.place.asserted-zone",
@@ -23200,7 +23222,7 @@
       "statement": "A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.",
       "why": "because an unsigned argument able to widen placement makes the signed zone decorative",
       "file": "spec/51-enforcement.md",
-      "line": 307
+      "line": 309
     },
     {
       "id": "authority.place.fail-closed",
@@ -23211,7 +23233,7 @@
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "authority.place.protected-floor",
@@ -23222,7 +23244,7 @@
       "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "authority.place.floor-widened",
@@ -23233,7 +23255,7 @@
       "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "authority.place.removal-with-public-cloud",
@@ -23244,7 +23266,7 @@
       "statement": "A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "authority.place.narrowest-grain",
@@ -23255,7 +23277,7 @@
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "authority.place.row-zone-column",
@@ -23266,7 +23288,7 @@
       "statement": "A table's `policy.zone.column` names a column whose value, one allow-set entry, narrows its row's set as a column's set narrows its table's; a null keeps the table's set, and an unparsed value admits no zone.",
       "why": "because the store owner declares the column in the table's policy and its value only narrows, unlike the binding's advisory key {{run.bind.advisory-zone}} refuses",
       "file": "spec/51-enforcement.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "authority.place.excluded-row",
@@ -23277,7 +23299,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "authority.place.excluded-cell",
@@ -23288,7 +23310,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "authority.place.per-principal",
@@ -23299,7 +23321,7 @@
       "statement": "A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "authority.place.unauthored-row",
@@ -23310,7 +23332,7 @@
       "statement": "A row the engine landed with no authenticated subject takes its table's set; only a row whose author the engine cannot verify resolves as an undeclared zone.",
       "why": "because a pipeline-landed row carries no author to narrow by, and treating it as undeclared withholds every such row from any table not admitting `*`",
       "file": "spec/51-enforcement.md",
-      "line": 327
+      "line": 329
     },
     {
       "id": "authority.place.evidence-floor",
@@ -23321,7 +23343,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 329
+      "line": 331
     },
     {
       "id": "authority.place.empty-evidence",
@@ -23332,7 +23354,7 @@
       "statement": "A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.",
       "why": "because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set",
       "file": "spec/51-enforcement.md",
-      "line": 331
+      "line": 333
     },
     {
       "id": "authority.place.incognito",
@@ -23343,7 +23365,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 333
+      "line": 335
     },
     {
       "id": "authority.place.incognito-widening",
@@ -23354,7 +23376,7 @@
       "statement": "A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 335
+      "line": 337
     },
     {
       "id": "authority.place.team-default",
@@ -23365,7 +23387,7 @@
       "statement": "`[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "authority.place.default-widened",
@@ -23376,7 +23398,7 @@
       "statement": "Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.",
       "why": "because a default any minter replaces bounds nothing the project owner chose",
       "file": "spec/51-enforcement.md",
-      "line": 339
+      "line": 341
     },
     {
       "id": "authority.place.serve-outcome",
@@ -23387,7 +23409,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 341
+      "line": 343
     },
     {
       "id": "authority.place.envelope",
@@ -23398,7 +23420,7 @@
       "statement": "A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "authority.place.excluded-disclosed",
@@ -23409,7 +23431,7 @@
       "statement": "`rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.",
       "why": "A-read#zone-withheld-relation",
       "file": "spec/51-enforcement.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -23420,7 +23442,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -23431,7 +23453,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 349
+      "line": 351
     },
     {
       "id": "authority.place.identifier-length",
@@ -23442,7 +23464,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -23453,7 +23475,7 @@
       "statement": "A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.",
       "why": "A-read#store-holds-nothing",
       "file": "spec/51-enforcement.md",
-      "line": 360
+      "line": 362
     },
     {
       "id": "authority.resist.read-only-face",
@@ -23464,7 +23486,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/51-enforcement.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "authority.resist.write-tool",
@@ -23475,7 +23497,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/51-enforcement.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "disclosure.mirror.unbound-table",
@@ -35115,6 +35137,10 @@
     [
       "run.export-iceberg.token-preflight",
       "connector.resolve.unresolved-name"
+    ],
+    [
+      "run.export-iceberg.masked",
+      "authority.mask.projected-type"
     ],
     [
       "run.export-iceberg.orphans",
@@ -49612,6 +49638,15 @@
         "proved": false
       }
     ],
+    "authority.mask.projected-type": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
+        "name": "a_masked_column_reads_as_text_under_every_strategy_but_drop",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "authority.mask.pseudonymous": [
       {
         "kind": "test",
@@ -60528,6 +60563,15 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
         "name": "an_unchanged_export_commits_nothing",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export-iceberg.masked": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "a_masked_column_publishes_as_the_text_the_read_face_answers",
         "verdict": "performed",
         "proved": false
       }

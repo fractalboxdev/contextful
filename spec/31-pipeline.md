@@ -483,13 +483,15 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
   *A-topology#one-egress*
 - `cast` — Each column takes the Iceberg type holding every value its stored type does: `int`, `long`, `double`, `boolean`, `string` for text and JSON, `binary`, `fixed[n]`, and nested `struct`, `list` and `map`; a variant exports as its tagged struct.
   *because a reader of the copy sees every source value unchanged, and the read face answers each cell in its stored type*
+- `masked` — A column the credential's mask rewrites exports at the type {{authority.mask.projected-type}} reads it as, so a masked cell publishes as the read face answers it.
+  *because a digest published under its column's stored type decodes as bytes it never held*
 - `fixed-list` — A `FixedSizeList<T, n>` column exports as `list<T>`, the exporter reattaching the element's field id and recording `n` in the table property `contextful.fixed-size-list.<column>`.
   *because Iceberg has no fixed-size list in any format version, and the width is the one fact the cast drops*
 - `timestamp-ns` — Under `format_version = 3`, a nanosecond timestamp column exports as `timestamp_ns` or `timestamptz_ns`, keeping every digit.
   *because a microsecond cast loses the digit a key or an ordering may depend on*
 - `type-refused` — A nanosecond timestamp column, top-level or nested, under `format_version = 2` raises `ExportTypeUnsupported` naming the column at preflight, before any row is read.
   *P1*
-- `file-size` — The exporter writes data files of at most 128 MiB and opens a new file only when the current one reaches that size.
+- `file-size` — The exporter writes data files of at most 128 MiB, opening a new file before the next rows carry the current one past that size; one row larger than that fills a file alone.
   *A-topology#catalog-read-add-on*
 - `create` — An export finding no table creates it at the declared format version and commits its files as one `append` snapshot, requiring that `main` does not exist.
   *A-run#iceberg-overwrite-commit*

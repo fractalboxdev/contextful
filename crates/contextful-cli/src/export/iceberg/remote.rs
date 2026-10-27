@@ -81,7 +81,11 @@ impl Catalog {
     }
 
     fn exchange(&self, method: &str, url: &Url, body: Option<&Value>) -> Result<(u16, Value), String> {
-        let mut headers = vec![("Authorization".to_string(), HeaderValue::Sensitive(self.bearer.clone()))];
+        // A catalog vends table credentials only to a client asking for them.
+        let mut headers = vec![
+            ("Authorization".to_string(), HeaderValue::Sensitive(self.bearer.clone())),
+            ("X-Iceberg-Access-Delegation".to_string(), HeaderValue::Plain("vended-credentials".to_string())),
+        ];
         let bytes = body.map(|b| b.to_string().into_bytes());
         if bytes.is_some() {
             headers.push(("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string())));
@@ -120,6 +124,14 @@ impl Catalog {
         }
     }
 
+    /// Drop a table this export created and published nothing into.
+    pub fn drop_table(&self) -> Result<()> {
+        match self.request("DELETE", &self.table_url()?, None)?.0 {
+            200..=299 | 404 => Ok(()),
+            status => bail!("the catalog answered {status} dropping `{}.{}`", self.namespace, self.table),
+        }
+    }
+
     /// Send one `updateTable` request.
     pub fn commit(&self, body: &Value) -> Result<Commit> {
         Ok(match self.exchange("POST", &self.table_url()?, Some(body)) {
@@ -132,9 +144,19 @@ impl Catalog {
     }
 }
 
+fn strings(value: &Value) -> HashMap<String, String> {
+    value.as_object().map(|c| c.iter().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect()).unwrap_or_default()
+}
+
+/// The table's metadata and its storage configuration: the `config` map, overlaid by the
+/// `storage-credentials` entry whose prefix is the longest one the table location carries.
 fn loaded(body: Value) -> Result<Loaded> {
     let metadata: TableMetadata = serde_json::from_value(body["metadata"].clone()).context("reading the catalog's table metadata")?;
-    let config = body["config"].as_object().map(|c| c.iter().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect()).unwrap_or_default();
+    let mut config = strings(&body["config"]);
+    let vended = body["storage-credentials"].as_array().into_iter().flatten().filter(|c| c["prefix"].as_str().is_some_and(|p| metadata.location().starts_with(p)));
+    if let Some(best) = vended.max_by_key(|c| c["prefix"].as_str().map_or(0, str::len)) {
+        config.extend(strings(&best["config"]));
+    }
     Ok(Loaded { metadata, config })
 }
 
