@@ -11,6 +11,8 @@ dist/
 .worktrees/
 .pnpm-store/
 .wrangler/
+# A Cloudflare app's config rendered with one account's resource identifiers.
+wrangler.deploy.jsonc
 
 # Secrets. A dotenvx-encrypted file is tracked deliberately and force-added;
 # an unencrypted one never reaches a remote.

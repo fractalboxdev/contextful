@@ -10,6 +10,7 @@ mod capability;
 mod compile_only;
 mod cli_parts;
 mod dependency_versions;
+mod deploy;
 mod deny;
 mod disk;
 mod domain;

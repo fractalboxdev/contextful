@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 306 | 0 | 306 |
+| `assurance` | 3 | 19 | 359 | 76 | 26 | 3 | 318 | 0 | 318 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2923 | 711 | 235 | 82 | 2597 | 0 | |
+| **total** | 26 | 178 | 2935 | 714 | 236 | 82 | 2609 | 0 | |
 
 Decision records: 18.
 
@@ -50,7 +50,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
 
-Unscheduled operations: 13.
+Unscheduled operations: 14.
 
 ## Pins
 
@@ -160,6 +160,18 @@ Unscheduled operations: 13.
 | `assurance.consumer.scenarios` | `spec/pins.toml` | performed |
 | `assurance.consumer.suite` | `spec/pins.toml` | performed |
 | `assurance.consumer.verdict-exit` | `spec/pins.toml` | performed |
+| `assurance.deploy-apps.container-image` | `tools/ci/tests/integration/deploy.rs::the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier` | performed |
+| `assurance.deploy-apps.credentials-absent` | `tools/ci/tests/integration/deploy.rs::a_deploy_without_either_cloudflare_variable_names_it_before_any_command` | performed |
+| `assurance.deploy-apps.expected-status` | `tools/ci/tests/integration/deploy.rs::the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier` | performed |
+| `assurance.deploy-apps.health` | `tools/ci/tests/integration/deploy.rs::an_unexpected_status_is_unhealthy_and_a_failed_deploy_prints_redacted` | performed |
+| `assurance.deploy-apps.job-timeout` | `tools/ci/tests/integration/deploy.rs::the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials` | performed |
+| `assurance.deploy-apps.one-command` | `tools/ci/tests/integration/deploy.rs::the_committed_workflow_passes_and_runs_the_operator_command` | performed |
+| `assurance.deploy-apps.quiet-output` | `tools/ci/tests/integration/deploy.rs::the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier` | performed |
+| `assurance.deploy-apps.resources` | `tools/ci/tests/integration/deploy.rs::the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier` | performed |
+| `assurance.deploy-apps.workflow-credentials` | `tools/ci/tests/integration/deploy.rs::the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials` | performed |
+| `assurance.deploy-apps.workflow-permissions` | `tools/ci/tests/integration/deploy.rs::the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials` | performed |
+| `assurance.deploy-apps.workflow-refused` | `tools/ci/tests/integration/deploy.rs::the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials` | performed |
+| `assurance.deploy-apps.workflow-trigger` | `tools/ci/tests/integration/deploy.rs::the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials` | performed |
 | `assurance.differential-test.builds` | `crates/contextful-cli/tests/integration/differential.rs::a_webassembly_build_deciding_apart_from_the_native_build_is_a_disagreement` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |

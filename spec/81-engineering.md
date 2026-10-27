@@ -12,6 +12,7 @@ owns:
   - forecast
   - measure
   - release
+  - deploy-apps
 ---
 
 # Engineering gates and the quality harness
@@ -612,6 +613,35 @@ The release tag's version, the refusals guarding it, the signed annotated tag `c
 - `assurance.release.version-regressed`: WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`.
 - `assurance.release.store-format`: WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`.
 - `assurance.release.format-break-patch`: WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`.
+
+## deploy-apps
+
+The one GitHub Actions workflow, its trigger, permission and credential shape, and `contextful-ci deploy cloudflare`, the command it and an operator run to ship one Cloudflare app.
+
+- `workflow-trigger` — The workflow `.github/workflows/deploy-cloudflare.yml`, written in YAML's JSON subset, starts on `workflow_dispatch` alone, with a required `app` choice listing every app the deploy command ships and an optional `ref` string.
+  *because a deploy then starts only when an operator names one app, never from a push, a schedule or a pull request*
+- `workflow-permissions` — The workflow grants `contents: read` alone, runs one job on the `ubuntu-24.04` image, pins each `uses` to a 40-hex commit of `actions/checkout` or `actions/setup-node`, and checks out without persisting credentials.
+  *because a tag an action's owner moves runs unreviewed code beside the deploy token*
+- `workflow-credentials` — The workflow reads exactly the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, into its deploy step's environment, and carries no URL, hostname or run of 32 hex digits outside a pinned commit.
+  *because the repository is public, and each organization deploys into its own account*
+- `job-timeout` — The deploy job's `timeout-minutes` is at most 90 min.
+  *because a full-profile release build with its conformance pass fits that, and a hung deploy holds the token no longer*
+- `one-command` — The workflow's one `run` step is `contextful-ci deploy cloudflare --app "$APP"`, the command an operator runs locally with the same two environment variables.
+  *because a local deploy and a workflow deploy then execute one code path*
+- `workflow-refused` — Another file under `.github/workflows`, or a deploy workflow breaching {{assurance.deploy-apps.workflow-trigger}}, {{assurance.deploy-apps.workflow-permissions}}, {{assurance.deploy-apps.workflow-credentials}}, {{assurance.deploy-apps.job-timeout}} or {{assurance.deploy-apps.one-command}}, raises `DeployWorkflowRefused` in the schema stage, naming the file and the breach.
+  *because the token's reach then stays reviewable in one file every change is checked against*
+- `credentials-absent` — `contextful-ci deploy cloudflare` with `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` unset or empty raises `DeployCredentialsAbsent`, naming the variable, before any command runs.
+  *because wrangler otherwise falls back to an interactive login or a cached account*
+- `resources` — The command creates each D1 database and R2 bucket the app's `wrangler.example.jsonc` binds when absent, named after the Worker and binding, and writes their identifiers only into the untracked `wrangler.deploy.jsonc` beside it.
+  *because an identifier belongs to one account, and the committed template serves every account*
+- `container-image` — For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares the image context from that archive before `wrangler deploy`.
+  *because the image then carries the exact binary its release metadata and compatibility report name*
+- `health` — After `wrangler deploy`, the command sends one anonymous `GET /` to the URL wrangler reports, retrying while no answer arrives, and prints the status alone; a status outside the app's expected set raises `DeployUnhealthy`.
+  *because wrangler reports success before the Worker answers*
+- `expected-status` — The execution app answers `GET /` with 404, the gateway with 404 or 503, and the console with 200 or 302.
+  *because each answer is the app's unauthenticated default: no route, no configured store, the prerendered page*
+- `quiet-output` — The command prints its step names and the health status; wrangler's output prints only on failure, with each URL and each run of 32 or more hex digits replaced.
+  *because a public repository's Actions logs are public, and wrangler's output names the account's subdomain and resource identifiers*
 
 ## Shapes
 

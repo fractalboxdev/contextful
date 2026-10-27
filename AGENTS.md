@@ -181,6 +181,24 @@ untracked. A deliberate restatement of an engine rule carries `mirrors: <clause 
 its site, and `contextful-ci mirrors` resolves each one. The pull-request template asks
 the four boundary questions.
 
+## Deploying a Cloudflare app
+
+`.github/workflows/deploy-cloudflare.yml` is the one Actions workflow: dispatched by
+hand, read-only, one job, its actions pinned by commit, and credentials read only from
+the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets. The schema stage holds
+it to that shape (`contextful-ci deploy workflow`, `assurance.deploy-apps`). Its one step
+is the command an operator runs locally with the same two variables exported:
+
+```sh
+cargo run --locked -q -p contextful-ci -- deploy cloudflare --app <cloudflare-execution|gateway|console>
+```
+
+The command creates the D1 databases and R2 buckets an app's `wrangler.example.jsonc`
+binds when absent, writes their identifiers only into the untracked
+`wrangler.deploy.jsonc`, builds the execution app's image from a `contextful-full` musl
+release, runs `wrangler deploy` and prints the health status. Worker secrets stay
+`wrangler secret put` operations outside the command.
+
 ## Engineering conventions
 
 [`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we
