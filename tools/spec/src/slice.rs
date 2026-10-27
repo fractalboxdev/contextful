@@ -164,7 +164,7 @@ pub fn build(c: &Corpus, target: &str) -> Result<Slice> {
     let groups = c
         .group_ledes()
         .into_iter()
-        .filter(|(key, _)| key.rsplit_once('.').is_some_and(|(op, _)| ops.contains(op)))
+        .filter(|(key, _)| group_key(key).is_some_and(|(op, _)| ops.contains(op)))
         .map(|(key, t)| (key, t.to_string()))
         .collect();
     let summary = Summary { clauses: own.len(), pointed: pointed.len(), pointers: edges.len(), records: records.len() };
@@ -191,23 +191,30 @@ fn table(s: &mut String, rows: &[&Row]) {
     s.push('\n');
 }
 
+/// A group key `<contract>.<operation>.<group>` split after its operation, so a group
+/// heading holding a `.` stays whole.
+fn group_key(key: &str) -> Option<(&str, &str)> {
+    let mut dots = key.match_indices('.').map(|(i, _)| i);
+    let at = dots.nth(1)?;
+    Some((&key[..at], &key[at + 1..]))
+}
+
 /// The target's clauses, one table per run of an operation's ungrouped clauses and one
 /// per `### <group>`, each group under its heading and lede.
 fn grouped(s: &mut String, sl: &Slice) {
-    let mut runs: Vec<(Option<String>, Vec<&Row>)> = Vec::new();
+    let mut runs: Vec<(Option<(&str, &str)>, Vec<&Row>)> = Vec::new();
     for r in &sl.clauses {
         let op = r.id.rsplit_once('.').map(|(op, _)| op).unwrap_or_default();
-        let key = r.group.as_ref().map(|g| format!("{op}.{g}"));
+        let key = r.group.as_deref().map(|g| (op, g));
         match runs.last_mut() {
             Some((k, rows)) if *k == key => rows.push(r),
             _ => runs.push((key, vec![r])),
         }
     }
     for (key, rows) in runs {
-        if let Some(key) = &key {
-            let (op, g) = key.rsplit_once('.').unwrap_or_default();
+        if let Some((op, g)) = key {
             let _ = writeln!(s, "### `{op}` · {g}\n");
-            if let Some(lede) = sl.groups.get(key) {
+            if let Some(lede) = sl.groups.get(&format!("{op}.{g}")) {
                 let _ = writeln!(s, "{lede}\n");
             }
         }
