@@ -64,7 +64,8 @@ pub enum ExportCmd {
         #[arg(long)] declaration: Option<PathBuf>,
         #[command(flatten)] admit: AdmitArgs,
     },
-    /// Deliver every row an export's cursor has not passed to its OTLP target.
+    /// Deliver every row an export's cursor has not passed to its OTLP target, or commit one
+    /// snapshot of an Iceberg export's admitted rows to its catalog.
     Run {
         name: String,
         #[command(flatten)]

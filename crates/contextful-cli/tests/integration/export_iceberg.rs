@@ -137,7 +137,8 @@ fn two_exports_commit_an_append_then_an_overwrite_and_the_reader_sees_the_second
     let durations: i64 = batches.iter().map(|b| b.column_by_name("duration_ms").unwrap().as_primitive::<Int64Type>().iter().flatten().sum::<i64>()).sum();
     assert_eq!(durations, 10 + 11 + 12 + 10 + 11);
     for batch in &batches {
-        assert!(batch.schema().fields().iter().all(|f| !f.name().starts_with('_')), "the engine's own columns stay its own: {:?}", batch.schema());
+        let names: Vec<&str> = batch.schema_ref().fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names, ["duration_ms", "span_id"], "the engine's own columns stay its own");
     }
     assert_eq!(remote.operations(), [Operation::Append, Operation::Overwrite]);
     let live = remote.catalog.live_files(&remote.s3, NS, TABLE);
