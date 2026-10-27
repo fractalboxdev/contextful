@@ -126,6 +126,16 @@ fn a_chart_without_direction_too_deep_or_too_large_is_a_layout_finding() {
     assert_eq!(added(&big, "SpecDiagramLayout").len(), 1, "{:?}", added(&big, "SpecDiagramLayout"));
 }
 
+// spec: corpus.diagram.no-link@118f04ea
+#[test]
+fn a_click_directive_on_a_flowchart_node_is_a_link_finding() {
+    let plain = "flowchart LR\n  A[\"writer\"] -->|\"rows\"| T[(catalog)]\n";
+    assert!(added(plain, "SpecDiagramLink").is_empty());
+    let linked = "flowchart LR\n  A[\"writer\"] -->|\"rows\"| T[(catalog)]\n  click A href \"/docs/specs/contracts/10-store/#reserve\" \"Writes rows.\"\n";
+    let found = added(linked, "SpecDiagramLink");
+    assert!(found.len() == 1 && found[0].contains("`A`"), "{found:?}");
+}
+
 // spec: corpus.diagram.sequence@4281c187
 #[test]
 fn a_sequence_with_undeclared_or_too_many_parts_is_a_sequence_finding() {

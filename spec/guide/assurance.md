@@ -28,13 +28,6 @@ flowchart LR
   AUDIT -->|"audit verdict"| GATE["CI gate"]
   DIFF -->|"agreement verdict"| GATE
   EVAL["quality harness"] -->|"retrieval scores"| GATE
-  click SPEC href "/docs/specs/contracts/80-formal/#model" "The specification names the decisions the models describe. Each model definition is written from those rules and from no engine source."
-  click MODEL href "/docs/specs/contracts/80-formal/#prove" "Purpose: Describe policy and protocol decisions as mathematical models.<br>Evidence: Lean checks the stated properties.<br>Scope: Each proof identifies its assumptions and the behavior it leaves open."
-  click ENGINE href "/docs/specs/contracts/80-formal/#differential-test" "The store engine supplies the implementation answers. The differential harness compares selected decision functions with the reference, which runs the proved model definitions. External reads and writes lie outside that comparison."
-  click AUDIT href "/docs/specs/contracts/80-formal/#audit-assumptions" "Purpose: Check the assumptions behind compiled proofs.<br>Checks: Follow theorem dependencies, inspect allowed assumptions and compare statements with the declared inventory.<br>Example: A proof hole fails the audit even when compilation succeeds."
-  click DIFF href "/docs/specs/contracts/80-formal/#differential-test" "Purpose: Compare the model and engine on the same generated inputs.<br>On disagreement: Shrink the case, record a reproducible counterexample and replay it before fresh cases.<br>Example: The reference admits a zone that the engine rejects."
-  click EVAL href "/docs/specs/contracts/81-engineering/#evaluate" "The quality harness reads test data through the real store and access-control path. It checks forbidden results and the declared retrieval-quality baseline. These measurements supply evidence about search behavior."
-  click GATE href "/docs/specs/contracts/83-gate/#gate" "The gate combines required checks into a verdict. Required pull-request checks and nightly checks run as separate tiers; each part reports its own result and evidence."
 ```
 
 ## Models and proofs
@@ -106,6 +99,8 @@ entries in the improving direction ({{assurance.baseline.raise-only}}).
 
 A **backtest** replays historical cases. The report places each case by its resolution instant
 relative to the reader model's training cutoff ({{assurance.backtest.cutoff-slice}}).
+A split removes from training every case whose label interval overlaps a test case's, and
+every case starting within the embargo span after a test fold ends ({{assurance.backtest.split}}).
 
 ```mermaid
 flowchart LR
@@ -116,8 +111,8 @@ flowchart LR
   EXPOSED -->|"scores"| EST
   UNSEEN -->|"scores"| EST
   CASES -->|"label intervals"| FOLD{"Where does the label fall?"}
-  FOLD -->|"overlaps a test label"| PURGED["purged cases"]
-  FOLD -->|"inside embargo span"| EMBARGOED["embargoed cases"]
+  FOLD -->|"overlaps a test label"| PURGED["purged training cases"]
+  FOLD -->|"starts within post-fold embargo"| EMBARGOED["embargoed training cases"]
   FOLD -->|"clear of both"| TRAIN["training fold"]
 ```
 
