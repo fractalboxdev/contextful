@@ -130,3 +130,18 @@ fn slice_diff_lists_the_clauses_whose_tagged_tests_the_change_edits() {
     assert!(printed.contains(CLAUSE) && printed.contains(&statement(&s, CLAUSE)), "{printed}");
     assert!(!printed.contains(OTHER), "{printed}");
 }
+
+#[test]
+fn slice_diff_counts_an_untracked_test_file_as_wholly_added() {
+    let s = Scratch::copy();
+    let (a, b) = (scaffolded_tag(&s, CLAUSE), scaffolded_tag(&s, OTHER));
+    s.write(FILE, &format!("{b}\n#[test]\nfn length() {{\n    assert_eq!(2, 2);\n}}\n"));
+    git(&s, &["init", "-q", "-b", "main"]);
+    git(&s, &["-c", "user.name=t", "-c", "user.email=t@example.com", "add", "-A"]);
+    git(&s, &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "base"]);
+    let added = FILE.replace(".rs", "_added.rs");
+    s.write(&added, &format!("{a}\n#[test]\nfn words() {{\n    assert_eq!(1, 1);\n}}\n"));
+    let printed = ok(&s.cmd(&["slice", "--diff", "HEAD"]));
+    assert!(printed.contains(CLAUSE), "{printed}");
+    assert!(!printed.contains(OTHER), "{printed}");
+}
