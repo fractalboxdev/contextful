@@ -1,0 +1,14 @@
+extends: existence
+message: "Use 'must', 'must not' or 'may' for a requirement, or the present tense for behavior — not '%s'."
+link: https://www.plainlanguage.gov/guidelines/conversational/use-must-to-indicate-requirements/
+level: error
+ignorecase: true
+tokens:
+  - shall
+  - should
+  - ought to
+  - needs? to
+  - has to
+  - have to
+  - is required to
+  - are required to

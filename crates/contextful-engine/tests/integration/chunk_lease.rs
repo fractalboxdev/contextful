@@ -37,9 +37,10 @@ fn land(root: &Path, hold: &ChunkHold) -> PathBuf {
     dir
 }
 
-/// Plan shape follows cursor kind: `monotonic` plans independent chunks, `opaque-token` one sequential chunk walked in
-/// order, `snapshot-id` version ranges sequential per stream and parallel across streams.
-// spec: run.backfill.chunk-plan@d001b76d
+/// Plan shape follows {{type:contextful_core::run::advance::CursorKind}}: `monotonic` plans independent time-window
+/// or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential
+/// per stream and parallel across streams.
+// spec: run.backfill.chunk-plan@cad84790
 #[test]
 fn a_plans_shape_follows_its_cursor_kind_and_a_sequential_plan_leases_one_chunk_at_a_time() {
     let rig = Rig::new();
@@ -67,9 +68,9 @@ fn a_plans_shape_follows_its_cursor_kind_and_a_sequential_plan_leases_one_chunk_
     assert_eq!(lease(&rig, TABLE, "node-b").unwrap().chunk, "c1");
 }
 
-/// A chunk row carries pipeline id, chunk id, predicate, status, attempt count, start and completion instants and a
-/// cursor-committed flag; an interrupted plan resumes at the first chunk not done.
-// spec: run.backfill.chunk@c33f2172
+/// A chunk row is {{type:contextful_core::run::backfill::ChunkRow}}; an interrupted plan resumes at the first chunk
+/// not done.
+// spec: run.backfill.chunk@a050c54e
 #[test]
 fn a_chunk_row_records_its_completion_and_a_replanned_backfill_resumes_past_it() {
     let rig = Rig::new();

@@ -18,13 +18,13 @@ pub enum MemoryError {
     /// An entity upsert names a name or alias another entity already carries. (`read.resolve-entity.alias-conflict`)
     #[error("MemoryEntityAliasConflict: {0}")]
     EntityAliasConflict(String),
-    /// An entity upsert targets a table declaring `available_time`. (`read.resolve-entity.upsert-availability`)
+    /// An entity upsert targeted a table declaring `available_time`. (`read.resolve-entity.upsert-availability`)
     #[error("MemoryEntityAvailabilityDeclared: {0}")]
     EntityAvailabilityDeclared(String),
-    /// An entity upsert carries an id, kind, name or alias empty after trimming. (`read.resolve-entity.upsert-fields`)
+    /// An entity upsert carried an id, kind, name or alias empty after trimming. (`read.resolve-entity.upsert-fields`)
     #[error("MemoryEntityFieldEmpty: {0}")]
     EntityFieldEmpty(String),
-    /// An entity upsert's read of its table came back truncated. (`read.resolve-entity.upsert-whole-table`)
+    /// An entity upsert's session read of its table returned truncated. (`read.resolve-entity.upsert-whole-table`)
     #[error("MemoryEntityTableTruncated: {0}")]
     EntityTableTruncated(String),
     /// A mention resolves onto two identities with no separating key. (`read.resolve-entity.ambiguous-mention`)
@@ -33,13 +33,13 @@ pub enum MemoryError {
     /// A knowledge card named a table declaring no `memory_entities` shape. (`read.resolve-entity.card-not-entities`)
     #[error("MemoryExplainNotEntities: {0}")]
     ExplainNotEntities(String),
-    /// A claim names more evidence references than the bound. (`read.recall.evidence-references`)
+    /// A claim names more evidence entries than the gate bound. (`read.recall.evidence-gate-bound`)
     #[error("MemoryEvidenceOverflow: {0}")]
     EvidenceOverflow(String),
     /// A claim's evidence does not resolve through the caller's session. (`read.recall.evidence-unresolved`)
     #[error("MemoryEvidenceUnresolved: {0}")]
     EvidenceUnresolved(String),
-    /// A claim observed before a live contradicting claim of its line. (`read.revise.observed-order`)
+    /// A claim was observed before a live contradicting claim of its line. (`read.revise.observed-order`)
     #[error("MemoryObservationOutOfOrder: {0}")]
     ObservationOutOfOrder(String),
     /// A keyed recall named a table declaring no `memory_facts` shape. (`read.recall.keyed-not-claims`)
@@ -57,7 +57,7 @@ pub enum MemoryError {
     /// An observation differs from a stored outcome that already carries a verdict. (`read.settle.outcome-settled`)
     #[error("OutcomeAlreadySettled: {0}")]
     OutcomeAlreadySettled(String),
-    /// A registration's metric reference is malformed or sits under a non-metric source. (`read.settle.metric-reference`)
+    /// A registration's metric reference is malformed or names a series under a non-metric source. (`read.settle.metric-reference`)
     #[error("OutcomeMetricReferenceInvalid: {0}")]
     OutcomeMetricReferenceInvalid(String),
     /// A registration's statement exceeds its byte bound. (`read.settle.statement-bound`)

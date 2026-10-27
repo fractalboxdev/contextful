@@ -31,6 +31,9 @@ pub enum Dimension {
     Tables,
     Templates,
     Aggregate,
+    MaxRows,
+    MaxDurationMs,
+    MaxResponseBytes,
     Horizon,
 }
 
@@ -41,6 +44,9 @@ impl Dimension {
             Dimension::Tables => "tables",
             Dimension::Templates => "templates",
             Dimension::Aggregate => "aggregate",
+            Dimension::MaxRows => "max_rows",
+            Dimension::MaxDurationMs => "max_duration_ms",
+            Dimension::MaxResponseBytes => "max_response_bytes",
             Dimension::Horizon => "horizon",
         }
     }
@@ -63,6 +69,17 @@ fn widened(child: &Grant, parent: &Grant) -> Vec<Dimension> {
             out.push(Dimension::Aggregate);
         }
     }
+    // A higher ceiling admits more; an absent child ceiling inherits and an absent parent
+    // one bounds nothing (`authority.attenuate.widens`).
+    for (c, p, d) in [
+        (child.max_rows, parent.max_rows, Dimension::MaxRows),
+        (child.max_duration_ms, parent.max_duration_ms, Dimension::MaxDurationMs),
+        (child.max_response_bytes, parent.max_response_bytes, Dimension::MaxResponseBytes),
+    ] {
+        if !ceiling_within(c, p) {
+            out.push(d);
+        }
+    }
     // A later horizon reads later rows; an absent one inherits (`authority.attenuate.horizon-widens`).
     if let (Some(c), Some(p)) = (child.horizon, parent.horizon) {
         if c > p {
@@ -72,6 +89,14 @@ fn widened(child: &Grant, parent: &Grant) -> Vec<Dimension> {
     out
 }
 
+/// Whether a child ceiling lies within its parent's; either absent compares nothing.
+fn ceiling_within(child: Option<u64>, parent: Option<u64>) -> bool {
+    match (child, parent) {
+        (Some(c), Some(p)) => c <= p,
+        _ => true,
+    }
+}
+
 /// Every aggregate constraint holds or tightens, the groups-per-query ceilings as they take
 /// effect; an absent child row ceiling inherits.
 fn aggregate_within(child: &AggregateGrant, parent: &AggregateGrant) -> bool {
@@ -79,10 +104,7 @@ fn aggregate_within(child: &AggregateGrant, parent: &AggregateGrant) -> bool {
         && child.max_contributor_share <= parent.max_contributor_share
         && child.functions.iter().all(|f| parent.functions.contains(f))
         && child.group_ceiling() <= parent.group_ceiling()
-        && match (child.max_rows, parent.max_rows) {
-            (Some(c), Some(p)) => c <= p,
-            (None, Some(_)) | (_, None) => true,
-        }
+        && ceiling_within(child.max_rows, parent.max_rows)
 }
 
 /// Whether `child` keeps `parent`'s tenant scope: the same table and the same bytes.
@@ -94,8 +116,9 @@ fn tenant_kept(child: &Grant, parent: &Grant) -> bool {
     }
 }
 
-/// The child grant as it takes effect under `parent`: an absent aggregate inherits the
-/// parent's, and the row ceiling and the horizon are the lesser of the two.
+/// The child grant as it takes effect under `parent`, which [`widened`] found it within: an
+/// absent aggregate inherits the parent's, and each ceiling and the horizon is the lesser of
+/// the two, the child's own where it names one.
 fn effective(child: &Grant, parent: &Grant) -> Grant {
     let mut g = child.clone();
     if g.aggregate.is_none() {

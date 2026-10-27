@@ -1738,6 +1738,50 @@ impl Syncer {
         }
     }
 
+    /// Renew `held`, `table`'s compaction lease, at `now` by `If-Match` replace on the
+    /// object's ETag, and record the renewal as held (`store.lease.renewal`). A lease
+    /// another acquisition fenced past refuses; an absent one is not held.
+    pub fn renew(&self, table: &str, held: &Held, now: Instant) -> Result<Held> {
+        renew_at(self.bucket.as_ref(), &self.held_path(table), held, now)
+    }
+
+    /// Run `work` while a background thread renews `held`, `table`'s lease, every `every`, timing each
+    /// renewal as `start` plus the monotonic time elapsed. A failed renewal prints one
+    /// warning line to stderr and retries on the next tick. Renewal stops when `work`
+    /// returns, when the lease is fenced or no longer held, or once its expiry passes; a
+    /// holder that stops renewing loses at publish once a successor acquires
+    /// (`store.lease.stale-fence`).
+    pub fn renewing<T>(&self, table: &str, held: &Held, start: Instant, every: std::time::Duration, work: impl FnOnce() -> T) -> T {
+        let path = self.held_path(table);
+        let bucket = self.bucket.clone();
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let began = std::time::Instant::now();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                let mut current = held.clone();
+                while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every) {
+                    let elapsed = i128::try_from(began.elapsed().as_nanos()).unwrap_or(i128::MAX);
+                    let Ok(now) = Instant::from_unix_nanos(start.unix_nanos().saturating_add(elapsed)) else { return };
+                    if current.lease.expires_at.is_some_and(|expiry| now >= expiry) {
+                        eprintln!("warning: the compaction lease `{}` expired at fence {}; renewal stops", current.key, current.lease.fence);
+                        return;
+                    }
+                    match renew_at(bucket.as_ref(), &path, &current, now) {
+                        Ok(next) => current = next,
+                        Err(e @ SyncError::Store(StoreError::LeaseFenced(_) | StoreError::LeaseNotHeld(_))) => {
+                            eprintln!("warning: renewing the compaction lease `{}` stopped: {e}", current.key);
+                            return;
+                        }
+                        Err(e) => eprintln!("warning: renewing the compaction lease `{}` failed, retrying next tick: {e}", current.key),
+                    }
+                }
+            });
+            let out = work();
+            drop(stop);
+            out
+        })
+    }
+
     /// Release `table`'s compaction lease: the holder clears and the fence stays.
     pub fn release(&self, table: &str) -> Result<()> {
         let key = self.key(&compaction_key(&self.project, table))?;
@@ -1775,6 +1819,24 @@ impl Syncer {
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(());
             }
+        }
+    }
+}
+
+/// Renew `held` at `now` against the lease object in `bucket`, writing the renewed record
+/// to `held_path`.
+fn renew_at(bucket: &dyn ObjectStore, held_path: &Path, held: &Held, now: Instant) -> Result<Held> {
+    loop {
+        let Some((b, etag)) = bucket.get(&held.key)? else {
+            return Err(StoreError::LeaseNotHeld(format!("no lease `{}` exists", held.key)).into());
+        };
+        let current: BucketLease = serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(format!("lease `{}`: {e}", held.key))))?;
+        let (lease, condition) = BucketLease::renew(&current, &etag, &held.lease, now)?;
+        let bytes = serde_json::to_vec_pretty(&lease).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+        if let Put::Applied(etag) = bucket.put(&held.key, &bytes, condition)? {
+            let renewed = Held { key: held.key.clone(), lease, etag };
+            write(held_path, &serde_json::to_vec_pretty(&renewed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)?;
+            return Ok(renewed);
         }
     }
 }

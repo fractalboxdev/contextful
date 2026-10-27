@@ -21,6 +21,7 @@
     "@fractalboxdev/merlion-wasm": "file:vendor/merlion/fractalboxdev-merlion-wasm-0.2.0.tgz",
     "astro": "^7.3.3",
     "cookie": "^2.0.1",
+    "pagefind": "1.5.2",
     "smol-toml": "^1.8.0",
     "unist-util-visit": "^5.1.0"
   },

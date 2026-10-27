@@ -241,6 +241,7 @@ fn bound_drive_rows_and_positions_keep_connection_identity() {
 }
 
 /// Ambiguous and oversized Picker selections refuse before any provider request.
+// spec: connector.drive-picks.file-selection-invalid@fb4f2166
 #[test]
 fn picker_file_ids_validate_before_requests() {
     let fake = Fake::start();
@@ -760,9 +761,10 @@ fn a_file_row_carries_its_metadata_and_names_its_bytes_by_digest() {
     assert_eq!((plan["export_mime_type"].clone(), plan["md5_checksum"].clone()), (json!("application/pdf"), Value::Null), "Drive supplies no checksum for a native file");
 }
 
-/// A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any
-/// request.
-// spec: connector.source.drive-table-unmatched@f63a2d97
+/// A table not matching the declared pattern, binding `.` or `..` into a placeholder, a `file` table other
+/// than `documents`, or a drive table other than `files` or `pages` raises `ConnectorTableUnmatched` ahead
+/// of any request or walk.
+// spec: connector.source.table-unmatched@0508c73f
 #[test]
 fn a_table_the_source_does_not_serve_refuses_before_any_request() {
     let fake = Fake::start();
@@ -949,7 +951,9 @@ fn each_oauth_value_is_one_reference() {
 
 /// The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default
 /// port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
+// spec: connector.source.provider-origin@a0e63ea1
 // spec: connector.source.drive-origin@e3de3af5
+// spec: connector.source.provider-origin@a0e63ea1
 #[test]
 fn a_google_credential_goes_to_google_hosts_alone() {
     let refs = json!({"refresh_token": "${secret://r}", "client_id": "${secret://i}", "client_secret": "${secret://s}"});

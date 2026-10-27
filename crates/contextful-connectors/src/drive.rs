@@ -233,7 +233,7 @@ impl DriveConfig {
     }
 
     /// Refuse a table the source does not serve, ahead of any request
-    /// (`connector.source.drive-table-unmatched`).
+    /// (`connector.source.table-unmatched`).
     pub fn table(&self, table: &str) -> Result<Table, ConnectorError> {
         match table {
             "files" => Ok(Table::Files),

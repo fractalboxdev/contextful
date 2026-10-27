@@ -1,0 +1,7 @@
+extends: existence
+message: "'%s' is banned as a metaphor. Say 'dimension' or 'the deciding factor'; a chart's axis is fine."
+level: warning
+ignorecase: true
+tokens:
+  - axis
+  - axes

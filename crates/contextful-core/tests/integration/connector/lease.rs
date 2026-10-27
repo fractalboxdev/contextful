@@ -24,9 +24,10 @@ fn a_lease_retires_a_tenth_of_its_window_early_at_most_30_s() {
     assert_eq!(retires_at(now, None), now.plus_secs(300));
 }
 
-/// A success carries `value` plus one expiry — `expires_in` seconds, `expires_at` epoch seconds, or an RFC 3339
-/// instant — at the top level or under `lease`.
-// spec: connector.lease.response@98329469
+/// The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{ "scope":
+/// "<lease scope>" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch seconds or an RFC
+/// 3339 instant, at top level or under `lease`.
+// spec: connector.lease.endpoint@7e6dca49
 #[test]
 fn a_lease_reads_three_expiry_spellings_at_two_levels() {
     let now = at(NOW);
@@ -42,9 +43,9 @@ fn a_lease_reads_three_expiry_spellings_at_two_levels() {
     }
 }
 
-/// A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient
-/// failure.
-// spec: connector.lease.malformed-lease@2aa55848
+/// A credential lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as
+/// a transient failure.
+// spec: connector.lease.malformed-lease@bf722143
 #[test]
 fn a_lease_without_a_future_expiry_is_malformed_and_transient() {
     let now = at(NOW);

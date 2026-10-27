@@ -24,7 +24,11 @@ mod disclosure;
 #[cfg(feature = "data-plane")]
 mod derive;
 mod differential;
+#[cfg(feature = "data-plane")]
 mod protocol_differential;
+#[cfg(feature = "data-plane")]
+mod journal_differential;
+mod merge_differential;
 #[cfg(feature = "data-plane")]
 mod document;
 #[cfg(feature = "data-plane")]

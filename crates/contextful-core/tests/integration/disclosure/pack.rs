@@ -72,8 +72,8 @@ fn a_pack_block_names_its_tables_mappings_and_allowlist() {
     }
 }
 
-/// An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.
-// spec: disclosure.pack.mapping-keys@8618c970
+/// An access mapping holds {{type:contextful_core::disclosure::pack::RawMapping}} and no other key.
+// spec: disclosure.pack.mapping-keys@e52eaea9
 #[test]
 fn an_access_mapping_holds_the_schema_keys_alone() {
     let wiki = Pack::parse_manifest(PACK).unwrap().remove(0);

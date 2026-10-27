@@ -65,6 +65,38 @@ pub enum DifferentialError {
     /// (`assurance.differential-test.discarded-counterexample`)
     #[error("CounterexampleDiscarded: {0}")]
     CounterexampleDiscarded(String),
+    /// (`assurance.differential-test.reference-vocabulary`)
+    #[error("ReferenceVocabularyDrift: {0}")]
+    ReferenceVocabularyDrift(String),
+}
+
+/// The operations the reference decides, as `contextful-reference ops` lists them: every case
+/// the generator draws but the credential case, and the connector allowlist's host cases,
+/// which `contextful-core`'s widening test drives against the reference.
+pub const REFERENCE_OPS: [&str; 8] =
+    ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone", "host_covers", "host_included", "host_witness"];
+
+/// The reference's operations equal the harness's, or the run raises `ReferenceVocabularyDrift`.
+fn check_vocabulary(reference: &Path) -> Result<()> {
+    let out = Command::new(reference)
+        .arg("ops")
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("starting {}", reference.display()))?;
+    let listed = String::from_utf8_lossy(&out.stdout);
+    let mut model: Vec<&str> = listed.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let mut harness = REFERENCE_OPS.to_vec();
+    model.sort_unstable();
+    harness.sort_unstable();
+    if !out.status.success() || model != harness {
+        return Err(DifferentialError::ReferenceVocabularyDrift(format!(
+            "the reference operations are [{}] and the harness operations are [{}]",
+            model.join(", "),
+            harness.join(", ")
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 #[derive(Args)]
@@ -117,6 +149,7 @@ pub fn run(args: DifferentialArgs) -> Result<()> {
         Some(exe) => exe,
         None => build_reference(&root)?,
     };
+    check_vocabulary(&reference)?;
     let corpus = args.corpus.unwrap_or_else(|| root.join(DEFAULT_CORPUS));
     let seed = args.seed.unwrap_or_else(fresh_seed);
     let wasm = wasm_build(&repo, args.wasm)?;
@@ -365,6 +398,8 @@ struct Pools {
     shares: &'static [f64],
     /// How often a grant carries aggregate constraints, in percent.
     aggregate_percent: u64,
+    /// Horizons and expiries a narrowing case draws, in Unix seconds.
+    instants: &'static [u64],
     zones: &'static [&'static str],
     entries: &'static [&'static str],
     /// Credential lifetimes, in seconds from issue.
@@ -398,6 +433,7 @@ const WELL_FORMED: Pools = Pools {
     counts: &[2, 5, 10, 20, 100],
     shares: &[0.1, 0.25, 0.5, 0.75, 1.0],
     aggregate_percent: 30,
+    instants: &[1_893_456_000, 1_893_459_600, 1_893_542_400],
     zones: &["local:device", "on-prem:hq", "on-prem:ward-3", "private-cloud:vpc-7", "public-cloud:us-east-1", "public-cloud:eu-west-1"],
     entries: &[
         "*",
@@ -431,6 +467,9 @@ const BOUNDARY: Pools = Pools {
     counts: &[0, 1, 2, u64::MAX - 1, u64::MAX],
     shares: &[0.0, 1.0, 0.5, 0.9999],
     aggregate_percent: 60,
+    // The epoch, the last second a timestamp represents and the one past it, and the edges of
+    // the signed 64-bit range an expiry decodes into.
+    instants: &[0, 1, 253_402_300_799, 253_402_300_800, i64::MAX as u64, i64::MAX as u64 + 1, u64::MAX],
     // Whitespace Unicode lists, a zero-width space it does not, identifiers at and past
     // 128 chars, a second colon, case and non-ASCII letters.
     zones: &[
@@ -607,10 +646,31 @@ fn gen_grant(rng: &mut Rng, pools: &Pools) -> Value {
     if rng.chance(pools.aggregate_percent) {
         g["aggregate"] = gen_aggregate(rng, pools);
     }
-    if rng.chance(20) {
-        g["max_rows"] = json!(rng.pick(pools.counts));
+    for key in CEILINGS {
+        if rng.chance(20) {
+            g[key] = json!(rng.pick(pools.counts));
+        }
+    }
+    if rng.chance(30) {
+        g["horizon"] = json!(rng.pick(pools.instants));
     }
     g
+}
+
+/// The grant ceilings a child keeps, narrows, drops or widens (`authority.attenuate.widens`).
+const CEILINGS: [&str; 3] = ["max_rows", "max_duration_ms", "max_response_bytes"];
+
+/// A value kept, stepped to a neighbour or replaced from the pool: a narrower, equal or
+/// broader bound.
+fn step_instant(rng: &mut Rng, pools: &Pools, at: Option<u64>) -> u64 {
+    match at {
+        Some(n) if rng.chance(70) => match rng.below(3) {
+            0 => n,
+            1 => n.saturating_sub(1),
+            _ => n.saturating_add(1),
+        },
+        _ => *rng.pick(pools.instants),
+    }
 }
 
 /// A child grant derived from a parent grant: kept or narrowed on each dimension, then
@@ -659,6 +719,30 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
         };
         agg[key] = json!(value);
     }
+    // Each ceiling the parent names is kept, dropped to inherit, or stepped to a neighbour.
+    for key in CEILINGS {
+        if let Some(n) = parent.get(key).and_then(Value::as_u64) {
+            match rng.below(4) {
+                0 => {
+                    if let Some(o) = g.as_object_mut() {
+                        o.remove(key);
+                    }
+                }
+                1 => g[key] = json!(n.saturating_sub(1)),
+                2 => g[key] = json!(n.saturating_add(1)),
+                _ => {}
+            }
+        }
+    }
+    if let Some(h) = parent.get("horizon").and_then(Value::as_u64) {
+        if rng.chance(30) {
+            if let Some(o) = g.as_object_mut() {
+                o.remove("horizon");
+            }
+        } else {
+            g["horizon"] = json!(step_instant(rng, pools, Some(h)));
+        }
+    }
     for (key, percent) in [("aggregate", 30), ("tenant", 10)] {
         if parent.get(key).is_some() && rng.chance(percent) {
             if let Some(o) = g.as_object_mut() {
@@ -667,7 +751,7 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
         }
     }
     if rng.chance(40) {
-        match rng.below(6) {
+        match rng.below(9) {
             0 => g["actions"] = json!(ACTIONS.to_vec()),
             1 => {
                 let extra = gen_pattern(rng, pools);
@@ -680,6 +764,11 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
             4 => {
                 let (table, value) = rng.pick(pools.tenants);
                 g["tenant"] = json!({"table": table, "value": value});
+            }
+            k @ 6..=8 => {
+                let key = CEILINGS[k - 6];
+                let above = parent.get(key).and_then(Value::as_u64).map_or_else(|| *rng.pick(pools.counts), |n| n.saturating_add(1));
+                g[key] = json!(above);
             }
             _ => {
                 if let Some(agg) = g.get_mut("aggregate") {
@@ -722,7 +811,15 @@ fn gen_request(rng: &mut Rng, pools: &Pools) -> Value {
                     }
                 })
                 .collect();
-            json!({"op": "narrow", "parent": parent, "child": child})
+            let mut case = json!({"op": "narrow", "parent": parent, "child": child});
+            if rng.chance(40) {
+                let parent_exp = rng.chance(80).then(|| *rng.pick(pools.instants));
+                if let Some(e) = parent_exp {
+                    case["parent_exp"] = json!(e);
+                }
+                case["child_exp"] = json!(step_instant(rng, pools, parent_exp));
+            }
+            case
         }
     }
 }

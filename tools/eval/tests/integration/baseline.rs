@@ -232,7 +232,10 @@ fn a_malformed_entry_or_band_refuses_from_the_file_alone() {
         assert_eq!(unresolved(Baselines::parse(&with(key, value))), key, "{value}");
     }
     // JSON holds no infinity: a band past every finite number refuses the file as a whole.
-    assert_eq!(unresolved(Baselines::parse(&with("retrieval.hybrid.recall_at_k", r#"{"value": 0.7, "band": 1e999}"#))), "");
+    assert!(matches!(
+        Baselines::parse(&with("retrieval.hybrid.recall_at_k", r#"{"value": 0.7, "band": 1e999}"#)),
+        Err(EvalError::BaselinePathUnresolved { path, .. }) if path.is_empty()
+    ));
 }
 
 #[test]

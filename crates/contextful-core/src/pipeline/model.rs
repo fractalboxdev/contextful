@@ -29,7 +29,7 @@ pub const BUILDS_LOG: &str = "builds.jsonl";
 pub const HOLDS_LOG: &str = "holds.jsonl";
 pub const CONTRACT_HISTORY_LOG: &str = "contract-history.jsonl";
 
-/// The directory of hold manifests inside a model's table directory (`run.model.hold-manifest`).
+/// The directory of hold manifests inside a model's table directory (`run.publish.hold`).
 pub const HOLDS_DIR: &str = "holds";
 
 /// How a model materializes (`run.model.materialized`).
@@ -503,7 +503,7 @@ pub struct PublishSection {
 }
 
 impl PublishSection {
-    /// The table's freshness, read off the section (`run.publish.freshness`).
+    /// The table's freshness, read off the section (`run.publish.manifest-section`).
     pub fn freshness(&self) -> Freshness {
         Freshness {
             build_id: self.build_id.clone(),
@@ -516,7 +516,7 @@ impl PublishSection {
 }
 
 /// A published table's freshness. Staleness is computed from it and never stored
-/// (`run.publish.freshness`).
+/// (`run.publish.manifest-section`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Freshness {
     pub build_id: String,
@@ -741,7 +741,7 @@ pub fn contract_history(manifests: &[SnapshotManifest]) -> Vec<ContractHistoryEn
 
 /// Regenerate an append-only log from what committed manifests record: an existing entry
 /// sharing a key with a derived one is replaced by it, an entry no manifest still records
-/// is kept, and the result is ordered by `order` then key (`run.model.log-regeneration`).
+/// is kept, and the result is ordered by `order` then key (`run.publish.history-logs`).
 pub fn regenerate<T: Clone>(existing: &[T], derived: &[T], key: impl Fn(&T) -> String, order: impl Fn(&T) -> Instant) -> Vec<T> {
     let derived_keys: std::collections::BTreeSet<String> = derived.iter().map(&key).collect();
     let mut out: Vec<T> = existing.iter().filter(|e| !derived_keys.contains(&key(e))).cloned().collect();

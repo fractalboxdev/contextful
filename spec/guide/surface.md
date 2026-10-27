@@ -4,15 +4,17 @@ contract: surface
 
 # Operator surfaces
 
-## What it is for
+## The problem the surfaces solve
 
-The console's Query page returns grounded prose, widgets and sources
-({{surface.ground.sources-block}}). Admin shows workflows ({{surface.visualize.workflow-canvas}}), source outcomes ({{surface.open-console.source-first-run}}),
-learnings and drafts ({{surface.open-console.source-draft}}, {{surface.open-console.source-preservation}}), and edits the control document ({{surface.open-console.engine-faces}}). Hosted deployments gate pages
-and APIs ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
-The control plane arms work the engine names;
-Query reaches rows through governed reads under the operator's credential
-({{assurance.structure-tree.one-home}}).
+An **operator** configures what runs and asks questions of the results. Two failures
+matter most: a configuration edit that races another operator's edit or arms a broken
+schedule, and a model answer that drifts from the stored rows. The control
+plane makes edits versioned and validated, and the console makes every answer rest on
+rows read under the operator's own credential.
+
+The hosted console has two pages, Admin for configuration and Query for questions.
+Each page and its API routes check a verified identity assertion and that page's grant
+({{surface.open-console.wrong-page}}).
 
 ```mermaid
 flowchart LR
@@ -49,91 +51,79 @@ flowchart LR
   CANVAS -->|"workflow view"| AP
 ```
 
-## How it works
+## From document to running job
 
-The operator plane is a pipeline from a document to a running unit. Edit keeps the
-document free of secret material ({{surface.edit.secret-in-document}}) and refers to
-connectors by registered id ({{surface.edit.connector-upload}}). Apply validates before
-claiming anything ({{surface.apply.validation}}), then claims an immutable version by
-compare-and-swap ({{surface.apply.version-race}}) on a backend whose conditional write is
-linearizable ({{surface.apply.weak-conditional-backend}}). Reconcile polls the snapshot
-pointer ({{surface.reconcile.poll-cadence}}) from a loopback source
-({{surface.reconcile.loopback-only}}), diffs the schedule set, and on a failed poll keeps the
-armed set running ({{surface.reconcile.fail-static}}). Arm holds back an unreadable schedule
-alone ({{surface.arm.unreadable-schedule}}) and evaluates due-ness from an in-process tick
-({{surface.arm.tick-interval}}) or an external wake ({{surface.arm.wake-answer}}). Fire runs
-only the closed kind union ({{surface.fire.job-kind-unknown}}), and dispatch fences worker
-callbacks by attempt ({{surface.dispatch.callback-rejected}}). Ties start by priority, then
-staleness ({{surface.dispatch.admission-order}}); wakes refill freed slots
-({{surface.dispatch.refill}}). An item can run on a bound
-delegate ({{surface.delegate.binding}}), its answer landing as rows
-({{surface.delegate.outcome}}). Reside refuses to serve from a region the policy omits
-({{surface.reside.region-mismatch}}).
+The operator edits one configuration document. A credential value typed into a field
+fails, because the document holds references and the backend holds material
+({{surface.edit.secret-in-document}}).
 
-Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). Cold reconciliation verifies receipts under locally pinned issuer keys ({{surface.reconcile.issuer-pin}}) and checks local declarations ({{surface.reconcile.pulled-control}}); refusals name their reason ({{surface.reconcile.pulled-control-untrusted}}).
+The example adds a nightly `fold` job for the table `record_sync_records`. Validation
+checks that the target names a produced table ({{surface.fire.target-unbound}}), and a
+document failing validation claims no version ({{surface.apply.validation}}).
 
-Each page and API route verifies the operator's identity assertion and that page's grant
-({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
-Admin edit and apply also require the server's admin capability
-({{surface.open-console.admin-grant}}). Admin canvas edits reach the reconciler's
-control document.
+A second operator applied a minute earlier, so this apply's compare-and-swap loses. The
+surface reloads the winning version and reapplies the pending edit onto it
+({{surface.apply.version-race}}). Admin edits and applies also need the server's admin
+capability ({{surface.open-console.admin-grant}}).
 
-Query turns one question into one answer ({{surface.plan-turn.turn-flow}}). The server, never the client, chooses
-every capability a turn exercises: tools come from the turn's admitted packs
-({{surface.ground.unadmitted-tool}}), the query endpoint reaches no write
-({{surface.ground.mutating-tool}}), and views are built server-side
-({{surface.render.client-authored-view}}). Prose exists only over a tool result
-({{surface.ground.ungrounded-answer}}), and the stream passes through the redactor
-({{surface.speak.stream-redaction}}).
+The reconciler polls the applied document's pointer and diffs the schedule set
+({{surface.reconcile.poll-cadence}}). If a poll fails, the armed set keeps running
+unchanged ({{surface.reconcile.fail-static}}).
 
-## Worked example
+An unreadable schedule string holds back its own entry alone, and every other entry arms
+({{surface.arm.unreadable-schedule}}). A job kind outside the closed union fails
+validation ({{surface.fire.job-kind-unknown}}).
 
-Admin displays each pipeline, schedule, step and run. The operator applies a nightly `fold` targeting `record_sync_records`. The
-target resolves to a produced table ({{surface.fire.target-unbound}}), so validation
-passes. A second operator applied a minute earlier; the compare-and-swap loses, and the
-surface reloads the winner and reapplies the pending edit. The next poll arms the
-job, and at its instant dispatch starts one instance. A worker running the fold goes
-silent; after the lapse its work moves to another worker under the next attempt
-({{surface.dispatch.heartbeat-lapse}}), and the silent worker's late callback changes
-nothing.
+At the job's instant, dispatch starts one instance in a bounded pool. A worker running
+the fold goes silent, and its work moves to another worker under the next attempt
+number ({{surface.dispatch.heartbeat-lapse}}). The silent worker's late callback carries
+the old attempt and changes nothing ({{surface.dispatch.callback-rejected}}).
 
-The operator opens Query on the `field-notes` store. Its registry entry
-carries no credential name; the name derives from the id
-({{surface.register-store.authored-name}}). The server re-verifies the perimeter assertion
-and mints a per-reader credential, falling back or refusing as
-{{surface.ground.mint-refused}} states.
+A store-driven item whose body names a **delegate** runs on it: code deployed outside the binary and
+reached over one signed HTTP request ({{surface.delegate.binding}}). Its answer is a
+closed outcome: rows, a deferral, or a transient or permanent failure
+({{surface.delegate.outcome}}).
 
-The operator asks which records landed this week. The vantage parses as a calendar day
-({{surface.set-vantage.unparseable}}); recall reads prior conclusions; the planner picks a
-read tool over data tables, never memory relations
-({{surface.plan-turn.planner-reached-memory}}). If the first round leaves the question
-unanswered, the planner replans once, then falls to the code path
-({{surface.plan-turn.code-path-bounds}}). Rows return through enforced relations.
+A data plane serving from a region its policy omits refuses to start
+({{surface.reside.region-mismatch}}). Served routes create, pause
+and delete a tenant's source connection through versioned claims ({{surface.connection.create}}).
 
-The tool return splits into grounding for the model, a view and internals. Synthesis
-streams through the redactor ({{surface.speak.redactor-lookahead}}). The rows carry a date
-column and a measure over distinct days, so component choice draws a line
-({{surface.render.component-choice}}), and a source list follows
-({{surface.ground.sources-per-turn}}). After the answer,
-{{surface.learn.distillation}} lands through {{read.revise.served-write}} under
-{{surface.learn.unscoped}} and {{read.revise.served-scope}}. {{read.recall.keyed}}
-precedes planning; {{surface.learn.write-refused}} withholds publication.
+Admin projects pipelines, jobs and models as one node and edge graph, with each latest
+run outcome ({{surface.visualize.workflow-canvas}}).
 
-A greeting card requires a new row matching a conclusion within budget
-({{surface.brief.absence-is-earned}}). The operator posts answers to team channels;
-scheduled posting under a service identity refuses ({{surface.publish-answer.askerless-audience}}).
+## One question in Query
 
-A teammate admitted only to Query sees no Admin workflow or edit API: an Admin request
-with that teammate's Query grant refuses ({{surface.open-console.wrong-page}}).
+The operator opens Query on the `field-notes` store. Its registry entry carries no
+credential name of its own ({{surface.register-store.authored-name}}). The server mints
+a per-reader credential; a refused mint falls back to a shared credential or surfaces
+the refusal ({{surface.ground.mint-refused}}).
 
-## Where to look
+Before any question, Query offers chips built from the tables the reader may describe
+({{surface.browse.discovered-chips}}). The operator asks which records arrived this
+week. The vantage, the session's time basis, parses as a calendar day
+({{surface.set-vantage.unparseable}}).
 
-| Question | Operation |
-| --- | --- |
-| Why did a schedule not arm? | `surface.arm`, `surface.reconcile` |
-| How do builds follow sources? | {{surface.fire.build-dependency}} |
-| Who wins two concurrent applies? | `surface.apply` |
-| Which page can the operator enter? | `surface.open-console` |
-| Where does the workflow graph come from? | `surface.visualize` |
-| Where does an answer's material come from? | `surface.ground` |
-| Which widget does a result draw? | `surface.render` |
+A turn plans over admitted read tools, replans once if the first round leaves the
+question open, and synthesizes from the governed rows ({{surface.plan-turn.turn-flow}}).
+The server chooses every tool, so a call naming an unadmitted tool dispatches nothing
+({{surface.ground.unadmitted-tool}}).
+
+Prose exists only over a tool result ({{surface.ground.ungrounded-answer}}). The
+server redacts each streamed chunk before Query shows it ({{surface.speak.stream-redaction}}).
+
+The rows carry a date column and a measure over distinct days, so component choice draws
+a line chart ({{surface.render.component-choice}}). A view arriving from the client
+fails, because the server builds every view ({{surface.render.client-authored-view}}).
+
+After the answer, a second pass distils the exchange into learnings for later turns
+({{surface.learn.distillation}}). A greeting at session start appears only when a new row matches
+an earlier conclusion within budget ({{surface.brief.absence-is-earned}}).
+
+Posting an answer to a team channel under a service identity, on a schedule, fails
+({{surface.publish-answer.askerless-audience}}).
+
+## The client library
+
+The client library reaches the engine through four deployment shapes. Its process
+transport needs a verified capability token before any protocol framing
+({{surface.package.stdio-credential}}).

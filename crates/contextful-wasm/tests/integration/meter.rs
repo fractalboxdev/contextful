@@ -149,9 +149,10 @@ impl contextful_wasm::Hydrate for DownMint {
     }
 }
 
-/// The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire inside a step return
-/// their failure to it.
-// spec: run.retry.one-layer@5fdf55c3
+/// The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire return their failure
+/// to it, an HTTP `Retry-After`, throttled mint or limiter denial as `RateLimited` carrying its wait under
+/// {{run.retry.not-before}}.
+// spec: run.retry.one-layer@4e92c090
 #[test]
 fn the_adapter_the_mint_and_the_meter_each_return_their_failure_once() {
     // The adapter: a vendor dropping the connection is reached once, and the step sees the failure.

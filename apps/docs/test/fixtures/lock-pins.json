@@ -1,0 +1,27 @@
+{
+  "store.reserve.commit-wait": [
+    {
+      "kind": "test",
+      "path": "crates/contextful-context/tests/integration/commit.rs",
+      "name": "commit_waits_for_the_table_lock",
+      "verdict": "performed",
+      "proved": true
+    },
+    {
+      "kind": "theorem",
+      "path": "formal/protocol/Commit.lean",
+      "name": "commit_order",
+      "verdict": "performed",
+      "proved": true
+    }
+  ],
+  "store.reserve.table-name": [
+    {
+      "kind": "test",
+      "path": "spec/pins.toml",
+      "name": "a_path_that_resolves_to_nothing",
+      "verdict": "broken",
+      "proved": false
+    }
+  ]
+}

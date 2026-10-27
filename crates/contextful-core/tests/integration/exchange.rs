@@ -98,8 +98,8 @@ fn spec_policy() -> ExchangePolicy {
     ExchangePolicy::parse(SPEC_POLICY).unwrap()
 }
 
-/// An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.
-// spec: authority.exchange.policy@3795898c
+/// An exchange policy declares {{type:contextful_core::exchange::RawPolicy}}; only `expected_iss` is required.
+// spec: authority.exchange.policy@9915707c
 #[test]
 fn the_exchange_policy_declares_its_fields() {
     assert_eq!(ExchangePolicy::PATH, ".contextful/exchange/policy.toml");

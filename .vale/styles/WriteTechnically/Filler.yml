@@ -1,0 +1,16 @@
+extends: existence
+message: "Cut '%s' — filler that carries no information."
+level: warning
+ignorecase: true
+tokens:
+  - I think
+  - it seems
+  - basically
+  - actually
+  - just
+  - it's worth noting that
+  - it is worth noting that
+  - importantly
+  - as mentioned above
+  - at a high level
+  - needless to say

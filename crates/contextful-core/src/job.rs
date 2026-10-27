@@ -5,6 +5,7 @@
 use crate::memory::declare::{MemoryDeclarations, Shape};
 use crate::pipeline::declare::PipelineSpec;
 use crate::run::drive::{ItemPolicy, StoreInput};
+use crate::run::RunError;
 use crate::run::sweep::Sweep;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -29,26 +30,24 @@ const COMMAND_KEYS: [&str; 5] = ["command", "argv", "args", "exec", "cmd"];
 /// The refusals of job-block validation. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum JobError {
-    /// A kind outside the union, an argument vector or a host command. (`surface.fire.job-kind-unknown`)
+    /// A job block naming a kind outside the union, or carrying a command. (`surface.fire.job-kind-unknown`)
     #[error("JobKindUnknown: {0}")]
     JobKindUnknown(String),
-    /// A store-driven block declaring no positive `max_in_flight`. (`surface.fire.store-driven-concurrency`)
+    /// A store-driven job block declaring no positive `max_in_flight`. (`surface.fire.store-driven-concurrency`)
     #[error("JobConcurrencyUnset: {0}")]
     JobConcurrencyUnset(String),
-    /// A store-driven block naming a body the binary does not register. (`surface.fire.store-driven-body`)
+    /// A store-driven job block naming a body the binary does not register. (`surface.fire.store-driven-body`)
     #[error("JobBodyUnregistered: {0}")]
     JobBodyUnregistered(String),
-    /// A store-driven `body = { delegate = "<name>" }` naming no bound delegate. (`surface.delegate.binding`)
+    /// A store-driven body naming a delegate the daemon's configuration does not bind. (`surface.delegate.binding`)
     #[error("JobDelegateUnbound: {0}")]
     JobDelegateUnbound(String),
-    /// A `fold` target naming no produced table, or a `build` target naming no declared model.
-    /// (`surface.fire.target-unbound`)
+    /// A job target binding to no produced table or declared model. (`surface.fire.target-unbound`)
     #[error("JobTargetUnbound: {0}")]
     JobTargetUnbound(String),
-    /// A target naming a produced table in a spelling the fold does not produce.
-    /// (`run.declare.unbound-table-name`)
-    #[error("PipelineUnboundTableName: {0}")]
-    PipelineUnboundTableName(String),
+    /// A refusal of the run contract a job target raises.
+    #[error(transparent)]
+    Run(#[from] RunError),
     /// A block that does not parse, or lacks a key its kind requires.
     #[error("{0}")]
     Invalid(String),
@@ -353,7 +352,7 @@ pub fn bind_targets(jobs: &[Job], targets: &Targets) -> Result<(), JobError> {
         }
         let folded = fold_spelling(target);
         if folded != *target && set.contains(&folded) {
-            return Err(JobError::PipelineUnboundTableName(format!("job `{}` targets `{target}`; the fold produces `{folded}`", job.name)));
+            return Err(RunError::PipelineUnboundTableName(format!("job `{}` targets `{target}`; the fold produces `{folded}`", job.name)).into());
         }
         let known: Vec<&str> = set.iter().map(String::as_str).collect();
         return Err(JobError::JobTargetUnbound(format!(

@@ -28,8 +28,8 @@ fn pepper(key: &str) -> Pepper {
     Pepper::resolve(move |v| (v == PEPPER_VAR).then(|| key.clone()))
 }
 
-/// A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.
-// spec: authority.mask.column-policy@bb522f07
+/// A column under `[pipeline.tables.policy.columns]` declares {{type:contextful_policy::enforce::mask::RawColumnPolicy}}; an undeclared column carries no class.
+// spec: authority.mask.column-policy@d28bc01d
 #[test]
 fn a_column_declares_its_class_and_strategy() {
     let p = policy(
@@ -70,6 +70,7 @@ fn prompt_and_completion_are_non_exhaustible_registered_classes() {
     }
 }
 
+// spec: authority.mask.row-class-selector@e5711bec
 #[test]
 fn the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields() {
     let requested = policy("text = { class = { from = \"kind\" }, strategies = { prompt = \"drop\", completion = \"hash\" }, fallback = \"drop\" }").unwrap();
@@ -82,6 +83,7 @@ fn the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields() 
     }
 }
 
+// spec: authority.mask.row-class-dependency@3115208b
 #[test]
 fn row_selected_classes_admit_registered_masks_and_require_the_selector_column() {
     let p = policy("text = { class = { from_column = \"kind\" }, strategies = { prompt = \"drop\", completion = \"hash\" }, fallback = \"drop\" }").unwrap();

@@ -801,6 +801,9 @@ fn normal_publication_waits_for_the_erasure_frontier_before_mutating_working_fil
     assert_eq!(contextful_context::rows::table_rows(&fixture.store, &table, &["id"]).unwrap().len(), 2);
 }
 
+// spec: disclosure.erase.physical-removal@47a3ae2f
+// spec: read.reference.frontier@38efed50
+// spec: read.reference.index-visibility@e09069b7
 /// An admitted reference in the independently verified cumulative erasure index returns `available: false` and
 /// `reason: erased`. An absent reference outside that index returns `reason: missing` without source payload.
 // spec: read.reference.erased-verdict@9b6893f5

@@ -50,22 +50,22 @@ pub const SCOPE_NAME: &str = "contextful.export";
 /// The refusals of an export. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ExportError {
-    /// A signal the built-in arm does not map. (`run.export.signal-unknown`)
+    /// An export block naming a signal the built-in arm does not map. (`run.export.signal-unknown`)
     #[error("ExportSignalUnknown: {0}")]
     ExportSignalUnknown(String),
-    /// Rows whose `_commit_seq` is null, which no cursor passes. (`run.export.commit-seq-missing`)
+    /// A table holding rows no cursor passes, their `_commit_seq` null. (`run.export.commit-seq-missing`)
     #[error("ExportCommitSeqMissing: {0}")]
     ExportCommitSeqMissing(String),
-    /// A target answering other than 2xx, or unreachable. (`run.export.delivery-refused`)
+    /// An OTLP target answering other than 2xx, or unreachable. (`run.export.delivery-refused`)
     #[error("ExportDeliveryRefused: {0}")]
     ExportDeliveryRefused(String),
-    /// One typed event cannot fit a request by itself.
+    /// One typed event exceeding the delivery request ceiling. (`run.export.typed-event-too-large`)
     #[error("ExportEventTooLarge: {0}")]
     ExportEventTooLarge(String),
-    /// A group header leaving no room for one event. (`run.export.group-request-bound`)
+    /// A coordinated group header leaving no room for one event under the typed request ceiling. (`run.export.group-request-bound`)
     #[error("PublicationHeaderTooLarge: {0}")]
     PublicationHeaderTooLarge(String),
-    /// A pending publication cannot be delivered under a changed read identity or target.
+    /// A pending typed export under another read identity, or its target redirected under the same name. (`run.export.typed-identity-changed`)
     #[error("ExportIdentityChanged: {0}")]
     ExportIdentityChanged(String),
     /// A block that does not parse, or a row export cannot place past a cursor.

@@ -2,186 +2,136 @@
 
 **Status:** accepted
 
-## Cloudflare execution metadata uses D1
+## cloudflare-d1 — Cloudflare execution metadata uses D1
 
-Cloudflare declares one deployment configuration, `worker-container-d1`. D1 stores execution metadata; R2 stores execution blobs and corpus objects. Durable Objects manage Container lifecycle and WebSocket connections.
-
-The deciding criterion is one metadata backend across deployment configuration, the execution binding and its conformance suite. A separate Durable Object SQLite catalog requires another backend integration and test matrix.
+The deciding criterion is one metadata backend across the deployment configuration, the execution binding and its conformance suite. Durable Objects still manage Container lifecycle; D1 replaces only the catalog role.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | D1 metadata with R2 objects *(chosen)* | — | Metadata operations cross the private Worker binding. |
-| D1 and Durable Object SQLite deployment variants | Backend consistency | Two catalog integrations and conformance paths require maintenance. |
+| D1 and Durable Object SQLite variants | Backend consistency | Two catalog integrations and conformance paths. |
 
-The Container still requires Durable Objects for lifecycle management; D1 replaces only the alternate catalog role.
+## one-egress — One inference egress and one destination; no vendor SDK, no sink plugin
 
-## One inference egress and one destination; no vendor SDK, no sink plugin
-
-`connector.infer` sends model access through one operator-configured endpoint speaking OpenAI-compatible HTTP; no model-vendor SDK links into any crate, a provider swap is a URL edit, and the host owns credential, rate limit and per-call span. `run.land` resolves the local store and refuses any other destination name at assembly; a synthesized artifact writes back through the same destination and becomes queryable corpus. The destination interface has no host arm, so a guest cannot supply one.
+A provider swap is a URL edit, and the host owns credential, rate limit and span. Synthesized output falls under the same grants, masks and retention as landed data.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| One compatible endpoint, one destination *(chosen)* | — | A vendor feature outside the compatible wire is unreachable; an export is a copy of the store's own layout. |
-| A vendor SDK per provider behind an abstraction | Dependency custody | Each SDK links its own HTTP stack into every profile and dictates auth and retry. |
-| A plugin interface for backends or sinks | Attack surface | A loaded plugin holds credentials, and the destination set is no longer nameable. |
-| A sidecar translating to each vendor's wire | Operational cost | A second deployable with its own credentials and failure modes. |
-| A webhook destination | Delivery semantics | At-least-once messaging, which the run's commit model cannot honor. |
+| One compatible endpoint, one destination *(chosen)* | — | A vendor feature outside the compatible wire is unreachable. |
+| A vendor SDK per provider | Dependency custody | Each SDK links its own HTTP stack and dictates auth and retry. |
+| A plugin interface for backends or sinks | Attack surface | A loaded plugin holds credentials; the destination set is unnameable. |
+| A webhook destination | Delivery semantics | At-least-once messaging, which the commit model cannot honor. |
 
-Consequences: the dependency audit refuses a model-vendor SDK and a second outbound path to a model; synthesized output falls under the same grants, masks and retention as landed data.
 Revisit: a capability a deployment needs that no OpenAI-compatible endpoint exposes.
 
-## Profile capabilities are fixed at build; an absent one is a typed refusal
+## build-profiles — Profile capabilities are fixed at build; an absent one is a typed refusal
 
-Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, compile from one workspace by feature bundle, each linking only its role's dependencies; the CRDT library links into `contextful-control` alone. A capability the running profile does not wire is a typed refusal when reached, never a panic, no-op or look-alike fallback; a profile without the embedded SQL engine refuses every read tool. `topology.package` publishes each profile's wiring, a client's required faces match at the handshake, and a spawned engine finding no project manifest exits before writing protocol framing.
+A capability the running profile does not wire is a typed refusal when reached, never a panic, no-op or look-alike fallback.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Build-time profiles; typed refusal on reach *(chosen)* | — | Three artifacts to build, size-gate and release; an absent capability surfaces at the handshake or first call. |
+| Build-time profiles; typed refusal on reach *(chosen)* | — | Three artifacts to build, size-gate and release. |
 | One binary with run-time feature detection | Footprint | Every heavy dependency links into the replica. |
-| Dynamically loaded plugins | Portability | Static musl targets, the edge deployment shape, load no plugins. |
-| Degrade to a partial answer | Honesty of the outcome | A lexical-only ranking or an empty result reads as complete. |
-| Separate repositories per artifact | Versioning | Shared types and contracts version across repositories. |
+| Dynamically loaded plugins | Portability | Static musl targets load no plugins. |
+| Degrade to a partial answer | Honesty of the outcome | A lexical-only ranking or empty result reads as complete. |
 
-Consequences: the dependency audit refuses a control-only library in another profile's resolved graph.
+## control-crdt — The control plane edits the configuration as one CRDT document and claims through the shared snapshot package
 
-## The control plane edits the configuration as one CRDT document and claims through the shared snapshot package
-
-Team state is the configuration itself — ingest sources, models and access policy — so `topology.package` holds it as one `loro` document whose replicas merge offline edits, and an apply canonicalizes that document and claims it as the next version. The claim runs through `contextful-snapshot`, the package the engine already calls, so local and control-plane applies share one version claim, one pointer and one replay store, and the control profile links no run path.
+Team state is the configuration itself, so replicas merge offline edits to it, and local and control-plane applies share one version claim, pointer and replay store.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| The configuration as one CRDT document; one shared snapshot package *(chosen)* | — | Concurrent text edits can merge into invalid TOML, which apply refuses before claiming. |
-| A separate team-state model beside the configuration | Single source | Two documents to reconcile, and an apply translating between them. |
-| Copy the snapshot directory into the control package | One home | Two claim paths whose version races drift apart. |
-| Link the engine into the control profile | Profile role | The control profile then links the run path. |
+| One CRDT document; one shared snapshot package *(chosen)* | — | Concurrent edits can merge into invalid TOML, which apply refuses before claiming. |
+| A team-state model beside the configuration | Single source | Two documents to reconcile on every apply. |
+| A copy of the snapshot code in the control package | One home | Two claim paths whose version races drift apart. |
+| The engine linked into the control profile | Profile role | The control profile links the run path. |
 
-Consequences: a change to the version claim lands once and both callers take it.
+## public-surfaces — The engine and its consumers meet only at public surfaces
 
-## The engine and its consumers meet only at public surfaces
-
-`topology.compose` connects execution, storage and queries through three shared contracts: the connector interface world, columnar-part-plus-manifest layout and capability-token format. Each contract has a version and conformance tests. `topology.bound-application.domain-neutral` places industry meanings, business rules and scoring in consumer-declared configuration, connectors, components or selected evaluation profiles. Consumers name vocabulary in per-store lexicons; a behavior becomes shared once a second application needs it. Additional distribution features use public surfaces, with no license check on a data-plane capability.
+Each shared contract has a version and conformance tests. A behavior becomes shared once a second application needs it; no license check guards a data-plane capability.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Three versioned contracts; domain-neutral engine; public surfaces only *(chosen)* | — | An additional shared contract requires review; each consumer supplies its domain meanings and waits for any public surface it needs. |
+| Three versioned contracts; domain-neutral engine *(chosen)* | — | A new shared contract needs review; a consumer supplies its own domain meanings. |
 | A general internal RPC surface | Review surface | Every call is a place a capability can enter. |
-| Direct dependencies from read path onto run path | Composability | The run path stops being droppable and the edge profile is lost. |
 | A privileged internal API for one consumer | Wholeness | Other consumers receive a subset of the engine. |
-| The first application's vocabulary as engine defaults | Inheritance | Every later application receives meanings it did not choose. |
+| The first application's vocabulary as defaults | Inheritance | Later applications receive meanings they did not choose. |
 
-Consequences: `assurance.gate` checks package and source boundaries. Domain meanings and example vocabulary also require editorial review; selecting a financial evaluation helper requires a financial profile rather than changing general evaluation defaults.
+## deploy-observation — A deploy verifies by observation
 
-## A deploy verifies by observation
-
-`surface.apply` runs one declaration on every control-plane target and diffs each target's table parts byte for byte against the single-process reference run after a 24 h soak; a profile claiming a shape its target cannot express refuses. `topology.publish-hostname` gives every hostname a descriptor naming its worker, contract version and gate (`access`, `adminToken` or `public`) with an explicit acknowledgement; the deploy probes each with an anonymous `GET /`, judges the answer against the gate, and fails an unreachable hostname. A descriptor with an unknown field refuses to decode.
+Each hostname descriptor names its worker, contract version and gate with an explicit acknowledgement, and the deploy judges an anonymous `GET /` against that gate.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Declare, then observe and compare *(chosen)* | — | A deploy waits on probes and a soak; a target-specific feature waits until it runs everywhere. |
-| Derive posture from provider configuration | Recoverability of intent | Configuration records no gate, so an accidental opening reads as deliberate. |
-| Declare with no probe | Drift | A policy attached or detached later changes exposure with no signal. |
+| Declare, then observe and compare *(chosen)* | — | A deploy waits on probes and a soak. |
+| Posture derived from provider configuration | Recoverability of intent | Configuration records no gate, so an accidental opening reads as deliberate. |
 | A periodic external monitor | Timing | The exposure window is the monitor's interval. |
 | Per-target expected outputs | Detectability | A divergence arrives as a fixture update, which reviewers approve. |
 
-Consequences: a divergence names the target, the table and the first differing part.
+## posture-probe — The posture probe runs in build tooling; the routing hop caches nothing
 
-## The posture probe runs in build tooling; the routing hop caches nothing
-
-Context: `topology.publish-hostname` probes every published hostname a deploy declares, and the routing hop sits in front of a retrieval container that enforces grants per request.
-
-Criteria: no profile links a deploy-only HTTP client; a cached answer stays keyed on the whole enforcement subject; profile footprint decided it.
-
-Decision: `contextful-ci deploy probe` reads `hostnames/*.toml` and `probe.toml` under `--dir` (default `deploy/`) in the deploying organisation's repository, refuses an empty set, and runs no engine code; that repository's deploy pipeline invokes it. The routing hop verifies and routes with no result cache; a cached answer comes from `read.cache` inside the retrieval container, after enforcement.
+The routing hop sits in front of a retrieval container that enforces grants per request, so a cached answer comes from inside the container, after enforcement. Profile footprint decided where the probe runs.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Probe in `contextful-ci`, no hop cache *(chosen)* | — | Every request crosses to the container; a pipeline that never invokes the probe goes unprobed. |
+| Probe in `contextful-ci`, no hop cache *(chosen)* | — | Every request crosses to the container; a pipeline that skips the probe goes unprobed. |
 | Probe as an engine subcommand | Footprint | Every profile links a client only a deploy uses. |
 | Probe inside the routing hop at start | Timing | A hop answers traffic before its posture is judged. |
-| A short hop cache keyed on the enforcement subject | Mediation | A grant revoked inside the time to live still answers from the hop. |
+| A short hop cache keyed on the enforcement subject | Mediation | A revoked grant still answers from the hop until expiry. |
 
-Consequences: descriptors change by pull request and the gate reviews them. Accepted cost: one extra hop to the container on a repeated read.
-
-## The domain crate holds types and ports with no I/O, and every edge points toward it
-
-`topology.package` keeps `contextful-core`, the shared types, typed error enum and port traits linked into all three profiles, pure: it performs no I/O and declares no async runtime, component host, HTTP client or columnar-format implementation, and one raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it. Every adapter crate depends on the centre and the centre on none; an outward edge raises `TopologyDependencyInversion` with its manifest line.
+## domain-crate — The domain crate holds types and ports with no I/O, and every edge points toward it
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| A pure centre of types and ports, all edges inward *(chosen)* | — | Adapters restate small conversions; a port change touches every adapter in one commit. |
-| A centre carrying its own runtime and format implementation | Footprint | The replica and control plane link a runtime and format neither uses. |
-| A shared utility crate both directions depend on | Direction reportability | A cycle re-enters legally at every hop, with no single offending edge. |
-| Ports beside their adapters, no centre | Neutral home | The error enum shared by execution, storage and queries has nowhere to live. |
+| A pure centre of types and ports, edges inward *(chosen)* | — | Adapters restate small conversions; a port change touches every adapter. |
+| A centre with its own runtime and format | Footprint | The replica and control plane link a runtime neither uses. |
+| A shared utility crate both directions use | Direction reportability | A cycle re-enters legally, with no single offending edge. |
+| Ports beside their adapters, no centre | Neutral home | The shared error enum has nowhere to live. |
 
-Consequences: a new target is an adapter crate behind existing ports.
-Revisit: two adapters convert the same shape differently; a port change deferred more than once; the edge profile's budget no longer the binding constraint.
+Revisit: two adapters convert the same shape differently; a port change deferred more than once.
 
-## Every access to data traverses the enforcement stack, and no configuration disables it
+## enforcement-stack — Every access to data traverses the enforcement stack, and no configuration disables it
 
-Each function returning or releasing stored rows requires an access-control admission value. Omitting the value fails compilation. Without this check, a function could return rows without masking or an audit entry. `assurance.gate` raises `CrateGraphViolation` when an execution crate reaches storage or query crates outside the shared contracts. No flag, environment variable or build feature disables access controls.
+No flag, environment variable or build feature disables access controls. A surface holding the only handle to data reaches it through an adapter over the stack.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Mediation as a build property, no disable switch *(chosen)* | — | A surface holding the only handle to data writes an adapter through the stack: a network hop, or a generated artifact with a staleness check. |
+| Mediation as a build property *(chosen)* | — | A bulk export or offline diagnostic is slower than a direct read. |
 | An operator flag marking a trusted path | Failure mode | A flag set once stays set while the deployment looks healthy. |
 | Per-surface opt-in enforcement | Coverage | Every new surface is a fresh chance to omit it. |
-| Enforcement asserted by code review alone | Detectability | A bypass reads as a call-site move in a refactor. |
+| Enforcement asserted by review alone | Detectability | A bypass reads as a call-site move in a refactor. |
 
-Consequences: a bulk export or offline diagnostic is slower than a direct read.
-Revisit: an adapter through the stack misses a stated throughput requirement; audit bypasses cluster in one tooling category; a layer proves a no-op on some path.
+Revisit: an adapter through the stack misses a stated throughput requirement.
 
-## Export reads committed runs and is no second destination
+## export-committed — Export reads committed runs and is no second destination
 
-**Status:** accepted; amends the one-destination decision above, whose destination set stays one.
-
-Context: a deployment mirrors landed rows to another OTLP backend; `_ingested_at` is stamped per run, so a cursor over it skips a run committing late under an earlier stamp.
-
-Criteria: credential custody; delivery semantics the commit model honors; every row read through the enforcement stack; a cursor that skips no committed row.
-
-Decision: export is a post-commit reader with one OTLP arm; target secrets resolve through `connector.resolve` and leave through egress. A cursor over a per-table commit sequence, committed after acknowledgement, gives at-least-once delivery. Runs become readable in commit-sequence order, under the commit-lock decision below; a node reseeds its unsynced counter from the manifests.
+`_ingested_at` is stamped per run, so a cursor over it skips a run that commits late under an earlier stamp. Export target secrets resolve and leave through the same egress as every other secret.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Commit-sequence cursor, runs readable in sequence order *(chosen)* | — | A commit waits for every lower value to publish. |
+| Commit-sequence cursor *(chosen)* | — | A commit waits for every lower value to publish; a target sees duplicates on recovery. |
 | Export as a second land destination | Delivery semantics | A failing target fails the landing run. |
-| A consumer cursor over `_ingested_at` | Skipped rows | A late run under an earlier stamp is skipped. |
+| A cursor over `_ingested_at` | Skipped rows | A late run under an earlier stamp is skipped. |
 | A sink plugin per backend | Credential custody | Loaded code holds target credentials. |
 
-Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.
+## commit-lock — A commit holds the commit lock to reserve its value and to publish, not to write
 
-## A commit holds the commit lock to reserve its value and to publish, not to write
-
-**Status:** accepted; amends the export decision above.
-
-Context: a lock spanning the Parquet write serializes a table's landings. Criteria: readable runs hold a prefix of the commit sequence; a dead landing stalls no later commit; a lock refusal retries.
-
-Decision: a commit takes the lock to assign its `_commit_seq` value and lock a ticket file naming it, writes its parts holding only the ticket, then takes the lock again for its manifest once no live holder locks a lower ticket. A dead holder's ticket unlocks with its process, leaving a gap. Each wait ends at the commit wait, retryable. A vintage table keeps the lock across its part write. The reservation writes the counter as JSON, which a build locking across its part write parses as an integer and refuses.
+A lock spanning the Parquet write serializes a table's landings. A commit instead locks a ticket file naming its value while it writes parts; a dead holder's ticket unlocks with its process, leaving a gap.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Lock to reserve and publish, publication ordered by ticket *(chosen)* | — | A slow part write delays later publications. |
+| Lock to reserve and publish, ordered by ticket *(chosen)* | — | A slow part write delays later publications; a vintage table stays serial. |
 | Lock over the part write | Throughput | A table's landings write parts serially. |
-| Tickets without liveness, ordered by counter | Dead landings | A dead ticket holder stalls later commits. |
+| Tickets without liveness | Dead landings | A dead ticket holder stalls later commits. |
 | Readers skip unpublished values | Prefix | An export cursor passes a value that publishes later. |
-| A newer manifest major | Order | That build's commit reads no version, so it still publishes out of order. |
 
-Consequences: a table's landings write parts in parallel and publish serially. Accepted cost: a vintage table's landings stay serial; a build locking across its part write refuses, after merging its schema, every table a reserving build committed to.
+## queue-ingress — A managed queue extends ingress behind a port; the writer stays in the engine
 
-## A managed queue extends ingress behind a port; the writer stays in the engine
-
-**Status:** accepted; extends `topology.compose.one-tree`, whose single-node and edge shapes keep no external queue.
-
-Context: on a container shape with an ephemeral disk, the local `receive` spool waits on the writer, a cold boot blocks every sender, and grouping covers one container's senders.
-
-Criteria: an accepted batch survives eviction and cold boot; one table keeps one writer; a queued receipt never reads as success; laptop and cluster run one tree.
-
-Decision: `topology.compose.queue-extension`, with `run.land.receive-queued` for the answer and `run.export.queue-wake` for fan-out.
+On a container with an ephemeral disk, the local spool loses a batch on eviction and a cold boot blocks every sender. Single-node and edge shapes keep no external queue.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Queue port, managed queue where the target declares one *(chosen)* | — | A sender wanting the outcome reads it by batch key. |
-| Local spool on every shape | Durability | An evicted container loses a spooled batch; a cold boot blocks senders. |
+| Queue port, managed queue where declared *(chosen)* | — | A sender wanting the outcome reads it by batch key; an expired key ends a batch as a refusal. |
+| Local spool on every shape | Durability | An evicted container loses a spooled batch. |
 | A managed queue on every shape | One tree | Laptop and edge shapes gain an external process. |
 | Store writes in queue consumers | One writer | Commit ordering rests on locks a consumer does not hold. |
-
-Consequences: grouping spans every sender of a queue. Accepted cost: an expired key ends a delayed batch as a refusal rather than landing it.

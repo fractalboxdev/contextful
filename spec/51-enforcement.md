@@ -68,21 +68,15 @@ flowchart LR
 Removal and transformation inside the writer, ahead of columnar bytes and the run path's durable record.
 
 - `write-time` — Redaction runs inside the writer before columnar encoding. Each rule drops its value or transforms it into a policy-defined substitute: keyed digest, token, prefix or generalized band.
-  *A-authority*
+  *A-authority#prepared-record*
 - `rule` — A rule names a table, a column, one operation and that operation's argument.
-  *A-authority*
+  *A-authority#redistribution*
 - `pipeline-wide` — A rule set declared on a pipeline binds every table the pipeline lands, child tables included.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `after-normalization` — Redaction runs after relational normalization; a rule naming a parent column reaches values shredded into child tables.
-  *A-authority*
+  *A-authority#query-templates*
 - `before-the-record` — A canonical source writer shapes, normalizes and removes values before recording an opaque admitted payload; neither its inline record nor its blob contains the removed source value.
-  *A-authority*
-- `refetch` — A fresh pipeline execution over a table under removal rules reads the source again.
-  *A-authority*
-- `at-rest-scope` — Stored bytes lack only write-time-removed values. A column protected at query time alone is cleartext in storage and readable with the object-store credential.
-  *A-authority*
-- `summarize-only` — A `summarize_only` column stores its text whole; the flag lands at write time and travels with the column, binding every surface through {{authority.mask.verbatim-quote}}.
-  *A-authority*
+  *A-authority#prepared-record*
 - `rules-per-pipeline` — A pipeline carries at most 256 entries in its removal rule set.
   *because a longer rule set is a policy the operator cannot review*
 - `pattern-bytes` — One removal pattern carries at most 4 KiB of source text.
@@ -92,15 +86,15 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
 - `pattern-refusal` — Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration.
   *because a failed matcher cannot silently leave a declared sensitive value intact*
 - `in-value` — Pattern removal rewrites the union of all matches in one linear pass, merging overlapping matches into one span; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.
-  *A-authority*
+  *A-authority#span-union*
 - `every-land-entry` — A canonical project declaration binds direct and staged writers even when their callers omit its rules.
-  *A-authority*
+  *A-authority#prepared-record*
 - `combined-authority` — A destination's ordered canonical rule union obeys {{authority.redact.rules-per-pipeline}}; conflicting declared types, classes or policies and duplicate rules refuse before writing parts.
   *because an additional declaration cannot replace an earlier rule or its type and class authority*
 - `normalized-authority` — Projects declaring protected relational normalization require canonical table bindings for ordinary writes; an undeclared destination enters through a declared root's complete normalization lineage or refuses before durable bytes.
   *because a child name cannot prove which source column its values descend from*
 - `rewritten-identities` — Relational parent and child identities derive from rewritten source values; removed values contribute no retained identity digest.
-  *A-authority*
+  *A-authority#span-union*
 - `child-selector-lineage` — A normalized child mask selecting a sibling class requires typed sibling-row lineage; a group lacking that lineage refuses before writing any part.
   *because a source-row index cannot distinguish sibling values from different child rows*
 - `pinned-plan` — A source plan's explicit removal list equals its complete canonical destination rules; an unbound or mismatched list refuses before source execution. Canonical removal still binds an omitted list.
@@ -108,7 +102,7 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
 - `canonical-journal` — Canonical writer rules require {{authority.redact.before-the-record}} even when a caller's source plan omits its removal list; {{run.journal.redacting-source}} governs absent admission.
   *because caller omission cannot weaken a durable declaration's recording boundary*
 - `relational-journal` — A protected relational source records its concrete rewritten root and child group, preserving declared root types, child lineage and {{authority.redact.rewritten-identities}} through {{run.journal.prepared-replay}}.
-  *A-authority*
+  *A-authority#prepared-record*
 - `prepared-payload` — A protected source cannot supply an admitted recording envelope; modified rows, types, destination or normalization fail canonical payload admission before staged parts.
   *because connector-controlled bytes cannot claim a writer's recording authority*
 - `prepared-continuation` — Protected source continuations refuse before recording unless absent, exact terminal `{ next: null }` without more pages, or text unchanged by every canonical pattern; any canonical whole-value or JSON-path rule refuses text continuations.
@@ -118,16 +112,14 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
 - `recorded-body` — A store-driven job targeting canonical removal rules refuses before body execution without typed effect-result removal lineage; body calls record results before output landing.
   *because later row rewriting cannot remove earlier recorded effect results*
 - `prepared-effects` — Canonical effect preparation produces opaque rewritten root and child groups; the paid record and staged group carry the same rewritten values and {{authority.redact.rewritten-identities}}.
-  *A-authority*
+  *A-authority#body-projection*
 - `effect-scope` — A prepared effect binds canonical authority to its execution, row and effect entry key and composite projection identity; replay and staging require the independently issued scope, never authority inferred from decoded bytes.
-  *A-authority*
+  *A-authority#body-projection*
 
 ## compose
 
 The three layers as one reference monitor, and the order a registered relation applies.
 
-- `three-layers` — The reference monitor is three layers: write-time removal, the redistribution bound at push, and row-and-column restriction at query time. A request is authorized at each.
-  *P5*
 - `complete-mediation` — Every read of stored rows traverses the layers. A path reaching stored rows outside a registered relation is a defect, never a documented limitation.
   *P5*
 - `protection-is-a-rewrite` — Protection is a rewrite in the data plane: predicates compiled into the statement, rewritten projections, a per-credential filter at the sync edge, zone floors. Admission decides entry alone.
@@ -141,8 +133,6 @@ The three layers as one reference monitor, and the order a registered relation a
 - `before-the-cut` — Every step, zone exclusion included, completes before a ranked result is cut to its requested size; visible positions carry no trace of a withheld row.
   *P5*
 - `vector-arm` — A sidecar vector index returns candidate identifiers, which re-join through the registered relation before contributing to a result.
-  *P5*
-- `replica-again` — A caller holding a filtered replica is constrained again per query, the replica's bytes unchanged.
   *P5*
 - `session-build` — A session builds its relations at admission and rebuilds them when a revocation or a manifest change invalidates a grant it holds.
   *P5*
@@ -176,72 +166,73 @@ The typed row-predicate grammar, subject binding, the tenant equality and the pr
 
 Column classes, strategies and combines, guardrails over an exhaustible value space, the pepper, and masked behavior under caller SQL.
 
-- `column-policy` — A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.
-  *A-authority*
+- `column-policy` — A column under `[pipeline.tables.policy.columns]` declares {{type:contextful_policy::enforce::mask::RawColumnPolicy}}; an undeclared column carries no class.
+  *A-authority#exhaustible-digest*
 - `class-registry` — `class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.
-  *A-authority*
-- `row-class` — A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = "drop"`; each row's sibling text selects its strategy, independently of other rows.
-  *A-authority*
+  *A-authority#exhaustible-digest*
+- `row-class` — A row-class {{type:contextful_policy::enforce::mask::RawColumnPolicy}} declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = "drop"`; each row's sibling text selects its strategy, independently of other rows.
+  *A-authority#row-classes*
 - `row-class-selector` — `from_column` aliases `from` in {{authority.mask.row-class}}; declaring both names or any unknown selector field refuses before reading rows.
   *because ambiguous selector declarations cannot choose which class controls a row*
 - `row-class-dependency` — A row-class selector names another Utf8 column in the same table; {{authority.mask.absent-column}} checks its presence, and every mapped strategy retains {{authority.mask.typed-strategy}} and {{authority.mask.digest-alone}}.
-  *A-authority*
+  *A-authority#row-classes*
 - `row-class-fallback` — Unknown and null row-class values receive strict drop; no unspecified branch yields the original column value.
   *because an unrecognized class cannot grant weaker protection than any declared branch*
 - `unknown-class` — A `class` outside the registry raises `EnforceUnknownClass` at manifest check.
-  *A-authority*
-- `class-reach` — A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `strategies` — The strategies are `drop`, `hash` (keyed), `tokenize` (format-preserving), `truncate`, `bucket` and `range`.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `drop` — `drop` nulls the cell, or yields an empty string for a string column.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `one-value` — A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `digest-alone` — `hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `high-entropy` — A column of random identifiers or opaque tokens carries `hash` with no combine.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `combine-generalizes` — A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.
-  *A-authority*
-- `hash-width` — `hash` emits 32 chars of hexadecimal.
-  *A-authority*
-- `token-width` — `tokenize` emits 20 chars.
-  *A-authority*
-- `cuts-nothing` — A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.
-  *A-authority*
-- `crowd` — A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.
-  *A-authority*
-- `truncation-ceiling` — Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.
-  *A-authority*
-- `pepper` — One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.
-  *A-authority*
-- `development-pepper` — Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.
-  *A-authority*
-- `pseudonymous` — `hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.
-  *A-authority*
-- `native-digest` — Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.
-  *A-authority*
-- `key-material` — A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `subject-exception` — A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.
   *P1*
 - `in-place` — The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `equality` — An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `aggregates` — Aggregation reads the masked column.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `summarize-only` — `summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.
-  *A-authority*
-- `verbatim-quote` — One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.
-  *A-authority*
+  *A-authority#exhaustible-digest*
 - `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
-  *A-store*
+  *A-store#binary-fixed-size*
 - `absent-column` — A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.
   *because a skipped declaration serves reads under a policy its author believed covered a column*
 - `masks-per-table` — A table carries at most 128 entries in its column mask set.
   *because a table beyond it needs a drop, not a mask per column*
+
+### keyed digest
+
+`hash` and `tokenize` digest under one pepper, truncated within the class's crowd.
+
+- `hash-width` — `hash` emits 32 chars of hexadecimal.
+  *A-authority#exhaustible-digest*
+- `token-width` — `tokenize` emits 20 chars.
+  *A-authority#exhaustible-digest*
+- `cuts-nothing` — A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.
+  *A-authority#exhaustible-digest*
+- `crowd` — A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.
+  *A-authority#exhaustible-digest*
+- `truncation-ceiling` — Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.
+  *A-authority#exhaustible-digest*
+- `pepper` — One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.
+  *A-authority#exhaustible-digest*
+- `development-pepper` — Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.
+  *A-authority#exhaustible-digest*
+- `pseudonymous` — `hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.
+  *A-authority#exhaustible-digest*
+- `native-digest` — Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.
+  *A-authority#exhaustible-digest*
+- `key-material` — A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.
+  *A-authority#exhaustible-digest*
 
 ## refuse
 
@@ -266,140 +257,99 @@ The two shapes an unauthorized read takes, the scope guard, and what a refusal d
 - `undecidable` — A constraint the guard cannot settle composes as an ordinary conjunct; the engine-applied equality isolates.
   *P5*
 - `drifted-scope` — A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.
-  *A-authority*
+  *A-authority#one-credential*
 
 ## bound-redistribution
 
 The per-table licence bound applied at push, the root-object allowlist, and the per-credential edge filter.
 
 - `withhold` — A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.
-  *A-authority*
+  *A-authority#redistribution*
 - `before-diff` — The exclusion applies before the object diff is computed.
-  *A-authority*
+  *A-authority#redistribution*
 - `outranks-grants` — The bound holds against a credential granted everything.
-  *A-authority*
+  *A-authority#redistribution*
 - `envelopes` — The bound covers the table's columnar files and each pull's verbatim record.
-  *A-authority*
+  *A-authority#redistribution*
 - `root-allowlist` — While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.
-  *A-authority*
+  *A-authority#redistribution*
 - `root-not-allowlisted` — A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.
-  *A-authority*
+  *A-authority#redistribution*
 - `left-behind` — Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.
-  *A-authority*
+  *A-authority#redistribution*
 - `manifest-is-an-index` — An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.
-  *A-authority*
+  *A-authority#redistribution*
 - `report` — A left-behind report names at most 100 files and states the total found.
-  *A-authority*
+  *A-authority#redistribution*
 - `two-checks` — The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.
-  *A-authority*
+  *A-authority#redistribution*
 - `edge-filter` — A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.
-  *A-authority*
+  *A-authority#redistribution*
 - `edge-whole-table` — The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object outside `access/`, `control/` and `stale_memory.idx` only under such a grant on `*`.
   *because a table's files hold every row a narrowing grant removes, run states and cursor logs name tables, and a query re-applies only what the replica holds*
-
-One push under the bound:
-
-```mermaid
-flowchart LR
-  PARTS[("local parts")] -- "push" --> C1{"withheld objects uploaded?"}
-  C1 -- "yes, nothing deleted" --> E1["refused push"]
-  C1 -- "no, exclude withheld" --> DIFF["object diff"]
-  DIFF -- "planned uploads" --> RA{"root object allowlisted?"}
-  RA -- "no, table withheld" --> E2["refused upload"]
-  RA -- "yes" --> U["upload loop"]
-  U -- "uploaded objects" --> C2{"stale objects left behind?"}
-  C2 -- "yes" --> E1
-  C2 -- "no" --> M[("bucket manifest")]
-```
 
 ## place
 
 Inference zones: grammar, composition across grains, floors, incognito, and the serve-time outcome.
 
 - `zone-string` — A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `allow-set-entry` — An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `unparsed-pattern` — An allow-set entry matching no entry form raises `EnforceZonePatternUnparsed`, naming the entry.
   *because an unparsed entry matching nothing hides a policy error; a new zone category updates the grammar first*
 - `disjunctive` — A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `undeclared` — Only `*` admits an undeclared zone.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `caller-zone` — The calling process declares its zone per request; the store carries none.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `asserted-zone` — A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.
   *because an unsigned argument able to widen placement makes the signed zone decorative*
-- `picks-no-model` — Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.
-  *A-authority*
 - `fail-closed` — A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.
-  *A-authority*
-- `permissive-default` — A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `protected-floor` — A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `floor-widened` — A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `removal-with-public-cloud` — A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.
   *P1*
 - `narrowest-grain` — A column's set narrows its table's; a principal's set narrows both.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `row-zone-column` — A table's `policy.zone.column` names a column whose value, one allow-set entry, narrows its row's set as a column's set narrows its table's; a null keeps the table's set, and an unparsed value admits no zone.
   *because the store owner declares the column in the table's policy and its value only narrows, unlike the binding's advisory key {{run.bind.advisory-zone}} refuses*
 - `excluded-row` — Where the table's effective set omits the session's zone, the row leaves the result.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `excluded-cell` — A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `per-principal` — A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `unauthored-row` — A row the engine landed with no authenticated subject takes its table's set; only a row whose author the engine cannot verify resolves as an undeclared zone.
   *because a pipeline-landed row carries no author to narrow by, and treating it as undeclared withholds every such row from any table not admitting `*`*
 - `evidence-floor` — A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `empty-evidence` — A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.
   *because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set*
 - `incognito` — Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `incognito-widening` — A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `team-default` — `[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `default-widened` — Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.
   *because a default any minter replaces bounds nothing the project owner chose*
 - `serve-outcome` — Serving one row yields a drop flag and the list of zone-masked columns.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `envelope` — A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `excluded-disclosed` — `rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.
-  *A-read*
+  *A-read#zone-withheld-relation*
 - `symbolic-inclusion` — Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.
-  *A-authority*
-- `proxy-boundary` — A proxy replica resolves zones at the proxy boundary.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `allow-set-entries` — An allow-set holds at most 32 entries.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `identifier-length` — A zone identifier holds at most 128 chars.
-  *A-authority*
-
-Resolving one served row against the session's zone:
-
-```mermaid
-flowchart LR
-  CZ["caller zone"] -- "per request" --> INC{"incognito?"}
-  INC -- "no" --> Z["session zone"]
-  INC -- "yes" --> PIN{"asserted zone too wide?"}
-  PIN -- "yes, wider than local" --> E1["refused session"]
-  PIN -- "no" --> Z
-  TS["table allow-set"] -- "fail-closed pair if undeclared" --> FL["phi floor"]
-  FL -- "floored allow-set" --> TE{"table set admits zone?"}
-  Z -- "zone" --> TE
-  TE -- "no, author's set narrows" --> DROP["dropped row"]
-  TE -- "yes" --> CE{"column set admits zone?"}
-  CE -- "no" --> NUL["nulled cell"]
-  CE -- "yes" --> SRV["served masked cell"]
-  DROP -- "removed count" --> ENV["response envelope"]
-  NUL -- "masked column" --> ENV
-```
+  *A-authority#placement-breadth*
 
 unsettled: Does the restriction block also carry the rows a row predicate removes and the column names a mask policy nulls, given both disclose how much of a table the caller's scope withholds? owner: authority affects: authority.place
 
@@ -408,28 +358,15 @@ unsettled: Does the restriction block also carry the rows a row predicate remove
 The paths that stay closed to an injected instruction.
 
 - `credential-shaped-value` — A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.
-  *A-read*
+  *A-read#store-holds-nothing*
 - `read-only-face` — An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.
-  *A-surface*
+  *A-surface#answer-surfaces-read*
 - `write-tool` — Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.
-  *A-surface*
+  *A-surface#answer-surfaces-read*
 
 unsettled: Does a source writer refuse a credential-shaped value per value, landing the surrounding rows, and which operator-declared exemption admits a source carrying such text? owner: authority affects: authority.resist
 
 ## Shapes
-
-The order a registered relation applies, one table, one session:
-
-```mermaid
-flowchart LR
-  T[("table")] -- "mirrored permission semi-join" --> M["permitted rows"]
-  M -- "tenant byte equality" --> TEN["tenant rows"]
-  TEN -- "credential predicate" --> RP["subject rows"]
-  RP -- "table policy override" --> TP["policy rows"]
-  TP -- "project default" --> DEF["default-filtered rows"]
-  DEF -- "drop rows by zone" --> ZR["zone-admitted rows"]
-  ZR -- "project columns, null, mask" --> V[["registered relation"]]
-```
 
 The class registry. The width ceiling assumes the default `crowd`:
 

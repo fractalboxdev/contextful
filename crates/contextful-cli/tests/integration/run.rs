@@ -54,6 +54,8 @@ fn canary_source(dir: &Path) {
     std::fs::write(dir.join("empty.sh"), "touch source-was-called\nprintf '{\"rows\":[{\"body\":\"415-555-0100\"}],\"more\":false}'\n").unwrap();
 }
 
+// spec: run.journal.prepared-owner@2d1acb1d
+// spec: run.journal.prepared-replay@a0b679a6
 #[test]
 // spec: authority.redact.before-the-record@96678945
 fn removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling() {
@@ -167,6 +169,7 @@ fn a_removed_monotonic_field_refuses_before_source_execution_and_an_unprotected_
     }
 }
 
+// spec: authority.redact.pinned-plan@740e274d
 #[test]
 fn a_caller_plan_cannot_claim_writer_rules_without_canonical_authority() {
     let dir = project();
@@ -178,6 +181,7 @@ fn a_caller_plan_cannot_claim_writer_rules_without_canonical_authority() {
     assert!(!dir.path().join(".contextful/context/research/machine.sqlite").exists());
 }
 
+// spec: authority.redact.canonical-journal@bb8bf7b4
 #[test]
 fn omitting_caller_rules_cannot_omit_canonical_source_preparation() {
     let dir = project();

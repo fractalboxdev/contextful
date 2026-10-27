@@ -96,6 +96,7 @@ fn a_corrupt_r2_blob_cannot_be_returned_as_a_recorded_value() {
     worker.join().unwrap();
 }
 
+// spec: run.journal.d1-recovery@74ff7a6f
 #[test]
 fn a_replacement_checks_the_same_d1_schema_and_recovery_identity() {
     let fixture = Fixture::start();
@@ -299,6 +300,7 @@ fn a_durable_callback_guard_blocks_lease_transfer_until_release() {
     assert!(next.fence > lease.fence);
 }
 
+// spec: run.journal.d1-guard@c06df09b
 #[test]
 fn a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover() {
     let fixture = Fixture::start();
@@ -554,6 +556,7 @@ fn a_d1_callback_guard_blocks_owner_transfer_but_allows_run_metadata() {
     assert!(catalog.execution_guard(&admission).is_err());
 }
 
+// spec: run.journal.d1-blob@0af768ba
 #[test]
 fn a_recorded_r2_blob_survives_replacement_and_sweep() {
     let fixture = Fixture::start();
@@ -599,6 +602,7 @@ fn a_recorded_r2_blob_survives_replacement_and_sweep() {
     assert!(replacement.get(&sha).unwrap().is_none());
 }
 
+// spec: run.export.d1-state@da5236d3
 #[test]
 fn a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity() {
     let fixture = Fixture::start();

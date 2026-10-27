@@ -4,7 +4,7 @@
 //! from its pin, refuses an inventory whose claim reaches past what its theorems carry — a
 //! theorem without its negative space, an unbound proof target, an object wider than the
 //! named decisions, an unnamed component, a commutation, sampled inclusion or mediation
-//! claim, a translated theorem without its chain or past the refinement scope — then
+//! claim — then
 //! builds the package, surfaces an unmodelled manifest category, and reads each required
 //! constant's elaborated statement and transitive assumption footprint off the elaborated
 //! environment through a generated Lean file. Source text decides nothing. `recheck` repeats the audit over the commit's own source in an empty artifact
@@ -35,36 +35,6 @@ pub const RECHECK_WALL_TIME: Duration = Duration::from_secs(600);
 /// Where `check` writes its report, relative to the package root, absent `--report`.
 pub const DEFAULT_REPORT: &str = ".lake/contextful-report.json";
 
-/// The translator a translation chain names (`assurance.scope-claim.translation-chain`).
-pub const TRANSLATOR: &str = "aeneas";
-
-/// What a translated module may not reach (`assurance.scope-claim.refinement-exceeded`):
-/// each entry a path root and the kind of object it reaches.
-pub const REFINEMENT_EXCLUDED: [(&str, &str); 22] = [
-    ("biscuit_auth", "cryptography"),
-    ("ed25519_dalek", "cryptography"),
-    ("jsonwebtoken", "cryptography"),
-    ("ring", "cryptography"),
-    ("sha2", "cryptography"),
-    ("hmac", "cryptography"),
-    ("biscuit_parser", "a parsing adapter"),
-    ("serde_json", "a parsing adapter"),
-    ("serde_yaml", "a parsing adapter"),
-    ("toml", "a parsing adapter"),
-    ("sqlparser", "a parsing adapter"),
-    ("csv", "a parsing adapter"),
-    ("duckdb", "a database call"),
-    ("rusqlite", "a database call"),
-    ("sqlx", "a database call"),
-    ("postgres", "a database call"),
-    ("std::thread", "concurrency"),
-    ("std::sync", "concurrency"),
-    ("tokio", "concurrency"),
-    ("rayon", "concurrency"),
-    ("crossbeam", "concurrency"),
-    ("async", "concurrency"),
-];
-
 /// The refusals of `contextful formal`, one variant per error identifier of the
 /// `assurance` contract it raises. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -90,12 +60,6 @@ pub enum FormalError {
     /// (`assurance.scope-claim.beyond-named-decisions`)
     #[error("ClaimBeyondNamedDecisions: {0}")]
     ClaimBeyondNamedDecisions(String),
-    /// (`assurance.scope-claim.unstated-chain`)
-    #[error("TranslationChainUnstated: {0}")]
-    TranslationChainUnstated(String),
-    /// (`assurance.scope-claim.refinement-exceeded`)
-    #[error("RefinementScopeExceeded: {0}")]
-    RefinementScopeExceeded(String),
     /// (`assurance.prove.unbound-target`)
     #[error("ProofTargetUnbound: {0}")]
     ProofTargetUnbound(String),
@@ -159,6 +123,12 @@ pub enum FormalCmd {
     Differential(crate::differential::DifferentialArgs),
     /// Compare generated lease and fenced write sequences with the executable protocol model.
     ProtocolDifferential(crate::protocol_differential::Args),
+    /// Compare generated interleavings of journaled steps over the memory, file and SQLite
+    /// journal adapters with the executable journal model.
+    #[cfg(feature = "data-plane")]
+    JournalDifferential(crate::journal_differential::Args),
+    /// Compare generated merge cases with the executable merge model, key by key.
+    MergeDifferential(crate::merge_differential::Args),
 }
 
 pub fn run(cmd: FormalCmd) -> Result<()> {
@@ -171,6 +141,9 @@ pub fn run(cmd: FormalCmd) -> Result<()> {
         FormalCmd::Recheck { root } => recheck(root),
         FormalCmd::Differential(args) => crate::differential::run(args),
         FormalCmd::ProtocolDifferential(args) => crate::protocol_differential::run(args),
+        #[cfg(feature = "data-plane")]
+        FormalCmd::JournalDifferential(args) => crate::journal_differential::run(args),
+        FormalCmd::MergeDifferential(args) => crate::merge_differential::run(args),
     }
 }
 
@@ -239,8 +212,6 @@ pub struct ClaimReport {
     pub specifications: Vec<String>,
     /// The trusted dependencies the claim names and proves none of.
     pub trusted: Vec<String>,
-    /// One stated translation chain per translated constant.
-    pub translation: Vec<String>,
     pub sentence: String,
 }
 
@@ -452,49 +423,7 @@ struct RawRow {
     binding: Option<String>,
     negative: Option<String>,
     offered_as: Option<String>,
-    translated: Option<String>,
-    translation: Option<Translation>,
     record: Option<String>,
-}
-
-/// The four links a statement about translated code inherits.
-#[derive(Debug, Clone, Default, Deserialize)]
-struct Translation {
-    lowering: Option<String>,
-    translator: Option<String>,
-    models: Option<String>,
-    build: Option<String>,
-}
-
-impl Translation {
-    /// The first link the chain leaves unstated, or a translator other than
-    /// [`TRANSLATOR`] at one release string.
-    fn unstated(&self) -> Option<String> {
-        let blank = |s: &Option<String>| s.as_deref().is_none_or(|s| s.trim().is_empty());
-        for (link, value) in
-            [("lowering", &self.lowering), ("translator", &self.translator), ("models", &self.models), ("build", &self.build)]
-        {
-            if blank(value) {
-                return Some(format!("the `{link}` link is unstated"));
-            }
-        }
-        let translator = self.translator.as_deref().unwrap_or_default().trim();
-        match translator.split_whitespace().collect::<Vec<_>>().as_slice() {
-            [name, _release] if name.eq_ignore_ascii_case(TRANSLATOR) => None,
-            _ => Some(format!("the translator `{translator}` is not `{TRANSLATOR} <release>`")),
-        }
-    }
-
-    fn render(&self) -> String {
-        let s = |v: &Option<String>| v.as_deref().unwrap_or_default().trim().to_string();
-        format!(
-            "lowering: {}; translator: {}; models: {}; build: {}",
-            s(&self.lowering),
-            s(&self.translator),
-            s(&self.models),
-            s(&self.build)
-        )
-    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -527,8 +456,6 @@ struct InventoryRow {
     binding: Option<String>,
     negative: Option<String>,
     offered_as: Option<String>,
-    translated: Option<String>,
-    translation: Option<Translation>,
     record: Option<String>,
 }
 
@@ -563,11 +490,6 @@ impl Binding {
         let test = parts.find_map(|p| p.strip_prefix("test ")).map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
         Binding { decision, test }
     }
-
-    /// The decision's file: the part before its first `::`.
-    fn file(&self) -> &str {
-        self.decision.split("::").next().unwrap_or_default()
-    }
 }
 
 fn is_ident(c: Option<char>) -> bool {
@@ -585,23 +507,6 @@ fn resolves(tree: &Path, path: &str, function: bool) -> bool {
         && text.match_indices(&needle).any(|(i, _)| {
             !is_ident(text[..i].chars().next_back()) && !is_ident(text[i + needle.len()..].chars().next())
         })
-}
-
-/// The excluded object a module's source reaches, as its path root and kind.
-fn excluded_reach(source: &str) -> Option<(&'static str, &'static str)> {
-    REFINEMENT_EXCLUDED.iter().copied().find(|(root, _)| {
-        source.match_indices(root).any(|(i, _)| {
-            let before = source[..i].chars().next_back();
-            let rest = &source[i + root.len()..];
-            if is_ident(before) || before == Some(':') {
-                return false;
-            }
-            if *root == "async" {
-                return rest.starts_with([' ', '\n']);
-            }
-            rest.starts_with("::") || rest.starts_with(';') || rest.starts_with(" as ")
-        })
-    })
 }
 
 /// Whether a statement quantifies over every placement: a binder of the placement type
@@ -649,8 +554,6 @@ impl Inventory {
                 negative: r.negative,
                 record: r.record,
                 offered_as: r.offered_as,
-                translated: r.translated,
-                translation: r.translation,
             });
         }
         let revision = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
@@ -763,46 +666,21 @@ impl Inventory {
             .into());
         }
 
-        let mut translation = Vec::new();
-        for row in &self.rows {
-            let Some(module) = row.translated.as_deref().map(str::trim) else { continue };
-            let name = &row.name;
-            let chain = row.translation.clone().unwrap_or_default();
-            if let Some(gap) = chain.unstated() {
-                return Err(FormalError::TranslationChainUnstated(format!("`{name}` is claimed over `{module}`: {gap}")).into());
-            }
-            let behind_target = self.claim.targets.contains(name) && decisions.iter().any(|d| d.file() == module);
-            if !behind_target {
-                return Err(FormalError::RefinementScopeExceeded(format!(
-                    "`{module}` is translated for `{name}`, outside the decision functions behind the proof targets"
-                ))
-                .into());
-            }
-            let source = std::fs::read_to_string(tree.join(module))
-                .with_context(|| format!("reading the translated module {module}"))?;
-            if let Some((root, kind)) = excluded_reach(&source) {
-                return Err(FormalError::RefinementScopeExceeded(format!("`{module}` reaches {kind} through `{root}`")).into());
-            }
-            translation.push(format!("{name}: {}", chain.render()));
-        }
-
         if self.claim.targets.is_empty() {
             return Ok(None);
         }
         let decisions: Vec<String> = decisions.into_iter().map(|d| d.decision).collect();
         let list = |items: &[String]| if items.is_empty() { "none".to_string() } else { items.join(", ") };
         let sentence = format!(
-            "these named decisions ({}) satisfy these named Lean specifications ({}) under these stated translation and runtime assumptions (trusted: {}; translation: {})",
+            "these named decisions ({}) satisfy these named Lean specifications ({}) under these stated runtime assumptions (trusted: {})",
             list(&decisions),
             list(&self.claim.targets),
             list(&self.claim.trusted),
-            list(&translation),
         );
         Ok(Some(ClaimReport {
             decisions,
             specifications: self.claim.targets.clone(),
             trusted: self.claim.trusted.clone(),
-            translation,
             sentence,
         }))
     }

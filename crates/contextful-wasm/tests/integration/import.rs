@@ -27,6 +27,7 @@ fn a_guest_standard_library_sees_no_environment_arguments_or_files() {
 /// The pipeline's guest configuration table is the one part of the source configuration crossing inward, as one JSON
 /// object delivered once per session ahead of discovery.
 // spec: connector.import.forwarded-config@a2678abd
+// spec: connector.import.unusable-key@bd9d7144
 #[test]
 fn the_guest_table_arrives_once_ahead_of_discovery() {
     let mut s = open_with(loopback(), &Limits::default(), Some(&json!({ "region": "eu", "limit": 50 }))).unwrap();

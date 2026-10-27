@@ -90,7 +90,6 @@ EnforceRootObjectNotAllowlisted      = { clause = "authority.bound-redistributio
 EnforceStaleRedistributedObjects     = { clause = "authority.bound-redistribution.left-behind", gloss = "Objects an earlier push left addressable for a now-withheld table." }
 EnforceZonePatternUnparsed           = { clause = "authority.place.unparsed-pattern", gloss = "An allow-set entry matching no entry form." }
 EnforceZoneAssertionWidens           = { clause = "authority.place.asserted-zone", gloss = "A request asserted a zone its credential does not sign." }
-EnforcePermissiveZoneDefault         = { clause = "authority.place.permissive-default", gloss = "A wildcard zone default in a store with several principals." }
 EnforceProtectedFloorWidened         = { clause = "authority.place.floor-widened", gloss = "A protected-class surface widened past its floor with no override." }
 EnforceRemovalWithPublicCloud        = { clause = "authority.place.removal-with-public-cloud", gloss = "Write-time removal and a public-cloud allow-set on one surface." }
 EnforceEvidenceFloorExceeded         = { clause = "authority.place.evidence-floor", gloss = "A synthesized row declaring a set wider than its evidence intersection." }
@@ -101,35 +100,44 @@ EnforceCredentialShapedValue         = { clause = "authority.resist.credential-s
 EnforceWriteOnReadOnlyFace           = { clause = "authority.resist.write-tool", gloss = "A write tool registered on an organization-wide face." }
 
 [limit]
-subject-value-bytes            = { clause = "authority.identify.value-hygiene", value = 256, unit = "B", basis = "chosen", gloss = "Longest subject value the mint accepts." }
-evaluator-fact-ceiling         = { clause = "authority.profile.fact-ceiling", value = 1000, unit = "entries", basis = "chosen", gloss = "Facts one authorization holds." }
-evaluator-iteration-ceiling    = { clause = "authority.profile.iteration-ceiling", value = 100, unit = "iterations", basis = "chosen", gloss = "Evaluator iterations per authorization." }
-aggregate-group-ceiling-floor  = { clause = "authority.grant.group-ceiling", value = 1, unit = "entries", basis = "chosen", gloss = "Least groups-per-query ceiling an aggregate grant declares." }
-tenant-child-lifetime          = { clause = "authority.grant.tenant-child-lifetime", value = 15, unit = "min", basis = "chosen", gloss = "Lifetime of a per-query tenant-scoped child." }
-issuance-lifetime-ceiling      = { clause = "authority.issue.ceiling", value = 24, unit = "h", basis = "chosen", gloss = "Longest lifetime a persisted issuance policy permits." }
-issuer-key-rotation-cadence    = { clause = "authority.issue.key-rotation", value = 90, unit = "d", basis = "chosen", gloss = "Rotation interval of the issuer signing key." }
-proof-replay-window            = { clause = "authority.verify.replay-window", value = 300, unit = "s", basis = "chosen", gloss = "Oldest proof issue instant a checkpoint admits, and nonce retention." }
-proof-clock-skew               = { clause = "authority.verify.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Furthest a proof issue instant runs ahead of the checkpoint clock." }
-nonce-cache-entries            = { clause = "authority.verify.nonce-cache", value = 100000, unit = "entries", basis = "chosen", gloss = "Nonces one checkpoint retains." }
-bearer-lifetime-ceiling        = { clause = "authority.verify.bearer-lifetime", value = 3600, unit = "s", basis = "chosen", gloss = "Longest issue-to-expiry span of a bearer a network checkpoint admits." }
-key-set-refresh-interval       = { clause = "authority.verify.key-set-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lifetime of a fetched published key set." }
-key-set-stale-ceiling          = { clause = "authority.verify.key-set-stale", value = 1, unit = "h", basis = "chosen", gloss = "Age past which a last-known-good key set stops serving." }
-exchange-lifetime-default      = { clause = "authority.exchange.lifetime-default", value = 900, unit = "s", basis = "chosen", gloss = "Minted lifetime where the policy declares none." }
-exchange-lifetime-ceiling      = { clause = "authority.exchange.lifetime-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Ceiling a configured minted lifetime clamps to." }
-exchange-body-ceiling          = { clause = "authority.exchange.body-ceiling", value = 64, unit = "KiB", basis = "chosen", gloss = "Largest exchange request body parsed." }
-redaction-rules-per-pipeline   = { clause = "authority.redact.rules-per-pipeline", value = 256, unit = "entries", basis = "chosen", gloss = "Removal rules one pipeline declares." }
-redaction-pattern-bytes        = { clause = "authority.redact.pattern-bytes", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one removal pattern." }
-redaction-compiled-size        = { clause = "authority.redact.compiled-pattern-size", value = 1, unit = "MiB", basis = "chosen", gloss = "Each Thompson NFA of one removal pattern." }
-relations-per-session          = { clause = "authority.compose.relations-per-session", value = 1024, unit = "entries", basis = "chosen", gloss = "Registered relations one session holds." }
-row-predicate-size             = { clause = "authority.filter-rows.predicate-size", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one row predicate." }
-membership-list-entries        = { clause = "authority.filter-rows.membership-list", value = 512, unit = "entries", basis = "chosen", gloss = "Literals in one membership list." }
-hash-output-width              = { clause = "authority.mask.hash-width", value = 32, unit = "chars", basis = "chosen", gloss = "Output width of a keyed hash." }
-token-output-width             = { clause = "authority.mask.token-width", value = 20, unit = "chars", basis = "chosen", gloss = "Output width of a tokenization." }
-mask-crowd-floor               = { clause = "authority.mask.crowd", value = 1000, unit = "values", basis = "chosen", gloss = "Fewest inputs one masked output covers." }
-summarize-only-quote           = { clause = "authority.mask.verbatim-quote", value = 280, unit = "chars", basis = "chosen", gloss = "Verbatim release from a summarize-only value per citation." }
-masks-per-table                = { clause = "authority.mask.masks-per-table", value = 128, unit = "entries", basis = "chosen", gloss = "Column masks one table declares." }
-refusal-payload                = { clause = "authority.refuse.payload", value = 512, unit = "B", basis = "chosen", gloss = "Bytes one refusal payload carries." }
-scope-guard-walk               = { clause = "authority.refuse.guard-walk", value = 4096, unit = "entries", basis = "chosen", gloss = "Parse-tree nodes the scope guard visits." }
-stale-object-report            = { clause = "authority.bound-redistribution.report", value = 100, unit = "files", basis = "chosen", gloss = "Objects a left-behind report names." }
-zone-allow-set-entries         = { clause = "authority.place.allow-set-entries", value = 32, unit = "entries", basis = "chosen", gloss = "Patterns one zone allow-set holds." }
-zone-identifier-length         = { clause = "authority.place.identifier-length", value = 128, unit = "chars", basis = "chosen", gloss = "Characters in a zone identifier." }
+subject-value-bytes            = { clause = "authority.identify.value-hygiene", value = 256, unit = "B", basis = "chosen", gloss = "Longest subject value the mint accepts.", const = "crates/contextful-core/src/identify.rs::SUBJECT_VALUE_BYTES" }
+evaluator-fact-ceiling         = { clause = "authority.profile.fact-ceiling", value = 1000, unit = "entries", basis = "chosen", gloss = "Facts one authorization holds.", const = "crates/contextful-policy/src/profile.rs::EVALUATOR_FACT_CEILING" }
+evaluator-iteration-ceiling    = { clause = "authority.profile.iteration-ceiling", value = 100, unit = "iterations", basis = "chosen", gloss = "Evaluator iterations per authorization.", const = "crates/contextful-policy/src/profile.rs::EVALUATOR_ITERATION_CEILING" }
+aggregate-group-ceiling-floor  = { clause = "authority.grant.group-ceiling", value = 1, unit = "entries", basis = "chosen", gloss = "Least groups-per-query ceiling an aggregate grant declares.", const = "crates/contextful-core/src/grant.rs::AGGREGATE_GROUP_CEILING_FLOOR" }
+tenant-child-lifetime          = { clause = "authority.grant.tenant-child-lifetime", value = 15, unit = "min", basis = "chosen", gloss = "Lifetime of a per-query tenant-scoped child.", const = "crates/contextful-core/src/grant.rs::TENANT_CHILD_LIFETIME_MINUTES" }
+issuance-lifetime-ceiling      = { clause = "authority.issue.ceiling", value = 24, unit = "h", basis = "chosen", gloss = "Longest lifetime a persisted issuance policy permits.", const = "crates/contextful-core/src/issue.rs::ISSUANCE_LIFETIME_CEILING_SECS" }
+issuer-key-rotation-cadence    = { clause = "authority.issue.key-rotation", value = 90, unit = "d", basis = "chosen", gloss = "Rotation interval of the issuer signing key.", const = "crates/contextful-core/src/issue.rs::ISSUER_KEY_ROTATION_CADENCE_SECS" }
+proof-replay-window            = { clause = "authority.verify.replay-window", value = 300, unit = "s", basis = "chosen", gloss = "Oldest proof issue instant a checkpoint admits, and nonce retention.", const = "crates/contextful-policy/src/possession.rs::PROOF_REPLAY_WINDOW_SECS" }
+proof-clock-skew               = { clause = "authority.verify.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Furthest a proof issue instant runs ahead of the checkpoint clock.", const = "crates/contextful-policy/src/possession.rs::PROOF_CLOCK_SKEW_SECS" }
+nonce-cache-entries            = { clause = "authority.verify.nonce-cache", value = 100000, unit = "entries", basis = "chosen", gloss = "Nonces one checkpoint retains.", const = "crates/contextful-policy/src/possession.rs::NONCE_CACHE_ENTRIES" }
+bearer-lifetime-ceiling        = { clause = "authority.verify.bearer-lifetime", value = 3600, unit = "s", basis = "chosen", gloss = "Longest issue-to-expiry span of a bearer a network checkpoint admits.", const = "crates/contextful-policy/src/verify.rs::BEARER_LIFETIME_SECS" }
+key-set-refresh-interval       = { clause = "authority.verify.key-set-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lifetime of a fetched published key set.", const = "crates/contextful-policy/src/keyset.rs::KEY_SET_REFRESH_INTERVAL_SECS" }
+key-set-stale-ceiling          = { clause = "authority.verify.key-set-stale", value = 1, unit = "h", basis = "chosen", gloss = "Age past which a last-known-good key set stops serving.", const = "crates/contextful-policy/src/keyset.rs::KEY_SET_STALE_CEILING_SECS" }
+exchange-lifetime-default      = { clause = "authority.exchange.lifetime-default", value = 900, unit = "s", basis = "chosen", gloss = "Minted lifetime where the policy declares none.", const = "crates/contextful-core/src/exchange.rs::EXCHANGE_LIFETIME_DEFAULT_SECS" }
+exchange-lifetime-ceiling      = { clause = "authority.exchange.lifetime-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Ceiling a configured minted lifetime clamps to.", const = "crates/contextful-core/src/exchange.rs::EXCHANGE_LIFETIME_CEILING_SECS" }
+exchange-body-ceiling          = { clause = "authority.exchange.body-ceiling", value = 64, unit = "KiB", basis = "chosen", gloss = "Largest exchange request body parsed.", const = "crates/contextful-policy/src/exchange.rs::EXCHANGE_BODY_BYTES" }
+redaction-rules-per-pipeline   = { clause = "authority.redact.rules-per-pipeline", value = 256, unit = "entries", basis = "chosen", gloss = "Removal rules one pipeline declares.", const = "crates/contextful-core/src/redaction.rs::RULES_PER_PIPELINE" }
+redaction-pattern-bytes        = { clause = "authority.redact.pattern-bytes", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one removal pattern.", const = "crates/contextful-core/src/redaction.rs::PATTERN_BYTES" }
+redaction-compiled-size        = { clause = "authority.redact.compiled-pattern-size", value = 1, unit = "MiB", basis = "chosen", gloss = "Each Thompson NFA of one removal pattern.", const = "crates/contextful-core/src/redaction.rs::COMPILED_PATTERN_SIZE" }
+relations-per-session          = { clause = "authority.compose.relations-per-session", value = 1024, unit = "entries", basis = "chosen", gloss = "Registered relations one session holds.", const = "crates/contextful-policy/src/enforce/session.rs::RELATIONS_PER_SESSION" }
+row-predicate-size             = { clause = "authority.filter-rows.predicate-size", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one row predicate.", const = "crates/contextful-policy/src/enforce/predicate.rs::PREDICATE_SIZE" }
+membership-list-entries        = { clause = "authority.filter-rows.membership-list", value = 512, unit = "entries", basis = "chosen", gloss = "Literals in one membership list.", const = "crates/contextful-policy/src/enforce/predicate.rs::MEMBERSHIP_LIST_ENTRIES" }
+hash-output-width              = { clause = "authority.mask.hash-width", value = 32, unit = "chars", basis = "chosen", gloss = "Output width of a keyed hash.", const = "crates/contextful-policy/src/enforce/mask.rs::HASH_OUTPUT_WIDTH" }
+token-output-width             = { clause = "authority.mask.token-width", value = 20, unit = "chars", basis = "chosen", gloss = "Output width of a tokenization.", const = "crates/contextful-policy/src/enforce/mask.rs::TOKEN_OUTPUT_WIDTH" }
+mask-crowd-floor               = { clause = "authority.mask.crowd", value = 1000, unit = "values", basis = "chosen", gloss = "Fewest inputs one masked output covers.", const = "crates/contextful-policy/src/enforce/mask.rs::MASK_CROWD_FLOOR" }
+masks-per-table                = { clause = "authority.mask.masks-per-table", value = 128, unit = "entries", basis = "chosen", gloss = "Column masks one table declares.", const = "crates/contextful-policy/src/enforce/mask.rs::MASKS_PER_TABLE" }
+refusal-payload                = { clause = "authority.refuse.payload", value = 512, unit = "B", basis = "chosen", gloss = "Bytes one refusal payload carries.", const = "crates/contextful-policy/src/enforce/refuse.rs::REFUSAL_PAYLOAD" }
+scope-guard-walk               = { clause = "authority.refuse.guard-walk", value = 4096, unit = "entries", basis = "chosen", gloss = "Parse-tree nodes the scope guard visits.", const = "crates/contextful-policy/src/enforce/scope.rs::SCOPE_GUARD_WALK" }
+stale-object-report            = { clause = "authority.bound-redistribution.report", value = 100, unit = "files", basis = "chosen", gloss = "Objects a left-behind report names.", const = "crates/contextful-sync/src/sync.rs::STALE_OBJECT_REPORT" }
+zone-allow-set-entries         = { clause = "authority.place.allow-set-entries", value = 32, unit = "entries", basis = "chosen", gloss = "Patterns one zone allow-set holds.", const = "crates/contextful-core/src/place.rs::ALLOW_SET_ENTRIES" }
+zone-identifier-length         = { clause = "authority.place.identifier-length", value = 128, unit = "chars", basis = "chosen", gloss = "Characters in a zone identifier.", const = "crates/contextful-core/src/place.rs::ZONE_IDENTIFIER_LENGTH" }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"subject tuple"         = { clause = "authority.identify.subject-tuple", gloss = "The agent, host, principal, task scope, inference zone and incognito flag a credential binds." }
+"delegation profile"    = { clause = "authority.profile.delegation-profile", gloss = "The attenuable, chain-signed credential format delegated authority travels in." }
+"inference zone"        = { clause = "authority.place.zone-string", gloss = "Where a model call runs: `local:device`, `on-prem`, `private-cloud` or `public-cloud`, with an identifier." }
+"authoring posture"     = { clause = "authority.issue.authoring-posture", gloss = "A manifest's `session` or `per_request` setting deciding whose principal authors a table write." }
+"revocation epoch"      = { clause = "authority.revoke.epoch", gloss = "A counter per project, tenant and principal class whose bump invalidates that slice of outstanding authority." }
+"revocation identifier" = { clause = "authority.revoke.revocation-id", gloss = "The identifier each credential derivation carries, withdrawing its subtree alone." }
+"denylist"              = { clause = "authority.revoke.denylist", gloss = "The checkpoint's list of revoked credential identifiers." }

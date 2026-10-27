@@ -100,8 +100,8 @@ fn a_landed_claim_carries_its_authoring_agent() {
     assert_eq!(rows, [vec![json!("agent://synthesizer"), json!("user://dana@acme.example")]]);
 }
 
-/// Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
-// spec: connector.infer.output-taint@ad6fddaf
+/// Model output carries the least-trusted provenance label among its marked inputs, and lands under that label.
+// spec: connector.infer.output-taint@5e14e18c
 #[test]
 fn a_synthesized_claim_lands_under_the_label_of_its_inputs() {
     let f = Fixture::new();
@@ -329,9 +329,9 @@ fn a_landing_rereads_the_writers_authority() {
     assert!(facts(&f, &writer, r#"SELECT * FROM "memory/facts""#).1.is_empty());
 }
 
-/// Synthesis fences each row at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their
-/// batch commits and advances the cursor. The pass report counts these rows in `truncated`.
-// spec: read.synthesize.row-cap@d745ca5d
+/// Synthesis marks each row, capped at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the
+/// model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.
+// spec: read.synthesize.row-cap@88fd914b
 #[test]
 fn a_row_over_the_cap_reaches_the_model_truncated_and_counted() {
     use contextful_core::connector::infer::TRUNCATION_MARK;
@@ -359,8 +359,8 @@ fn a_row_over_the_cap_reaches_the_model_truncated_and_counted() {
     assert!(pass(&f, &writer, &idle, &node, "2030-01-12T00:00:00Z").run().unwrap().runs.is_empty(), "the cursor records the truncated row");
 }
 
-/// A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.
-// spec: read.synthesize.prompt-bound@6ba7bea3
+/// A batch packs marked rows up to 32 KiB; a marked row over that bound travels in a batch of its own.
+// spec: read.synthesize.prompt-bound@cdc45f8f
 #[test]
 fn a_row_over_the_prompt_bound_travels_alone() {
     use contextful_memory::synthesize::{PROMPT_BYTES, VALUE_CHARS};

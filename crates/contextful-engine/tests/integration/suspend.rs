@@ -45,9 +45,10 @@ fn a_minted_token_persists_a_pending_row_and_resumes_on_post() {
     assert_eq!(r.awaited("x-1", &a.token, at("2030-01-01T00:02:00Z")).unwrap(), Awaited::Resumed(b"approved".to_vec()));
 }
 
-/// The journal records a resume payload as the awaited step's output under key `sha256("awakeable:" + token)`. A run
-/// that resumes and then crashes reads the payload back without suspending again.
-// spec: run.suspend.resume-is-a-step-output@a86f089f
+/// The journal records a resume payload as the awaited step's output under key `sha256("awakeable:" + token)`, so a
+/// resolution repeating the identical payload returns it, and a run that resumes then crashes reads it back without
+/// suspending again.
+// spec: run.suspend.resume-is-a-step-output@f6776353
 #[test]
 fn a_resumed_run_reads_its_payload_back_from_the_journal() {
     let dir = tempfile::tempdir().unwrap();
@@ -81,7 +82,7 @@ fn an_unknown_token_is_refused_and_writes_nothing() {
 
 /// A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row
 /// references it.
-// spec: run.suspend.payload-offload@533957e6
+// spec: run.journal.one-cutoff@cb049a23
 #[test]
 fn a_payload_above_the_cutoff_lands_in_the_blob_store() {
     let dir = tempfile::tempdir().unwrap();

@@ -73,6 +73,16 @@ impl Family {
             Family::Directory => fidelity == Fidelity::Excluded,
         }
     }
+
+    /// The levels this family permits, comma-separated, as a refusal names them.
+    pub fn permitted(self) -> String {
+        Fidelity::ALL.into_iter().filter(|f| self.permits(*f)).map(Fidelity::as_str).collect::<Vec<_>>().join(", ")
+    }
+
+    /// Every family, comma-separated, as a refusal names them.
+    pub fn names() -> String {
+        Family::ALL.map(Family::as_str).join(", ")
+    }
 }
 
 /// What a read of the table does once its source lag exceeds the budget: refuse, or
@@ -135,8 +145,8 @@ impl Binding {
         if !family.permits(raw.fidelity) {
             return Err(VisibilityError::FamilyBound {
                 table: table.name.clone(),
-                family: family.as_str(),
-                fidelity: raw.fidelity.as_str(),
+                family,
+                fidelity: raw.fidelity,
             }
             .into());
         }

@@ -17,7 +17,7 @@ Files a principal selects through Picker, the selection position, and the rows a
 
 - `picker-source` — The `gdrive-picks` source serves `files` and `pages` with {{connector.source.drive-oauth}} and {{connector.source.drive-page-grain}} for files selected through Picker.
 - `file-selection` — On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.
-  *A-connector*
+  *A-connector#picker-files-bind*
 - `file-selection-limit` — `file_ids` holds at most 128 entries.
 - `file-selection-invalid` — An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.drive-picks.file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.
   *because an ambiguous selection cannot establish which files a later tombstone withdraws*
@@ -25,11 +25,11 @@ Files a principal selects through Picker, the selection position, and the rows a
   *because an inaccessible picker id cannot count as a complete selection*
 - `file-revoked` — When a captured file becomes inaccessible or trashed under a valid credential, the source tombstones its file and pages once. The position adds its id to the withdrawn set. Authentication and transient failures advance no position.
 - `file-withdrawn` — A withdrawn id stays selected without refusing later fires. A fire finding the file inaccessible stores nothing for that file. When access returns, the source captures the file as new and removes its id from the withdrawn set.
-  *A-connector*
+  *A-connector#picker-files-bind*
 - `export-limit` — If Drive answers a picked file's export with `403 exportSizeLimitExceeded`, the source applies {{connector.source.drive-export-limit}}. The file id stays outside the withdrawn set, and its `files` row receives no tombstone.
   *because Drive refuses that export on every fire while the principal still reads the file, and a tombstone withdraws a file nobody revoked*
 - `file-position` — The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.
-  *A-connector*
+  *A-connector#picker-files-bind*
 - `row-scope` — A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`. The source supplies neither value.
 - `row-identity` — A connection-bound Drive row and position key include connection identity beside `file_id`. Connections selecting the same file keep separate rows and positions.
 
@@ -93,7 +93,7 @@ Organization-approved Drive access and the principal whose authority each reques
 - `impersonated-principal` — Every delegated Drive request names one admitted Workspace user as its subject; the row and permission sweep retain that subject's identity.
 - `domain-boundary` — A delegated request for a subject outside its declared domain raises `ConnectorDriveDomainRejected` before token minting.
   *because administrator approval for one domain conveys no authority over another*
-- `organization-export` — A sanctioned organization-wide export declares its scope and disclosure posture explicitly under {{connector.source.twin-api}}; delegated user reads do not imply that export.
+- `organization-export` — A sanctioned organization-wide export declares its scope and disclosure posture explicitly; delegated user reads do not imply that export.
 
 #### Scenarios
 

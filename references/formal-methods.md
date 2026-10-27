@@ -15,10 +15,10 @@ Amazon Web Services Uses Formal Methods." *CACM* 58(4):66–73, 2015.
 
 - **Priority:** must-read
 - **Informs:** `store.lease`, `store.merge`, `store.push`, `run.journal`, `assurance.model`
-- **Question:** Which lease + CAS + fence bug appears only at depth? TLA+ found
+- **Question:** Which lease + CAS + commit fence bug appears only at depth? TLA+ found
   DynamoDB and S3 bugs at 35-step traces. One model of the lease, the CAS index
-  rebase and its retry bound, and the fence is the cheapest way to settle whether a
-  paused holder can commit after its successor, and the store refusals pin to its
+  rebase and its retry bound, and the commit fence is the cheapest way to settle whether
+  any trace lets a paused holder commit after its successor, and the store refusals pin to its
   invariants.
 
 ### Systems Correctness Practices at Amazon Web Services
@@ -55,7 +55,7 @@ Asynchronous Event-Driven Programming." *PLDI*, 2013.
 
 - **Priority:** optional
 - **Informs:** `run.journal`, `surface.dispatch`, `run.backfill`
-- **Question:** Can the workflow clauses be state machines checked against the
+- **Question:** Do the workflow clauses fit state machines checked against the
   implementation? P specifies asynchronous event-driven protocols as communicating
   state machines, a fit for dispatch, suspension and backfill workflows.
 
@@ -87,7 +87,7 @@ Companion*, 2024. <https://arxiv.org/abs/2407.01688>
   is the published form of the assurance contract: a Lean model with proved
   properties, differential random testing tying the Rust engine to it, and a scoped
   claim. The FSE report counts 4 validator soundness bugs found by proof against 21
-  bugs found by testing, which argues for committing to few proof targets —
+  bugs found by testing, which argues for committing to two proof targets —
   inclusion and narrowing — and letting testing carry the rest.
 
 ### Verus and Kani

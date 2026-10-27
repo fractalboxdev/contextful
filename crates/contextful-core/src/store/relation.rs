@@ -149,7 +149,7 @@ pub fn relation_bounded(
 /// availability instant. A vintage whose content hash equals its predecessor's is no
 /// restatement and drops out (`store.available-time.vintage-hash`); of the rest, the
 /// latest instant answers, or the earliest under `vintage = "first"`
-/// (`store.available-time.vintage-resolution`, `store.available-time.vintage-first`).
+/// (`store.available-time.vintage-rows`).
 fn vintage(decl: &TableDecl, deduped: &str, available: &str, hash: &str, which: Vintage) -> String {
     let mut line: Vec<String> = decl.primary_key().iter().map(|k| ident(k)).collect();
     line.extend(decl.valid_time.as_ref().map(|vt| ident(&vt.from)));

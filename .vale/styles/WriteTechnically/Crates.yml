@@ -1,0 +1,6 @@
+extends: existence
+message: "'%s' means Rust crates only. For npm, pnpm, Python or Go units say 'packages', 'modules' or 'workspace packages'."
+level: warning
+ignorecase: true
+tokens:
+  - crates?

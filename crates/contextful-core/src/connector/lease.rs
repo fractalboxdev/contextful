@@ -69,7 +69,7 @@ fn expiry(v: &Value, now: Instant) -> Option<Instant> {
 }
 
 /// Read a mint success: `value` and one expiry, at the top level or under `lease`
-/// (`connector.lease.response`). No expiry, or one already past, refuses as a transient
+/// (`connector.lease.endpoint`). No expiry, or one already past, refuses as a transient
 /// `SecretMalformedLease`.
 pub fn read_response(body: &[u8], now: Instant) -> Result<Lease, Failure> {
     let malformed = |why: &str| Failure::new(FailureTag::Transient, ConnectorError::SecretMalformedLease(why.to_string()).to_string());

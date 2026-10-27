@@ -71,8 +71,9 @@ fn forget_round_trips_as_a_separate_action_and_confers_no_read() {
     assert!(!raw_read_covers(&[g], "research/filings"));
 }
 
-/// The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.
-// spec: authority.grant.actions@9e95003d
+/// A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to
+/// mint, and `forget` to erase subject data.
+// spec: authority.grant.actions@bc60e632
 #[test]
 fn actions() {
     let vocabulary = [("read", Action::Read), ("write", Action::Write), ("execute", Action::Execute), ("admin", Action::Admin), ("forget", Action::Forget)];

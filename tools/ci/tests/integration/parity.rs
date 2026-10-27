@@ -46,6 +46,7 @@ fn parity(r: &Repo, targets: &[&str]) -> Output {
     r.run_ci(&args)
 }
 
+// spec: topology.deploy.parity@d164f9be
 /// A byte difference from the reference output raises `ParityDivergence`, naming the
 /// target, the table and the first differing part by its path under `data/`.
 // spec: topology.deploy.parity-divergence@f94f7052

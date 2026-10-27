@@ -17,6 +17,7 @@ impl contextful_core::run::ports::Cancellation for Never {
     }
 }
 
+// spec: run.journal.postgres-stores@fc757d84
 #[test]
 fn recorded_paid_calls_blobs_and_pending_callbacks_survive_an_empty_local_disk() {
     let Some(server) = super::server::start() else {
@@ -194,6 +195,7 @@ fn conditional_claims_and_attempt_counts_are_shared_across_connections() {
     assert_eq!(second.journal.read(&key).unwrap(), None);
 }
 
+// spec: run.journal.execution-schema@13f74347
 #[test]
 fn incompatible_execution_schema_refuses_before_any_work() {
     let Some(server) = super::server::start() else {
@@ -214,6 +216,7 @@ fn incompatible_execution_schema_refuses_before_any_work() {
     );
 }
 
+// spec: run.journal.execution-recovery@2227350c
 #[test]
 fn a_corpus_only_restore_cannot_initialize_execution_state_at_startup() {
     let Some(server) = super::server::start() else {
@@ -255,6 +258,7 @@ fn a_corpus_only_restore_cannot_initialize_execution_state_at_startup() {
     assert!(PgRunStores::initialize_recovery(&server.conninfo, "research", "recovery-1").is_err());
 }
 
+// spec: run.suspend.postgres-reconciliation@0ce54587
 #[test]
 fn a_resolution_interrupted_after_journaling_preserves_the_original_callback_bytes() {
     let Some(server) = super::server::start() else {

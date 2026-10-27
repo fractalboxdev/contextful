@@ -11,9 +11,11 @@ interface Props {
   title: string;
   description: string;
   headings?: MarkdownHeading[];
+  /** False keeps the page out of the search index. */
+  searchable?: boolean;
 }
 
-const { title, description, headings = [] } = Astro.props;
+const { title, description, headings = [], searchable = true } = Astro.props;
 const groups = await navigation();
 const here = Astro.url.pathname;
 const toc = headings.filter((h) => h.depth === 2);
@@ -79,7 +81,7 @@ const pageTitle = `${title} · Contextful docs`;
         </script>
       </nav>
       <main class="content" id="main">
-        <article class="prose">
+        <article class="prose" data-pagefind-body={searchable ? "" : undefined}>
           <slot />
         </article>
       </main>

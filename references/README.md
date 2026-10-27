@@ -1,10 +1,10 @@
 # References
 
 The literature and practice the **Contextful** design answers to. The specification
-under `spec/` states behavior and never cites; this directory holds the sources
+under `spec/` states behavior and cites no source; this directory holds the sources
 behind that behavior, and points into the spec by contract and operation name
 (`store.lease`, `authority.attenuate`, `disclosure.release`). No file under `spec/`
-links here, so a source can be added, re-ranked or retired without touching a clause.
+links here, so a maintainer adds, re-ranks or retires a source without touching a clause.
 
 ## Entry shape
 
@@ -42,7 +42,7 @@ names it by title.
 | File | Area | Main operations |
 | --- | --- | --- |
 | [storage-and-table-formats.md](./storage-and-table-formats.md) | ACID tables on object storage, bitemporal time, local-first replication | `store.fold`, `store.push`, `store.merge`, `store.probe`, `store.bound-time`, `surface.edit` |
-| [leases-and-coordination.md](./leases-and-coordination.md) | Leases, fencing tokens, reconciliation loops | `store.lease`, `topology.coordinate`, `surface.dispatch`, `run.backfill`, `surface.reconcile` |
+| [leases-and-coordination.md](./leases-and-coordination.md) | Leases, commit fences, reconciliation loops | `store.lease`, `topology.coordinate`, `surface.dispatch`, `run.backfill`, `surface.reconcile` |
 | [durable-execution.md](./durable-execution.md) | Journaled replay, exactly-once effects, watermarks, retry amplification | `run.journal`, `run.advance`, `run.retry`, `run.declare`, `connector.meter` |
 | [access-control-and-capabilities.md](./access-control-and-capabilities.md) | Query-rewrite access control, ReBAC, attenuable tokens, hosted page gates, sandboxed connectors | `authority.compose`, `authority.refuse`, `authority.attenuate`, `authority.verify`, `disclosure.bound-staleness`, `connector.import`, `surface.open-console` |
 | [privacy-and-disclosure.md](./privacy-and-disclosure.md) | Differential privacy, reconstruction, declassification, keyed pseudonyms | `disclosure.release`, `disclosure.suppress`, `authority.mask` |
@@ -53,5 +53,6 @@ names it by title.
 | [formal-methods.md](./formal-methods.md) | Model checking, verification-guided development, Rust verification | `assurance.prove`, `assurance.differential-test`, `assurance.scope-claim`, `store.lease`, `run.journal` |
 | [specification-practice.md](./specification-practice.md) | Decision records, requirement syntax and quality, spec-to-test traceability | `corpus.rationale`, `corpus.address`, `corpus.anatomy`, `corpus.state`, `corpus.reference` |
 | [specification-readability.md](./specification-readability.md) | Readable specifications with addressed, test-linked sentences; rendered views, guide layers, one-page cards | `corpus.anatomy`, `corpus.guide`, `corpus.render` |
+| [technical-writing.md](./technical-writing.md) | Agent writing brief with eight Vitalik Buterin readings, explanatory structures, examples and review questions | `corpus.guide`, `corpus.anatomy`, `corpus.rationale` |
 | [diagrams.md](./diagrams.md) | Flowchart, sequence and state diagram notation; the cognitive limits behind label and size bounds | `corpus.diagram` |
 | [deployment-runtimes.md](./deployment-runtimes.md) | Linux containers, macOS virtualization, port publishing and CPU architecture | `topology.deploy`, `topology.package` |

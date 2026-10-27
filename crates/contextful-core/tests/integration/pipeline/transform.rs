@@ -13,9 +13,9 @@ fn ops(v: Value) -> Vec<TransformOp> {
     serde_json::from_value(v).unwrap()
 }
 
-/// The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared
-/// once per pipeline and bound to the root table.
-// spec: run.transform.chain@33e858bd
+/// The chain is an ordered list of {{type:contextful_core::pipeline::transform::TransformOp}}, declared once per
+/// pipeline and bound to the root table; a `filter` takes exactly one column.
+// spec: run.transform.chain@63de1d69
 #[test]
 fn the_chain_runs_its_five_operations_in_order() {
     let chain = ops(json!([
@@ -66,7 +66,7 @@ fn a_filter_or_cast_over_an_absent_column_is_refused() {
 }
 
 /// A cast rewrites one column's type and keeps its name and position.
-// spec: run.transform.cast@4530b2c2
+// spec: run.transform.typed-cast@de5be8b1
 #[test]
 fn a_cast_rewrites_the_type_in_place() {
     let batch = rows(json!([{"a": 1, "n": "42", "z": true}, {"a": 2, "n": "x", "z": false}]));
@@ -79,7 +79,7 @@ fn a_cast_rewrites_the_type_in_place() {
 }
 
 /// `select` fixes the outgoing column set by name, and `rename` maps an incoming name onto an outgoing one.
-// spec: run.transform.projection@7ab51a12
+// spec: run.transform.chain@63de1d69
 #[test]
 fn select_fixes_the_column_set_and_rename_maps_a_name() {
     let batch = rows(json!([{"id": 1, "name": "a", "secret_note": "x"}]));
@@ -89,9 +89,9 @@ fn select_fixes_the_column_set_and_rename_maps_a_name() {
     assert_eq!(out, rows(json!([{"id": 1, "title": "a"}])));
 }
 
-/// A cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads, nulls
-/// any other, and lands the column in that type.
-// spec: run.transform.typed-cast@9c74c021
+/// A cast rewrites one column's type and keeps its name and position; a cast to `binary`, `binary(n)`, `float32[n]`
+/// or `float16[n]` keeps a value that type's JSON form reads and nulls any other.
+// spec: run.transform.typed-cast@de5be8b1
 #[test]
 fn a_cast_to_a_binary_or_vector_type_keeps_readable_values_and_types_the_column() {
     use contextful_core::store::reconcile::{ColumnType, FloatItem};

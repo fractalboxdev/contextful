@@ -174,7 +174,7 @@ impl FileConfig {
     }
 
     /// Refuse a table the source does not serve, ahead of the walk
-    /// (`connector.source.file-table-unmatched`).
+    /// (`connector.source.table-unmatched`).
     pub fn table(&self, table: &str) -> Result<(), ConnectorError> {
         if table == TABLE {
             return Ok(());

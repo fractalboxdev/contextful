@@ -138,8 +138,10 @@ fn a_subscriber_overrunning_the_ring_resynchronizes_to_the_latest() {
     assert!(overrun.recv().is_none(), "after the resync the subscriber is current");
 }
 
-/// A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.
-// spec: run.project.connect@e8917fcd
+/// A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update;
+/// a late joiner may instead start from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each in order
+/// before live updates.
+// spec: run.project.connect@bd0dd4c7
 #[test]
 fn connect_hands_over_the_folded_snapshot_then_every_later_update_once() {
     let hub = Hub::new(tick(0));
@@ -166,7 +168,7 @@ fn connect_hands_over_the_folded_snapshot_then_every_later_update_once() {
 }
 
 /// A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
-// spec: run.project.restart-discards@23bc3c4b
+// spec: run.project.best-effort@1ff0ae38
 #[test]
 fn a_restarted_hub_holds_nothing_and_recovers_from_the_record() {
     let before = Hub::new(tick(0));
@@ -186,7 +188,7 @@ fn a_restarted_hub_holds_nothing_and_recovers_from_the_record() {
 
 /// A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held
 /// snapshot in order before live updates.
-// spec: run.project.catch-up@4df8991a
+// spec: run.project.connect@bd0dd4c7
 #[test]
 fn a_late_joiner_replays_the_held_ring_before_live_updates() {
     let hub = Hub::new(tick(0));
@@ -223,8 +225,8 @@ fn a_late_joiner_replays_the_held_ring_before_live_updates() {
 }
 
 /// The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the
-/// durable record as after {{run.project.restart-discards}}.
-// spec: run.project.channel-eviction@c1fa246d
+/// durable record.
+// spec: run.project.channel-eviction@fd91fc4c
 #[test]
 fn a_terminal_channel_is_evicted_after_60_s() {
     assert_eq!(CHANNEL_EVICTION_SECS, 60);

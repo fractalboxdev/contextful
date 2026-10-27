@@ -104,6 +104,17 @@ fn the_in_window_flag_leads_and_an_out_of_window_row_stays() {
     assert_eq!(ids(&c), ["weak-new", "strong-old"]);
 }
 
+// spec: read.retrieve.since@3ae5c152
+#[test]
+fn since_bounds_the_window_inclusively_and_its_absence_admits_every_row() {
+    let tf = Timeframe { since: Some(at("2030-01-01T00:00:00Z")), anchor: at("2030-02-01T00:00:00Z") };
+    assert!(tf.admits(Publication::cast(Some("2030-01-01T00:00:00Z"))), "the bound itself is in window");
+    assert!(tf.admits(Publication::cast(Some("2030-01-01"))), "a date-only value is midnight UTC");
+    assert!(!tf.admits(Publication::cast(Some("2029-12-31T23:59:59Z"))));
+    let open = Timeframe { since: None, anchor: at("2030-02-01T00:00:00Z") };
+    assert!(open.admits(Publication::cast(Some("1990-01-01T00:00:00Z"))));
+}
+
 /// A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.
 // spec: read.rank.window-anchor-tolerance@1acc354f
 #[test]

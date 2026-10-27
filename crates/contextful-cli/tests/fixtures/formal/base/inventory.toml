@@ -1,6 +1,6 @@
 [claim]
 targets  = ["Fx.narrows"]
-trusted  = ["delegation-library", "translator"]
+trusted  = ["delegation-library"]
 rests_on = ["delegation-library"]
 
 [constant."Fx.narrows"]

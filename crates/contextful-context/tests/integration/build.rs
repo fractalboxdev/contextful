@@ -532,8 +532,10 @@ fn a_model_reading_a_model_ages_by_its_rebuilds() {
     assert_eq!(status(&p.fx.store, "weekly", at("2030-05-01T00:00:00Z")).unwrap()["stale_inputs"], json!([]));
 }
 
-/// A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-// spec: run.publish.hold@f4fa4cd4
+/// A hold is a {{type:contextful_core::pipeline::model::HoldRecord}} committed as `holds/<build id>.json` in the
+/// model's table directory, replacing any earlier hold on that build; collection skips a held build, and a hold
+/// confers no other authority.
+// spec: run.publish.hold@8b09a8b1
 #[test]
 fn collection_skips_a_held_build() {
     let p = Project::new();
@@ -554,7 +556,7 @@ fn collection_skips_a_held_build() {
 }
 
 /// A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.
-// spec: run.model.hold-manifest@49450f19
+// spec: run.publish.hold@8b09a8b1
 #[test]
 fn a_hold_commits_one_manifest_per_build() {
     let p = Project::new();
@@ -596,7 +598,7 @@ fn the_logs_follow_the_committed_manifests() {
 }
 
 /// The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.
-// spec: run.model.log-regeneration@fda3ed75
+// spec: run.publish.history-logs@4e77d8b0
 #[test]
 fn a_tampered_log_is_rewritten_and_collected_history_kept() {
     let p = Project::new();
@@ -634,9 +636,10 @@ fn a_missing_build_log_is_recovered_before_retention_collects_its_manifests() {
         "committed manifests establish success before collection");
 }
 
-/// A build records a digest over its table's declared `class`, `policy` and `visibility`, sorting set-valued fields.
-/// The manifest and build log carry the digest. Any declaration sets `withheld_cells`.
-// spec: run.publish.disclosure-digest@ac1b7368
+/// A build records a digest over its table's {{type:contextful_core::store::declare::TableDecl}} `class`, `policy`
+/// and `visibility`, sorting set-valued fields; the manifest and build log carry it, and any declaration sets
+/// `withheld_cells`.
+// spec: run.publish.disclosure-digest@5283e83c
 #[test]
 fn the_disclosure_digest_covers_the_policy_the_model_table_reads_under() {
     let p = Project::new();
@@ -667,8 +670,9 @@ fn a_model_id_naming_a_landed_table_is_refused() {
     assert_eq!(p.rows("SELECT note FROM daily"), [[json!("keep-me")]]);
 }
 
-/// A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
-// spec: run.model.restricted-input@25682f0f
+/// A build reading a table whose {{type:contextful_core::store::declare::TableDecl}} declares `class`, `policy` or
+/// `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
+// spec: run.model.restricted-input@1cf9c278
 #[test]
 fn a_build_over_a_restricted_input_is_refused() {
     let p = Project::new();
@@ -694,6 +698,7 @@ fn collection_after_a_build_follows_the_declared_window() {
     assert!(p.dir().join("data/snapshots").join(&first.build_id).is_dir(), "a 30 d window keeps a build 8 days old");
 }
 
+// spec: run.model.build-boundary@942d06ef
 #[test]
 fn a_build_publication_boundary_refusal_preserves_rows_and_watermark() {
     let p = Project::new();

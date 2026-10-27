@@ -26,6 +26,10 @@ export const collections = {
     loader: glob({ pattern: "*.md", base: "../../spec/guide", generateId: stem }),
     schema,
   }),
+  topics: defineCollection({
+    loader: glob({ pattern: "*.md", base: "../../spec/topics", generateId: stem }),
+    schema,
+  }),
   cards: defineCollection({
     loader: glob({ pattern: "*.md", base: "../../spec/cards", generateId: stem }),
     schema,

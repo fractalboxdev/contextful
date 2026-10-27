@@ -112,7 +112,7 @@ fn load_audit_key(store: &crate::Store, project: &Project, purpose: AuditKeyPurp
     })
 }
 
-/// A project and the directory every project path is based on (`store.init.project-paths`).
+/// A project and the directory every project path is based on (`store.init.discovery`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
     pub dir: PathBuf,
@@ -206,7 +206,7 @@ pub enum Initialized {
     Unchanged,
 }
 
-/// Refuse a project name outside path-safe `/`-separated segments (`store.init.name-shape`).
+/// Refuse a project name outside path-safe `/`-separated segments (`store.init.name-conflict`).
 pub fn check_name(name: &str) -> Result<()> {
     if name.split('/').all(is_path_segment) {
         Ok(())

@@ -394,6 +394,7 @@ fn a_trend_report_stops_before_older_unneeded_notes() {
     assert_eq!(report["annotations"][0]["baseline_run_id"], 2);
 }
 
+// spec: assurance.measure.history@0f27587d
 #[test]
 fn publishing_a_report_keeps_notes_added_by_another_writer() {
     let r = Repo::init();

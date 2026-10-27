@@ -47,6 +47,8 @@ fn a_figure_compares_only_on_a_matching_runner() {
     assert_eq!(compare(&other_limit, &figure(40.0), Direction::LowerIsBetter), Comparison::Incomparable);
 }
 
+// spec: assurance.measure.timing-iterations@f2075988
+// spec: assurance.measure.timing-batches@cca70ab9
 #[test]
 fn a_timed_figure_is_the_median_batch_of_p50_and_p95() {
     assert_eq!((TIMING_ITERATIONS, TIMING_BATCHES), (200, 5));

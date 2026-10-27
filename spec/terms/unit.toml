@@ -35,6 +35,7 @@ workers  = { gloss = "runtime worker threads" }
 percent  = { gloss = "percent", aliases = ["%", "pct"] }
 words    = { gloss = "whitespace-separated words" }
 lines    = { gloss = "text lines" }
+clauses  = { gloss = "clause items in one list" }
 iterations = { gloss = "evaluator fixpoint iterations" }
 values   = { gloss = "distinct input values" }
 lanes    = { gloss = "Argon2id parallelism lanes" }
@@ -49,6 +50,8 @@ units    = { gloss = "dispatched units of scheduled work" }
 times    = { gloss = "multiples of a stated base quantity" }
 edges    = { gloss = "flowchart edges" }
 levels   = { gloss = "nesting levels" }
+pointers = { gloss = "clause pointers" }
 participants = { gloss = "sequence diagram participants" }
 messages = { gloss = "sequence diagram messages" }
 notifications = { gloss = "subscription notifications" }
+pages    = { gloss = "authored pages" }

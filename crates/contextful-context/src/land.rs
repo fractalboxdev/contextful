@@ -670,7 +670,7 @@ fn read_staged_schema(store: &Store, stage_dir: &Path) -> Result<Option<Schema>>
 }
 
 /// A column's type comes from the producer, then the declaration
-/// (`store.declare.column-types`), then a binary, vector or nested type `schema.json`
+/// (`store.declare.table-block`), then a binary, vector or nested type `schema.json`
 /// already holds (`store.reconcile.stored-type`); a JSON value alone carries none of these.
 fn column_types(store: &Store, decl: &TableDecl, batches: &[Batch]) -> Result<HashMap<String, ColumnType>> {
     let mut types: HashMap<String, ColumnType> = HashMap::new();

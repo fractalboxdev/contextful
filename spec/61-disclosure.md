@@ -37,55 +37,55 @@ flowchart LR
 The two deployment settings a derived result is computed in, the offline diagnostic, and the cross-owner hashed join.
 
 - `check-verb` — `contextful disclosure check --config <path>` diagnoses each published model's disclosure policy and statement from local files and reports every refusal by model name.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `offline-diagnostic` — The single-operator diagnostic reads the manifest and each published model's statement text from local disk and issues 0 requests to the object store.
 - `aggregate-shape` — A statement is aggregate-shaped when its parsed SELECT groups rows, has DISTINCT or HAVING, or calls an aggregate catalog function outside a window expression.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `policy-absent` — A published model matching {{disclosure.set-mode.aggregate-shape}} and carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `opt-out-record` — A model records an opt-out as a nonempty `disclosure_opt_out` reason; combining it with `[model.disclosure]` raises {{run.declare.spec-invalid}}.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `model-unreadable` — A published model whose `sql_file` under {{run.model.statement-source}} does not read raises `DisclosureModelUnreadable`.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `clean-room-preconditions` — A cross-owner store carries per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys; one missing, checked before any cross-prefix write, raises `DisclosureCleanRoomPreconditionUnmet`.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `hashed-join` — Two owners match on a key each hashes at write time under a per-pair pepper re-randomized per join; matched rows leave as an aggregate under a group-size floor. A static pepper raises `DisclosureStaticPepper`.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 - `pepper-version` — A cross-owner join accepts only rows carrying its pair's current pepper version; rotation re-lands both owners' join keys before the next release.
-  *A-disclosure*
+  *A-disclosure#cross-owner-release*
 
 ## release
 
 The ordered statistics release, the write-time disclosure policy, and the per-unit budget reservation.
 
 - `model-policy` — A published {{run.model.model-block}} governed by aggregate disclosure declares `[model.disclosure]`; `metric_bounds` names each noised sum's lower bound, upper bound and quantum.
-  *A-disclosure*
+  *A-disclosure#model-declares-spend*
 - `release-verb` — `contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.
-  *A-disclosure*
+  *A-disclosure#model-declares-spend*
 - `budget-reservation` — Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `noise-mechanism` — A noised release draws exact two-sided geometric noise scaled to each statistic's sensitivity for distinct-contributor counts and fixed-point sums; the per-run epsilon is divided among released statistics.
-  *A-disclosure*
+  *A-disclosure#exact-integer-noise*
 - `metric-bounds` — A noised sum folds each contributor to one value, clips that total to declared finite bounds and rounds it to a positive quantum; absent bounds or quantum raise `DisclosureMetricBoundsAbsent`.
-  *A-disclosure*
+  *A-disclosure#exact-integer-noise*
 - `release-envelope` — A release reports its published table, policy hash, reserved per-run spend, suppressed-group presence and row count without carrying a contributor key.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `lookalike-refusal` — A release requesting an activation handle or lookalike segment, as `--output activation-handle` or `--output lookalike-segment`, raises `DisclosureLookalikeUnsupported` and publishes nothing.
-  *A-disclosure*
+  *A-disclosure#exact-integer-noise*
 - `spend-declaration` — `[model.disclosure]` declares `per_run_spend`, the positive epsilon one release reserves from each contributing unit; a release whose policy declares none raises `DisclosureSpendUndeclared` and publishes nothing.
-  *A-disclosure*
+  *A-disclosure#model-declares-spend*
 - `lifetime-cap` — A project manifest's top-level `[disclosure]` block declares `unit_lifetime_cap`, the epsilon each contributing unit spends across every release; a release grants it to each unit it reserves from, and an undeclared cap is zero.
-  *A-disclosure*
+  *A-disclosure#model-declares-spend*
 - `budget-ledger` — A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the keyed digest of its key under the project's pepper.
-  *A-disclosure*
+  *A-disclosure#model-declares-spend*
 - `duplicate-grain` — A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `group-key` — A group key not a subset of the permitted grouping columns raises `DisclosureGroupKeyNotPermitted`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `contributor-key` — A governed statement omitting the contributor key raises `DisclosureContributorKeyAbsent`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `forbidden-column` — A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 
 
 ## suppress
@@ -93,55 +93,40 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
 The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves.
 
 - `min-group-size` — `min_group_size` counts distinct contributors and is at least 2 subjects. A group whose noised distinct-contributor count falls under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `contributor-share` — `max_contributor_share` lies above 0 percent and at most 100 percent of a group's sign-insensitive metric mass; a value outside raises `DisclosureShareOutOfRange`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `dominance-unverifiable` — A group under a share constraint whose per-contributor masses are unavailable raises `DisclosureDominanceUnverifiable` and is suppressed.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `empty-policy` — A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises `DisclosurePolicySuppressesNothing`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `grouping-allowlist` — An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `sentinel-row` — A release with `emit_sentinel = true` represents every suppressed group together as one `__suppressed__` row carrying no group key or exact figure.
-  *A-disclosure*
-
-The decision over one group:
-
-```mermaid
-flowchart LR
-  G["group"] -->|"noised contributor count"| SZ{"clears min_group_size?"}
-  SZ -->|"no"| S["__suppressed__ sentinel"]
-  SZ -->|"yes"| SH{"share constraint declared?"}
-  SH -->|"no"| P["published row"]
-  SH -->|"yes"| AV{"per-contributor masses available?"}
-  AV -->|"no: DisclosureDominanceUnverifiable"| S
-  AV -->|"yes"| DOM{"above max_contributor_share?"}
-  DOM -->|"yes"| S
-  DOM -->|"no"| P
-```
+  *A-disclosure#aggregate-disclosure-enforced*
 
 ## template
 
 Query templates a releasing principal calls by name: the single-statement rule, the checks they pass, and the truncation flag a capped read carries.
 
 - `single-statement` — A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.
-  *A-authority*
+  *A-authority#query-templates*
 - `overfetch` — A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.
 - `read-envelope` — A template read returns rows, truncation, row ceiling, suppression presence and the disclosure policy hash; set-valued policy fields follow {{run.publish.disclosure-digest}} at every nesting depth.
-  *A-disclosure*
+  *A-disclosure#grants-rows-under*
 
 ## bound-cohort
 
 The line between a per-person table and a cohort table, and the floor a cohort read carries.
 
 - `cohort-widening` — A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `per-individual-row` — Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `singleton-cohort` — A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 - `exact-figures` — A policy declaring `figures = "exact"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `"noised"`, and exact figures publish only from a `cohort` table.
-  *A-disclosure*
+  *A-disclosure#aggregate-disclosure-enforced*
 
 ## Shapes
 

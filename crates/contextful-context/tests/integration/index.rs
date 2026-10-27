@@ -17,9 +17,9 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 #[cfg(feature = "read")]
-/// `cluster_by` sorts file rows lexicographically by columns in declared order. Zone maps then skip row groups with no
-/// manifest entry and no sidecar.
-// spec: store.index.clustering@f0331f51
+/// `cluster_by` sorts file rows lexicographically by its columns in order, so zone maps skip row groups with no
+/// manifest entry or sidecar.
+// spec: store.index.clustering@b67f03fd
 #[test]
 fn cluster_by_sorts_rows_within_a_file_in_declared_order() {
     let f = Fixture::new();
@@ -63,9 +63,9 @@ fn partitioning_is_off_unless_declared() {
 }
 
 #[cfg(feature = "read")]
-/// Five index kinds exist: Parquet footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector
-/// graphs, positional full-text indexes and opt-in per-column bloom filters.
-// spec: store.index.kinds@14cbf239
+/// Five index kinds exist: footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector graphs,
+/// positional full-text indexes and opt-in per-column bloom filters.
+// spec: store.index.kinds@61af7dd6
 #[test]
 fn a_snapshot_carries_each_of_the_five_index_kinds() {
     let f = Fixture::new();
@@ -99,7 +99,7 @@ fn a_snapshot_carries_each_of_the_five_index_kinds() {
 
 /// A column a table names in `bloom_filter` carries a bloom filter in every part a run or a
 /// fold writes, sized for that part's rows; an unnamed column carries none.
-// spec: store.index.bloom-parts@0ea19c98
+// spec: store.index.bloom-parts@c0f4ed9b
 #[test]
 fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
     use parquet::file::reader::{FileReader, SerializedFileReader};
@@ -130,7 +130,7 @@ fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
 
 /// A vintage table naming no `bloom_filter` carries a bloom filter on its key in every part
 /// a run or a fold writes; its other columns carry none.
-// spec: store.index.bloom-vintage-key@91ed8bb2
+// spec: store.index.bloom-vintage-key@d2e33b7a
 #[test]
 fn a_vintage_table_carries_a_key_bloom_filter_it_never_declared() {
     use parquet::file::reader::{FileReader, SerializedFileReader};
@@ -198,9 +198,9 @@ fn a_binary_or_vector_partition_column_is_refused() {
 }
 
 #[cfg(feature = "read")]
-/// Landing applies no canonical form to tenant values. Writes and comparisons preserve bytes without trimming, case
-/// folding or Unicode normalization. Percent-escaping changes only the directory-name representation.
-// spec: store.index.tenant-verbatim@a9a3b0ff
+/// Landing applies no canonical form to tenant values: writes and comparisons keep bytes without trimming, case
+/// folding or Unicode normalization, and percent-escaping changes only the directory name.
+// spec: store.index.tenant-verbatim@72c280dd
 #[test]
 fn a_tenant_value_is_kept_byte_for_byte() {
     let f = Fixture::new();
@@ -222,8 +222,9 @@ fn a_tenant_value_is_kept_byte_for_byte() {
 }
 
 #[cfg(feature = "read")]
-/// Table file sets exclude `indexes/`. A snapshot reader lists only parts named by the snapshot manifest.
-// spec: store.index.not-in-file-set@268176f2
+/// Every read passes `read_parquet` an explicit sorted file list of the parts the pointer's manifests name, with no glob, so stray files and
+/// `indexes/` stay out.
+// spec: store.reconcile.explicit-file-list@38646064
 #[test]
 fn a_sidecar_directory_joins_no_file_set() {
     let f = Fixture::new();
@@ -261,10 +262,9 @@ fn entry(m: &SnapshotManifest) -> VectorEntry {
     }
 }
 
-/// Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors. Where
-/// `embedding_model` exists, fold selects only rows from the declared model. Fold records the sidecar in the snapshot
-/// manifest.
-// spec: store.index.vector-by-fold@ba4fbe52
+/// Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the
+/// declared model where `embedding_model` exists, and records it in the snapshot manifest.
+// spec: store.index.vector-by-fold@8cad3b7e
 // spec: read.embed.model-identifier@9c31cf09
 #[test]
 fn the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_model() {
@@ -367,9 +367,9 @@ fn passages(f: &Fixture) -> contextful_core::store::declare::TableDecl {
     d
 }
 
-/// If a current sidecar's builder or builder version differs from this build's, a pass rebuilds the sidecar in full.
-/// The pass preserves rows in a separate snapshot. Readers keep the prior snapshot until pointer publication.
-// spec: store.index.rebuild@282d424d
+/// A pass rebuilds in full, into a new snapshot, a current sidecar whose builder or builder version differs from
+/// this build's; readers keep the prior snapshot until pointer publication.
+// spec: store.index.rebuild@dc63a277
 #[test]
 fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
     use contextful_core::store::fold::FoldOutcome;
@@ -397,9 +397,9 @@ fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
     }
 }
 
-/// The vector graph's byte layout has no format compatibility guarantee. A reader opens a sidecar only when builder
-/// and builder version match its own; mismatches follow {{read.retrieve.sidecar-falls-back}}.
-// spec: store.index.graph-format@9a11f770
+/// The vector graph's byte layout carries no compatibility guarantee: a reader opens a sidecar only at its own
+/// builder and builder version, else {{read.retrieve.sidecar-falls-back}}.
+// spec: store.index.graph-format@e47b277f
 #[test]
 fn a_reader_opens_only_its_own_builder_version() {
     use contextful_context::vector::Fallback;
@@ -417,9 +417,9 @@ fn a_reader_opens_only_its_own_builder_version() {
     }
 }
 
-/// A vector or full-text entry records `extensions`, counting segment-adding passes since its last full build. A pass
-/// finding 16 extensions rebuilds the sidecar in full and records 0.
-// spec: store.index.graph-extensions@8763ffd2
+/// A vector or full-text entry counts in `extensions` the segment-adding passes since its last full build; a pass
+/// finding 16 extensions rebuilds in full and records 0.
+// spec: store.index.graph-extensions@44610c99
 #[test]
 fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
     use contextful_core::store::fold::FoldOutcome;
@@ -448,8 +448,8 @@ fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
 }
 
 /// A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant
-/// needed for filtered traversal. Every other filter applies at {{store.index.candidate-ids}}.
-// spec: store.index.filter-copies@9e47966d
+/// filtered traversal needs; every other filter applies at {{store.index.candidate-ids}}.
+// spec: store.index.filter-copies@0744981a
 #[test]
 fn a_sidecar_copies_no_other_column_value() {
     let f = Fixture::new();
@@ -548,9 +548,9 @@ fn collecting_a_snapshot_collects_its_sidecars() {
     assert!(!first_dir.exists() && !sidecar.exists());
 }
 
-/// A vector sidecar is an HNSW graph over unit-length `Float32` vectors. Layers use a seed from the snapshot id and
-/// column. The same staged row set therefore produces a byte-identical graph.
-// spec: store.index.graph@1af6bae7
+/// A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and
+/// column, so one staged row set yields a byte-identical graph.
+// spec: store.index.graph@7b7b97d1
 #[test]
 fn one_staged_row_set_builds_one_byte_identical_graph() {
     let rows: Vec<Value> = (0..300)
@@ -589,9 +589,9 @@ fn one_staged_row_set_builds_one_byte_identical_graph() {
     }
 }
 
-/// If two staged snapshot rows share an `id_column` value, fold raises `StoreIndexIdNotUnique`, naming the table,
-/// column and value. The fold publishes nothing.
-// spec: store.index.id-unique@b2e1ec38
+/// Two staged snapshot rows sharing an `id_column` value make fold raise `StoreIndexIdNotUnique`, naming the
+/// table, column and value, and publish nothing.
+// spec: store.index.id-unique@1b4e00c9
 #[test]
 fn a_repeated_identifier_refuses_the_pass() {
     let f = Fixture::new();
@@ -707,9 +707,9 @@ fn probe_ids(sidecar: &FulltextSidecar, query: &[&str], k: usize) -> Vec<String>
     sidecar.probe(&tokens, k).unwrap().candidates.into_iter().map(|c| c.id).collect()
 }
 
-/// Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term.
-/// Fold records the sidecar in the snapshot manifest.
-// spec: store.index.fulltext-by-fold@8027ca82
+/// Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term,
+/// recording it in the snapshot manifest.
+// spec: store.index.fulltext-by-fold@6cc65b1c
 #[test]
 fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     let f = Fixture::new();
@@ -750,9 +750,9 @@ fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     assert!(matches!(err.store(), Some(StoreError::StoreIndexColumnType(_))), "{err}");
 }
 
-/// Each full-text segment is one file with a sorted term dictionary and each term's row identifiers and positions.
-/// Readers binary-search the mapped or decrypted bytes.
-// spec: store.index.postings@1b3db2bd
+/// Each full-text segment is one file holding a sorted term dictionary and each term's row identifiers and
+/// positions, which readers binary-search mapped or decrypted.
+// spec: store.index.postings@324f3dc3
 #[test]
 fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     const N: usize = 2000;
@@ -800,9 +800,9 @@ fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     assert!(contextful_context::fulltext::postings::Layout::parse(b"CFHNSW01").is_none());
 }
 
-/// If the delta replaces and removes no stored row, a pass adds a delta segment to each current sidecar, referencing
-/// earlier segments. Probes read every segment and score full text using their summed statistics.
-// spec: store.index.sidecar-segments@67f731ec
+/// A delta replacing and removing no stored row adds a segment to each current sidecar, referencing earlier ones;
+/// probes read every segment, scoring full text over their summed statistics.
+// spec: store.index.sidecar-segments@4875d648
 #[test]
 fn a_pass_of_new_identifiers_extends_each_sidecar_by_a_segment() {
     let row = |i: usize| {

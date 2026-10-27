@@ -22,9 +22,9 @@ fn open(server: &S3Server) -> S3Bucket {
     S3Bucket::open(&server.endpoint, "us-east-1", BUCKET, credentials(SECRET_KEY)).unwrap()
 }
 
-/// S3 and R2 use path-style `<endpoint>/<bucket>/<key>`, percent-encoding every key segment. Every request uses AWS
-/// Signature Version 4 for service `s3` at the endpoint's region.
-// spec: store.endpoint.addressing@bab3ffaf
+/// S3 and R2 address `<endpoint>/<bucket>/<key>` path-style, percent-encoding each key segment, and sign every
+/// request with AWS Signature Version 4 for service `s3` at the endpoint's region.
+// spec: store.endpoint.addressing@40e7cbb9
 #[test]
 fn an_s3_bucket_signs_and_addresses_every_request() {
     let server = S3Server::start(BUCKET);
@@ -77,9 +77,9 @@ fn backend_answers_map_to_failed_conditions_and_refusals() {
     }
 }
 
-/// A `404` naming a code other than `NoSuchKey`, including `NoSuchBucket`, indicates neither an absent object nor a
-/// failed condition. The get, put, delete or list fails as transport and names the code.
-// spec: store.endpoint.missing-bucket@195b4b39
+/// A `404` naming a code other than `NoSuchKey`, `NoSuchBucket` included, is neither an absent object nor a failed
+/// condition: the request fails as transport, naming the code.
+// spec: store.endpoint.missing-bucket@b96fbecb
 #[test]
 fn a_missing_bucket_answers_no_absent_object() {
     let server = S3Server::start(BUCKET);
@@ -100,9 +100,9 @@ fn a_missing_bucket_answers_no_absent_object() {
     assert!(server.keys().is_empty());
 }
 
-/// A list follows continuation tokens until the backend reports completion. The list returns every key under the
-/// prefix in sorted order.
-// spec: store.endpoint.list-pages@39735d29
+/// A list follows continuation tokens until the backend reports completion, returning every key under the prefix
+/// in sorted order.
+// spec: store.endpoint.list-pages@6f43d263
 #[test]
 fn a_list_follows_every_continuation_token() {
     let server = S3Server::start_paged(BUCKET, 2);
@@ -319,6 +319,7 @@ mod transport {
 
     const LISTING: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>corpus</Name><Prefix></Prefix><KeyCount>1</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>a</Key><LastModified>2030-01-01T00:00:00.000Z</LastModified><ETag>\"e1\"</ETag><Size>1</Size><StorageClass>STANDARD</StorageClass></Contents></ListBucketResult>";
 
+    // spec: store.endpoint.transport@1770bc91
     #[test]
     fn a_stalled_get_gives_up_its_attempt_within_the_answer_bound_and_resends() {
         let endpoint = Endpoint::start(vec![Answer::Stall, Answer::Status(200, "x")]);
@@ -355,6 +356,7 @@ mod transport {
         assert_eq!(endpoint.requests().len(), 3);
     }
 
+    // spec: store.endpoint.unavailable@7f343978
     #[test]
     fn an_unanswered_or_server_failed_request_fails_as_unavailable() {
         let endpoint = Endpoint::start(vec![Answer::Drop; 3]);

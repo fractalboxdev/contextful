@@ -1,0 +1,9 @@
+extends: existence
+message: "'%s' leaves the set open. List every member, or state the rule that defines the set."
+level: error
+ignorecase: true
+tokens:
+  - etc\.?
+  - and so on
+  - including but not limited to
+  - and/or

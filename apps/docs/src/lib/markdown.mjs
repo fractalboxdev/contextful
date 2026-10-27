@@ -1,12 +1,13 @@
 // Markdown plugins that turn the spec's plain-Markdown conventions into site links.
 import { dirname, resolve } from "node:path";
 import { visit, SKIP } from "unist-util-visit";
-import { readFileSync } from "node:fs";
-import { corpusIndex, routeFor, SPEC_DIR } from "./corpus.mjs";
+import { existsSync, readFileSync } from "node:fs";
+import { ADR_DIR, corpusIndex, recordId, routeFor, SPEC_DIR } from "./corpus.mjs";
 
-const CLAUSE_ID = /^[a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+$/;
-// `{{clause.id}}` references and bare record ids (P4, D07, A-store).
-const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)\b/g;
+// `{{contract.operation.subject}}` and `{{contract.operation}}` pointers, bare record ids
+// (P4, D07, A-store), a contract ADR optionally naming its section (A-store#lease), and
+// `{{type:<rust path>}}` pointers.
+const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+(?:\.[a-z0-9.-]+)?)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)(?:#([a-z0-9-]+))?\b|\{\{type:(\w+(?:::\w+)+)\}\}/g;
 
 const sourcePath = (file) => file.path ?? file.history?.[0];
 
@@ -34,35 +35,126 @@ export function remarkTopologyTargets() {
 
 /** Front-matter `contract` of the source file; guides and cards carry one too, so only `spec/NN-*.md` counts. */
 const contractOf = (file, from) => {
-  if (!from || dirname(from) !== SPEC_DIR) return undefined;
+  if (!from || dirname(from) !== SPEC_DIR || !existsSync(from)) return undefined;
   const fm = file.data?.astro?.frontmatter?.contract;
   if (typeof fm === "string") return fm;
   const src = readFileSync(from, "utf8");
   return /^---\n[\s\S]*?^contract:\s*(\S+)[\s\S]*?\n---/m.exec(src)?.[1];
 };
 
-const hp = (className, extra = {}) => ({ hProperties: { className: [className], ...extra } });
+const hp = (className, extra = {}) => ({ hProperties: { className: [className].flat(), ...extra } });
+const el = (type, hName, className, children, extra) => ({ type, data: { hName, ...hp(className, extra) }, children });
+const text = (value) => ({ type: "text", value });
+const plain = (node) => node.value ?? (node.children ?? []).map(plain).join("");
 
-/** A link to a clause: its subject in code, its full id and statement in the tooltip. */
-const clauseLink = (id, target) => ({
+/**
+ * The statement a reference resolves to, rendered beside it and shown on hover and focus.
+ * The link's `title` carries the same text to assistive technology, so the preview is hidden
+ * from it, and search indexes the statement at its clause rather than at every reference.
+ */
+const preview = (label, statement) =>
+  el("clausePreview", "span", "clause-preview", [el("clausePreviewId", "span", "clause-preview-id", [text(label)]), text(statement)], {
+    ariaHidden: "true",
+    dataPagefindIgnore: true,
+  });
+
+/** A link to a clause: its subject (or `shown`) in code, its full id and statement in the tooltip and preview. */
+const clauseLink = (id, target, shown, className = "clause-ref") => ({
   type: "link",
   url: `${target.route}#${id}`,
   title: `${id} — ${target.statement}`,
-  data: hp("clause-ref"),
-  children: [{ type: "inlineCode", value: id.split(".").at(-1) }],
+  data: hp(className),
+  children: [shown ?? { type: "inlineCode", value: id.split(".").at(-1) }, preview(id, target.statement)],
 });
+
+/** A link to an operation section: its name in code, its lede in the tooltip and preview. */
+const operationLink = (key, target, shown) => ({
+  type: "link",
+  url: target.url,
+  title: target.lede ? `${key} — ${target.lede}` : key,
+  data: hp(["clause-ref", "operation-ref"]),
+  children: [shown ?? { type: "inlineCode", value: key.split(".").at(-1) }, preview(key, target.lede)],
+});
+
+/** A link to the source of a pointed type: its name in code, its full path in the tooltip. */
+const typeLink = (path, target) => ({
+  type: "link",
+  url: target.href,
+  title: `${path} — ${target.kind}`,
+  data: hp("type-ref"),
+  children: [{ type: "inlineCode", value: path.split("::").at(-1) }],
+});
+
+// Text that is already a link, a heading, or a preview inside a link takes no further links.
+const UNLINKED = new Set(["link", "heading", "clausePreview", "clausePreviewId"]);
+
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/** Items of a clause list open with `` `<subject>` — ``. */
+const isClauseList = (node) => {
+  const [code, sep] = node?.type === "list" ? node.children[0]?.children[0]?.children ?? [] : [];
+  return code?.type === "inlineCode" && sep?.type === "text" && sep.value.startsWith(" — ");
+};
+
+/**
+ * Each item of a clause list becomes `<li id="<clause id>">`: a margin holding the anchor
+ * on its subject and the clause's pins, the statement, and its Why folded beneath.
+ */
+const addressList = (list, contract, op, { clauses, errors }) => {
+  list.data = { ...list.data, ...hp("clauses", { dataPagefindIgnore: true }) };
+  for (const item of list.children) {
+    const para = item.children[0];
+    const [code, sep] = para?.type === "paragraph" ? para.children : [];
+    if (code?.type !== "inlineCode" || sep?.type !== "text" || !sep.value.startsWith(" — ")) continue;
+    const id = `${contract}.${op}.${code.value}`;
+    const rest = para.children.slice(1);
+    rest[0] = { ...sep, value: sep.value.slice(3) };
+    // The Why follows a soft break: a trailing emphasis node.
+    let why;
+    const last = rest.at(-1);
+    const beforeLast = rest.at(-2);
+    if (last?.type === "emphasis" && beforeLast?.type === "text" && /\n\s*$/.test(beforeLast.value)) {
+      why = rest.pop();
+      rest[rest.length - 1] = { ...beforeLast, value: beforeLast.value.replace(/\s*\n\s*$/, "") };
+    }
+    // A clause's own error stays plain inside it; everywhere else the error links here.
+    visit({ type: "root", children: rest }, "inlineCode", (node) => {
+      if (errors.get(node.value)?.clause === id) node.data = { ...node.data, ownClause: true };
+    });
+    const pins = clauses.get(id)?.pins ?? [];
+    item.data = { ...item.data, ...hp("clause", { id }) };
+    para.children = [
+      el("clauseMargin", "span", "clause-margin", [
+        { type: "link", url: `#${id}`, title: id, data: hp("clause-anchor"), children: [code] },
+        ...(pins.length
+          ? [el("clausePins", "span", "clause-pins", pins.map((pin) =>
+            pin.href
+              ? { type: "link", url: pin.href, title: pin.label, data: hp(["clause-pin", `pin-${pin.kind}`]), children: [text(pin.kind)] }
+              : el("clausePin", "span", ["clause-pin", `pin-${pin.kind}`], [text(pin.kind)], { title: pin.label })))]
+          : []),
+      ]),
+      el("clauseStatement", "span", "clause-statement", rest),
+    ];
+    if (why) {
+      item.children = [para, el("clauseWhy", "details", "clause-why", [
+        el("clauseWhySummary", "summary", "clause-why-label", [text("Why")]),
+        el("clauseWhyBody", "span", "clause-why-body", why.children),
+      ])];
+    }
+  }
+};
 
 /**
  * Turns each operation section of a contract file into addressable rules: the lede
- * paragraph gets `lede`, and each item of the clause list becomes `<li id="<clause id>">`
- * with a margin anchor on its subject, the statement, and its Why beneath.
+ * paragraph gets `lede`, and each clause list under the operation or one of its
+ * `### <group>` headings is addressed by `addressList`. A group does not enter the id.
  */
-const addressClauses = (tree, contract, owns) => {
+const addressClauses = (tree, contract, owns, index) => {
   const kids = tree.children;
   for (let i = 0; i < kids.length; i++) {
     const h = kids[i];
     if (h.type !== "heading" || h.depth !== 2) continue;
-    const op = h.children.map((c) => c.value ?? "").join("").trim();
+    const op = plain(h).trim();
     if (!owns.has(op)) continue;
     let j = i + 1;
     if (kids[j]?.type === "paragraph") {
@@ -70,40 +162,51 @@ const addressClauses = (tree, contract, owns) => {
       j++;
     }
     while (kids[j] && kids[j].type !== "list" && kids[j].type !== "heading") j++;
-    const list = kids[j];
-    if (list?.type !== "list") continue;
-    list.data = { ...list.data, ...hp("clauses") };
-    for (const item of list.children) {
-      const para = item.children[0];
-      const [code, sep] = para?.type === "paragraph" ? para.children : [];
-      if (code?.type !== "inlineCode" || sep?.type !== "text" || !sep.value.startsWith(" — ")) continue;
-      const id = `${contract}.${op}.${code.value}`;
-      const rest = para.children.slice(1);
-      rest[0] = { ...sep, value: sep.value.slice(3) };
-      // The Why follows a soft break: a trailing emphasis node.
-      let why;
-      const last = rest.at(-1);
-      const beforeLast = rest.at(-2);
-      if (last?.type === "emphasis" && beforeLast?.type === "text" && /\n\s*$/.test(beforeLast.value)) {
-        why = rest.pop();
-        rest[rest.length - 1] = { ...beforeLast, value: beforeLast.value.replace(/\s*\n\s*$/, "") };
-      }
-      item.data = { ...item.data, ...hp("clause", { id }) };
-      para.children = [
-        { type: "link", url: `#${id}`, title: id, data: hp("clause-anchor"), children: [code] },
-        { type: "clauseStatement", data: { hName: "span", ...hp("clause-statement") }, children: rest },
-        ...(why ? [{ type: "clauseWhy", data: { hName: "span", ...hp("clause-why") }, children: why.children }] : []),
-      ];
+    if (isClauseList(kids[j])) addressList(kids[j], contract, op, index);
+    for (let k = i + 1; k < kids.length && !(kids[k].type === "heading" && kids[k].depth <= 2); k++) {
+      const g = kids[k];
+      if (g.type !== "heading" || g.depth !== 3) continue;
+      const lede = kids[k + 1]?.type === "paragraph" ? kids[k + 1] : undefined;
+      const list = kids[k + (lede ? 2 : 1)];
+      if (!isClauseList(list)) continue;
+      // The group's anchor carries its operation, so it never takes an operation's own slug.
+      g.data = { ...g.data, ...hp("clause-group", { id: `${op}--${slug(plain(g))}` }) };
+      if (lede) lede.data = { ...lede.data, ...hp(["lede", "group-lede"]) };
+      addressList(list, contract, op, index);
     }
   }
 };
 
 /**
- * Rewrites `.md` links to routes, addresses clause items, and links `{{id}}` and record ids.
+ * An ADR section heading `<slug> — <decision>` takes `<slug>` as its anchor, the target of
+ * `A-<contract>#<slug>`, and is followed by links to the clauses the lock records citing it.
  */
-export function remarkCorpus() {
+const addressDecisions = (tree, record, { clauses, sections }) => {
+  const kids = tree.children;
+  for (let i = 0; i < kids.length; i++) {
+    const h = kids[i];
+    if (h.type !== "heading" || h.depth !== 2) continue;
+    const m = /^([a-z0-9-]+) — \S/.exec(plain(h));
+    if (!m) continue;
+    h.data = { ...h.data, hProperties: { ...h.data?.hProperties, id: m[1] } };
+    const citing = (sections.get(`${record}#${m[1]}`) ?? []).filter((id) => clauses.has(id));
+    if (!citing.length) continue;
+    kids.splice(i + 1, 0, el("citedBy", "p", "cited-by", [
+      el("citedByLabel", "span", "cited-by-label", [text("Cited by")]),
+      ...citing.map((id) => clauseLink(id, clauses.get(id), { type: "inlineCode", value: id })),
+    ]));
+    i++;
+  }
+};
+
+/**
+ * Rewrites `.md` links to routes, addresses clause items, and links `{{id}}` pointers,
+ * record ids and registered error identifiers. `lock` replaces the lock file in tests.
+ */
+export function remarkCorpus({ lock } = {}) {
   return (tree, file) => {
-    const { clauses, operations, records } = corpusIndex();
+    const index = corpusIndex(lock);
+    const { clauses, operations, records, errors, types } = index;
     const from = sourcePath(file);
     const self = from ? routeFor(from) : undefined;
 
@@ -119,39 +222,57 @@ export function remarkCorpus() {
       const owns = new Set(
         [...operations.keys()].filter((k) => k.startsWith(`${contract}.`)).map((k) => k.slice(contract.length + 1)),
       );
-      addressClauses(tree, contract, owns);
+      addressClauses(tree, contract, owns, index);
     }
+    if (from && dirname(from) === ADR_DIR) addressDecisions(tree, recordId(from), index);
 
-    // `store.fold.partial-snapshot` links to its row, `store.fold` to its section.
+    // `store.fold.partial-snapshot` links to its row, `store.fold` to its section, and
+    // `StorePartialSnapshot` to the clause that owns it.
     visit(tree, "inlineCode", (node, index, parent) => {
       if (!parent || parent.type === "link" || parent.type === "heading") return;
       const target = clauses.get(node.value);
       if (target) {
-        parent.children[index] = { ...clauseLink(node.value, target), children: [node] };
+        parent.children[index] = clauseLink(node.value, target, node);
         return;
       }
-      const url = operations.get(node.value);
-      if (url) parent.children[index] = { type: "link", url, data: hp("clause-ref"), children: [node] };
+      const op = operations.get(node.value);
+      if (op) {
+        parent.children[index] = operationLink(node.value, op, node);
+        return;
+      }
+      const owner = errors.get(node.value)?.clause;
+      if (owner && clauses.has(owner) && !node.data?.ownClause) {
+        parent.children[index] = clauseLink(owner, clauses.get(owner), node, "error-ref");
+      }
     });
 
     visit(tree, "text", (node, index, parent) => {
-      if (!parent || parent.type === "link" || parent.type === "heading") return;
+      if (!parent || UNLINKED.has(parent.type)) return;
       const out = [];
       let last = 0;
       for (const m of node.value.matchAll(INLINE_REF)) {
-        const [raw, clause, record] = m;
-        const target = clause ? clauses.get(clause) : records.get(record);
-        if (!target || (record && target === self)) continue;
-        if (m.index > last) out.push({ type: "text", value: node.value.slice(last, m.index) });
-        out.push(
-          clause
-            ? clauseLink(clause, target)
-            : { type: "link", url: target, data: hp("record-ref"), children: [{ type: "text", value: record }] },
-        );
+        const [raw, pointer, record, section, type] = m;
+        let link;
+        if (type) {
+          link = types.has(type) ? typeLink(type, types.get(type)) : undefined;
+        } else if (pointer) {
+          const clause = clauses.get(pointer);
+          const op = operations.get(pointer);
+          link = clause ? clauseLink(pointer, clause) : op ? operationLink(pointer, op) : undefined;
+        } else if (records.has(record)) {
+          const route = records.get(record);
+          const url = section ? `${route === self ? "" : route}#${section}` : route;
+          if (route !== self || section) {
+            link = { type: "link", url, data: hp("record-ref"), children: [text(raw)] };
+          }
+        }
+        if (!link) continue;
+        if (m.index > last) out.push(text(node.value.slice(last, m.index)));
+        out.push(link);
         last = m.index + raw.length;
       }
       if (!out.length) return;
-      if (last < node.value.length) out.push({ type: "text", value: node.value.slice(last) });
+      if (last < node.value.length) out.push(text(node.value.slice(last)));
       parent.children.splice(index, 1, ...out);
       return [SKIP, index + out.length];
     });

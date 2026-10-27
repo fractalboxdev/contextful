@@ -5,10 +5,11 @@ use contextful_core::run::ports::Cancellation;
 use contextful_core::run::{Failure, RunError};
 use contextful_core::time::Instant;
 use contextful_engine::awake::Registry;
+use contextful_engine::conformance::interleave::{Interleaving, ModelRow, Outcome, Phase, Resolution, Step, Value};
 use contextful_engine::journal::{Journal, Resolved, StepError};
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 
 struct Never;
 
@@ -70,30 +71,34 @@ fn a_crash_before_the_write_re_enters_and_the_record_then_stands() {
 #[test]
 fn a_racing_caller_waits_for_the_first_callers_value() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
-    let effects = Arc::new(AtomicUsize::new(0));
-    let entered = Arc::new(std::sync::Barrier::new(2));
-    let (j1, e1, b1) = (j.clone(), effects.clone(), entered.clone());
-    let first = std::thread::spawn(move || {
-        j1.step(&key(), "run-a", &live, &Never, &always, &mut || {
-            e1.fetch_add(1, Ordering::SeqCst);
-            b1.wait();
-            std::thread::sleep(std::time::Duration::from_millis(150));
-            Ok(b"billed once".to_vec())
-        })
-    });
-    entered.wait();
-    // The claim is in place before the effect runs.
-    assert!(matches!(j.row(&key()).unwrap(), Some(Row::Pending { run_id, .. }) if run_id == "run-a"));
-    let second = j.step(&key(), "run-b", &live, &Never, &always, &mut || {
-        effects.fetch_add(1, Ordering::SeqCst);
-        Ok(b"billed twice".to_vec())
-    });
-    assert_eq!(second.unwrap(), Resolved::Replayed(b"billed once".to_vec()));
-    assert_eq!(first.join().unwrap().unwrap(), Resolved::Recorded(b"billed once".to_vec()));
-    assert_eq!(effects.load(Ordering::SeqCst), 1);
+    let mut case = Interleaving::new(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()), true);
+    let blob = |caller| Value { origin: caller, blob: true };
+    // The first caller claims the key before its effect runs.
+    case.apply(Step::Begin { caller: 0, key: 0 });
+    case.apply(Step::Advance { caller: 0 });
+    assert_eq!(case.phase(0), Phase::Claimed(0));
+    assert_eq!(case.row(0), Some(ModelRow::Pending { holder: 0, attempts: 0 }));
+    // A second caller finds the live claim and waits instead of computing.
+    case.apply(Step::Begin { caller: 1, key: 0 });
+    for expected in [Phase::Reading(0), Phase::Claiming(0), Phase::Reading(0), Phase::Claiming(0)] {
+        case.apply(Step::Advance { caller: 1 });
+        assert_eq!(case.phase(1), expected, "{}", case.show());
+    }
+    case.apply(Step::Effect { caller: 1, outcome: Outcome::Inline });
+    assert_eq!(case.phase(1), Phase::Claiming(0), "a waiting caller runs no effect");
+    // The first caller records its value; the waiter reads it.
+    case.apply(Step::Effect { caller: 0, outcome: Outcome::Blob });
+    for expected in [Phase::Storing(0, blob(0)), Phase::Recording(0, blob(0)), Phase::Done(0, Resolution::Recorded(blob(0)))] {
+        case.apply(Step::Advance { caller: 0 });
+        assert_eq!(case.phase(0), expected, "{}", case.show());
+    }
+    for expected in [Phase::Reading(0), Phase::Loading(0, blob(0)), Phase::Done(0, Resolution::Replayed(blob(0)))] {
+        case.apply(Step::Advance { caller: 1 });
+        assert_eq!(case.phase(1), expected, "{}", case.show());
+    }
     // Each segment of the key names its own entry.
-    for other in [EntryKey::new("x-2", "pull-0", b"null"), EntryKey::new("x-1", "pull-1", b"null"), EntryKey::new("x-1", "pull-0", b"\"p1\"")] {
+    let j = Journal::open(dir.path());
+    for other in [EntryKey::new("x-1", "step", b"null"), EntryKey::new("x-0", "other", b"null"), EntryKey::new("x-0", "step", b"\"p1\"")] {
         assert!(j.row(&other).unwrap().is_none());
     }
 }
@@ -156,28 +161,31 @@ fn racers_on_one_key_run_the_effect_once_and_read_equal_bytes() {
 #[test]
 fn a_claim_whose_holder_lapsed_is_taken_over() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
-    let _ = std::panic::catch_unwind(AssertUnwindSafe(|| j.step(&key(), "run-a", &live, &Never, &always, &mut || panic!("crash"))));
-    let lapsed = std::sync::atomic::AtomicBool::new(false);
-    let holder_live = |holder: &str| -> Result<bool, Failure> {
-        assert_eq!(holder, "run-a");
-        Ok(!lapsed.load(Ordering::SeqCst))
-    };
-    // While the holder's lease is live, a caller waits; once it lapses, the caller takes over.
-    let effects = AtomicUsize::new(0);
-    let flip = std::thread::scope(|s| {
-        s.spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            lapsed.store(true, Ordering::SeqCst);
-        });
-        j.step(&key(), "run-b", &holder_live, &Never, &always, &mut || {
-            effects.fetch_add(1, Ordering::SeqCst);
-            Ok(b"taken over".to_vec())
-        })
-    });
-    assert_eq!(flip.unwrap(), Resolved::Recorded(b"taken over".to_vec()));
-    contextful_eval::record::emit("journal-holder-liveness", effects.load(Ordering::SeqCst) as f64, 1, 0);
-    assert_eq!(effects.load(Ordering::SeqCst), 1, "the taker runs the effect once");
+    let mut case = Interleaving::new(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()), true);
+    // The holder claims the key and dies before its effect returns.
+    case.apply(Step::Begin { caller: 0, key: 0 });
+    case.apply(Step::Advance { caller: 0 });
+    case.apply(Step::Crash { caller: 0 });
+    assert_eq!(case.row(0), Some(ModelRow::Pending { holder: 0, attempts: 0 }));
+    // While the holder's lease is live, a caller waits.
+    case.apply(Step::Begin { caller: 1, key: 0 });
+    case.apply(Step::Advance { caller: 1 });
+    case.apply(Step::Advance { caller: 1 });
+    assert_eq!(case.phase(1), Phase::Claiming(0), "{}", case.show());
+    // Once it lapses, the caller takes the claim over and runs the effect once.
+    case.apply(Step::Lapse { caller: 0 });
+    for expected in [Phase::Reading(0), Phase::TakingOver(0, 0), Phase::Claimed(0)] {
+        case.apply(Step::Advance { caller: 1 });
+        assert_eq!(case.phase(1), expected, "{}", case.show());
+    }
+    assert_eq!(case.row(0), Some(ModelRow::Pending { holder: 1, attempts: 0 }));
+    let taken = Value { origin: 1, blob: false };
+    case.apply(Step::Effect { caller: 1, outcome: Outcome::Inline });
+    case.apply(Step::Advance { caller: 1 });
+    case.apply(Step::Advance { caller: 1 });
+    assert_eq!(case.phase(1), Phase::Done(0, Resolution::Recorded(taken)), "{}", case.show());
+    contextful_eval::record::emit("journal-holder-liveness", case.effects() as f64, 1, 0);
+    assert_eq!(case.effects(), 1, "the taker runs the effect once");
 }
 
 /// Concurrent writers of one blob hash converge on one stored value and none errors on another's write; no partial
@@ -199,9 +207,9 @@ fn concurrent_blob_writers_converge_on_one_file() {
     assert_eq!(std::fs::read(j.blob_path(&sha)).unwrap(), value);
 }
 
-/// Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads.
-/// No step kind overrides the cutoff.
-// spec: run.journal.one-cutoff@5282a42b
+/// Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads,
+/// whose pending row references an offloaded blob. No step kind overrides the cutoff.
+// spec: run.journal.one-cutoff@cb049a23
 #[test]
 fn every_step_kind_places_its_value_by_the_one_cutoff() {
     let dir = tempfile::tempdir().unwrap();

@@ -22,10 +22,11 @@ impl Source for OneUnreadable {
     }
 }
 
-/// A pull's dead letters land in the table `<table>_dead_letter`, one row per input carrying its key, reason and
-/// SHA-256, committed in the same run as the table's rows; its key, reason and SHA-256 pass the secret guard.
-// spec: run.land.dead-letter@57a7105e
-// spec: run.guard-secrets.dead-letter-reason@8970d04f
+/// A pull's dead letters land in the table `<table>_dead_letter`, one
+/// {{type:contextful_core::run::ports::DeadLetter}} row per input, committed in the same run as the table's rows;
+/// every field passes the secret guard.
+// spec: run.land.dead-letter@7c35857f
+// spec: run.guard-secrets.dead-letter-reason@b8f5625c
 #[test]
 fn a_pulls_dead_letters_stage_beside_its_table_and_commit_with_the_run() {
     let rig = Rig::new();

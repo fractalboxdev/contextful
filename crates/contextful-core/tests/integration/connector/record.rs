@@ -30,7 +30,7 @@ fn rejected(text: &str) -> String {
 }
 
 /// Every record key parses; `expires = "never"` is the explicit no-expiry assertion.
-// spec: connector.record.record-table@9f120f6d
+// spec: connector.record.record-table@19cee2ba
 #[test]
 fn a_secret_table_carries_the_seven_optional_record_keys() {
     let text = r#"
@@ -55,7 +55,7 @@ expires     = "never"
 
 /// An operator record describes a name's grants, account, consuming surfaces and rotation
 /// location; creation and expiry stay operator metadata.
-// spec: connector.record.operator-record@0e4b32da
+// spec: connector.record.operator-record@172c5269
 #[test]
 fn an_operator_record_describes_grants_account_surfaces_and_rotation() {
     let text = "[secret.vendor-token]\naccount = \"acct-1\"\ngrants = [\"read\"]\nrotate = \"console\"\nexpires = 2030-01-10\n";
@@ -67,7 +67,7 @@ fn an_operator_record_describes_grants_account_surfaces_and_rotation() {
 }
 
 /// A record identifies each consuming surface and its binding name.
-// spec: connector.record.surface-of-consumption@5d61c3b5
+// spec: connector.record.operator-record@172c5269
 #[test]
 fn a_record_names_each_consuming_surface_and_its_binding() {
     let text = "[secret.vendor-token]\nsurfaces = [{ surface = \"orders\", binding = \"Authorization\" }, { surface = \"export\", binding = \"VENDOR_TOKEN\" }]\n";
@@ -96,7 +96,10 @@ fn an_absent_grants_key_reads_as_unknown() {
 #[test]
 fn a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value() {
     let sentinel = "sentinel-value-0042";
-    let unbound = rejected(&format!("[secret.vendor-tokne]\ndescription = \"{sentinel}\"\n"));
+    let unbound = match read_records(FILE, &manifest(&format!("[secret.vendor-tokne]\ndescription = \"{sentinel}\"\n")), &bound(&["vendor-token"])) {
+        Err(ConnectorError::SecretRecordRejected(m)) => m,
+        other => panic!("expected SecretRecordRejected, got {other:?}"),
+    };
     assert!(unbound.contains(FILE) && unbound.contains("secret.vendor-tokne"), "{unbound}");
     assert!(!unbound.contains(sentinel), "{unbound}");
 
@@ -118,7 +121,7 @@ fn a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value
 }
 
 /// A committed record holds descriptive metadata only, and no value is needed to record a binding.
-// spec: connector.record.metadata-storage@7b04d3a2
+// spec: connector.record.operator-record@172c5269
 #[test]
 fn a_record_holds_metadata_and_never_a_value() {
     for key in ["value", "ciphertext", "secret"] {

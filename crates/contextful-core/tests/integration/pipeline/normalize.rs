@@ -25,8 +25,7 @@ fn source_fields_cannot_replace_relational_identity_columns() {
 }
 
 /// Relational identity columns preserve repeated nested values and replay the same ids.
-// spec: run.normalize.identity-columns@303cb038
-// spec: run.normalize.row-id@44330c32
+// spec: run.normalize.identity-columns@a440f099
 #[test]
 fn repeated_nested_items_keep_distinct_parent_links_and_stable_ids() {
     let source: Row = serde_json::from_value(serde_json::json!({

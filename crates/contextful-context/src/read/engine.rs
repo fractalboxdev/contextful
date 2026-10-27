@@ -3,6 +3,7 @@
 //! pepper-holding mask functions, and the statement serialization the guard walks.
 
 use super::fault::ReadFault;
+use contextful_core::assurance::AssuranceError;
 use contextful_core::read::respond::Cell;
 use contextful_core::read::template::{Bindings, Bound};
 use contextful_core::read::ReadError;
@@ -509,10 +510,10 @@ fn scan_rows(info: &duckdb::profiling::ProfilingInfo) -> u64 {
 const UNLOADED_EXTENSION: &str = "but it exists in the ";
 
 fn extension_refused(message: String) -> ReadFault {
-    ReadError::ExtensionAutoloadRefused(message).into()
+    ReadError::from(AssuranceError::ExtensionAutoloadRefused(message)).into()
 }
 
-/// An engine error, refused as [`ReadError::ExtensionAutoloadRefused`] where the statement
+/// An engine error, refused as [`AssuranceError::ExtensionAutoloadRefused`] where the statement
 /// reached for an extension this binary does not link.
 fn engine_fault(e: duckdb::Error) -> ReadFault {
     let message = e.to_string();

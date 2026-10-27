@@ -68,6 +68,7 @@ fn deliver(ledger: &mut D1PublicationLedger, receiver: &mut ReceiverState, lose_
     }
 }
 
+// spec: run.export.group-d1-recovery@70fbb9c7
 #[test]
 fn a_group_staged_before_a_crash_redelivers_identical_bytes_after_replacement() {
     let fixture = start();
@@ -98,6 +99,7 @@ fn a_group_staged_before_a_crash_redelivers_identical_bytes_after_replacement() 
     );
 }
 
+// spec: run.export.group-d1-state@6dcf859e
 #[test]
 fn a_lost_group_acknowledgement_reoffers_the_committed_batch_after_replacement() {
     let fixture = start();
@@ -138,6 +140,7 @@ fn a_receiver_never_activates_a_partially_delivered_group() {
     assert!(receiver.state.is_empty());
 }
 
+// spec: run.export.group-d1-lease@cf7d3548
 #[test]
 fn a_transferred_group_lease_fences_the_prior_writer() {
     let fixture = start();
@@ -178,6 +181,7 @@ fn a_fenced_writer_cannot_complete_a_group_its_successor_completed() {
     assert!(current.batch("projection", "initial").unwrap().is_none());
 }
 
+// spec: run.export.group-d1-spill@9e224661
 #[test]
 fn a_large_sender_spills_to_r2_and_survives_the_blob_sweep() {
     let fixture = start();
@@ -315,6 +319,7 @@ fn the_d1_ledger_keeps_only_the_latest_completion() {
     assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
 }
 
+// spec: run.export.group-d1-acknowledge@b1a56a70
 #[test]
 fn an_oversized_sender_acknowledges_a_group_of_deletes_through_bounded_statements() {
     // Every statement request over 256 KiB loses its connection, as a large D1 write may.
@@ -359,6 +364,7 @@ fn an_oversized_sender_acknowledges_a_group_of_deletes_through_bounded_statement
     assert!(replacement.batch("projection", "initial").unwrap().is_none());
 }
 
+// spec: run.export.group-d1-resume@0c3fbfc4
 #[test]
 fn a_replacement_resumes_an_acknowledged_sequence_its_own_batches_never_end_at() {
     let fixture = start();

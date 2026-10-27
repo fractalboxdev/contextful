@@ -15,6 +15,7 @@ fn publication() -> ExportPublication<'static> {
     ExportPublication { source: "frontier-1", id: "publication-1", identity: "reader-1", destination: "target-1" }
 }
 
+// spec: run.export.group-activation@d3a190d4
 #[test]
 fn coordinated_receiver_activates_all_members_once_and_refuses_rollback() {
     use contextful_core::export::publication::{publication as group, GroupBatch, PublicationPlan};
@@ -64,6 +65,7 @@ fn coordinated_receiver_activates_all_members_once_and_refuses_rollback() {
     assert!(receiver.receive(&GroupBatch {version:1,group:foreign.group,events:foreign.events}).is_err());
 }
 
+// spec: run.export.group-incompatible@d5947973
 #[test]
 fn coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibility() {
     use contextful_core::export::publication::PublicationPlan;
@@ -79,17 +81,20 @@ fn coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibi
     let first = ledger.batch("copy", "one").unwrap().unwrap();
     assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&ledger.batch("copy", "one").unwrap().unwrap()).unwrap());
     assert!(ledger.acknowledge("copy", "one", &first.group.id, 0).is_err());
-    assert!(ledger.stage(&plan, &states, "different-reader").is_err());
+    let changed = ledger.stage(&plan, &states, "different-reader").unwrap_err();
+    assert!(changed.message.contains("PublicationIncompatible"), "{changed}");
     ledger.acknowledge("copy", "one", &first.group.id, first.events.last().unwrap().sequence).unwrap();
     assert!(ledger.batch("copy", "one").unwrap().is_none());
     ledger.restore("copy", "one", &checkpoint, "store-1", "read-identity").unwrap();
     let replay = ledger.batch("copy", "one").unwrap().unwrap();
     assert_eq!(first, replay);
-    assert!(ledger.restore("copy", "one", &checkpoint, "store-2", "read-identity").is_err());
+    let other_store = ledger.restore("copy", "one", &checkpoint, "store-2", "read-identity").unwrap_err();
+    assert!(other_store.message.contains("PublicationIncompatible"), "{other_store}");
     assert!(ledger.restore("copy", "one", &checkpoint, "store-1", "other-reader").is_err());
     assert!(ledger.stage(&PublicationPlan {members:BTreeMap::new(),..plan}, &BTreeMap::new(), "read-identity").is_err());
 }
 
+// spec: run.export.group-checkpoint@41efe5dd
 #[test]
 fn restored_publication_checkpoint_cannot_reverse_a_durable_receiver_tombstone() {
     use contextful_core::export::publication::PublicationPlan;

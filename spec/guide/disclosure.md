@@ -4,24 +4,29 @@ contract: disclosure
 
 # Visibility, disclosure and accountability
 
-## What it is for
+## The problems this contract solves
 
-A **Contextful** workspace indexing an organization's wiki, drive and chat applies source
-permissions to reads. Visibility follows the table's declared fidelity
-({{disclosure.declare-fidelity.family-bound}}) and freshness budget
-({{disclosure.bound-staleness.access-stale}}).
-Disclosure lets a derived figure cross from many contributors to one asker without
-carrying any contributor's rows. Accountability leaves a verifiable trace of every read
-and removes a subject or a tenant on demand.
+A **Contextful** workspace indexes an organization's wiki, drive and chat. Three
+problems follow. A reader sees only what the source lets that reader see
+(**visibility**). A figure computed from other people's rows reaches one asker without
+exposing any contributor (**disclosure**). Every read leaves a verifiable trace, and a
+person or a tenant is removable on demand (**accountability**).
 
-A visibility read with insufficient freshness refuses
-({{disclosure.bound-staleness.access-stale}}), except for the declared public-only posture
-({{disclosure.bound-staleness.public-only}}), which reports its narrowing
-({{disclosure.bound-staleness.degraded-block}}). An empty result describes the delivered
-rows ({{read.respond.zero-rows-is-success}}), with truncation reported separately
-({{read.respond.truncation-cause}}).
+## Visibility: mirroring source permissions
 
-## How it works
+The example is a wiki page shared with the group `planning`, which contains `eng-leads`,
+which contains one reader.
+
+A **pack** is the reviewed unit that loads one source with its access mapping; a table
+with no mapping fails at diagnosis ({{disclosure.pack.mapping-absent}}). A **sweep**
+reads the source's permission state and commits it as one run
+({{disclosure.sweep.sweep-verb}}). Grants arrive as ordinary rows of reserved
+`_visibility` tables ({{disclosure.mirror.grants-table}}).
+
+For the wiki, the sweep writes one resource row, one grant to `planning` and two
+membership rows. A grant naming no resource fails at commit
+({{disclosure.sweep.orphan-grant}}). A Drive sweep follows every permission page of each
+file before its grants replace earlier ones ({{disclosure.drive-sweep.permission-pages}}).
 
 ```mermaid
 flowchart LR
@@ -50,88 +55,64 @@ flowchart LR
   ERASER -->|"erasure entry"| CHAINLOG
 ```
 
-Visibility runs in three steps. A pack lands a source with an access mapping
-({{disclosure.pack.mapping-absent}}) whose keys the mapping schema defines
-({{disclosure.pack.asserts-access}}). A sweep ({{disclosure.sweep.sweep-verb}}) lands
-grants as reserved `_visibility` rows ({{disclosure.mirror.grants-table}}), refusing a
-grant with no resource ({{disclosure.sweep.orphan-grant}}) and advancing its coverage watermark only from streams that detect gaps
-({{disclosure.sweep.ungapped-stream}}). At read time, reach resolves the admitted subject
-through a bounded group closure ({{disclosure.reach.closure-walk}}) to a reachable set, and
-the registered view semi-joins content against it ({{disclosure.reach.semi-join}}).
-Every served table carries a visibility block ({{disclosure.mirror.unbound-table}}) naming a sweep and a staleness budget
-({{disclosure.mirror.incomplete-binding}}); stale reads follow
-{{disclosure.bound-staleness.access-stale}} and {{disclosure.bound-staleness.public-only}}.
+At read time, a bounded group closure walks `planning`, then `eng-leads`, then the
+reader ({{disclosure.reach.closure-walk}}). The registered view admits a row only when
+its resource holds a grant in that reachable set ({{disclosure.reach.semi-join}}). The
+reachable set holds every principal the subject reaches through identity links and
+groups ({{disclosure.reach.subject-principals}}).
 
-Fidelity states how closely a table follows its source. The family caps the claim
-({{disclosure.declare-fidelity.family-bound}}), and a source that computes access with its
-own sharing engine is queried live rather than mirrored
-({{disclosure.declare-fidelity.computed-inputs}}).
+**Fidelity** states how closely a table follows its source, and the source family caps
+the claim ({{disclosure.declare-fidelity.family-bound}}).
 
-The local diagnostic ({{disclosure.set-mode.check-verb}}) checks {{disclosure.set-mode.aggregate-shape}},
-{{disclosure.set-mode.policy-absent}} and {{disclosure.set-mode.model-unreadable}}.
-A release ({{disclosure.release.release-verb}}) reserves budget before computing
-({{disclosure.release.budget-reservation}}, {{disclosure.release.spend-declaration}},
-{{disclosure.release.lifetime-cap}}, {{disclosure.release.budget-ledger}}), groups only on permitted keys
-({{disclosure.release.group-key}}), draws bounded noise
-({{disclosure.release.noise-mechanism}}, {{disclosure.release.metric-bounds}}), withholds small groups
-({{disclosure.suppress.min-group-size}}) and dominated ones
-({{disclosure.suppress.contributor-share}}) behind one sentinel row
-({{disclosure.suppress.sentinel-row}}). A cohort table never
-narrows to one person ({{disclosure.bound-cohort.singleton-cohort}}).
+## When permission state goes stale
 
-Accountability starts at the read: rows leave once the read's own entry is durable
-({{disclosure.record.read-entry}}, {{disclosure.record.unpersisted-entry}}); entries hash-link into segments closed by signed
-roots ({{disclosure.record.segment}}), and verification reports the earliest break
-({{disclosure.attest.broken-chain}}). A header fixes the digest
-({{disclosure.record.chain-header}}), each root a Merkle hash
-({{disclosure.attest.merkle-root}}), so an audit path proves membership under the
-public key alone ({{disclosure.attest.inclusion-proof}}). A keyless node appends unanchored
-until anchored ({{disclosure.attest.anchor-verb}}); a held chain stays held
-({{disclosure.record.unanchored-over-signed}}); replicas expose truncation
-({{disclosure.attest.replica-verify}}). `audit query` answers who read what
-({{disclosure.record.reads-view}}), refusals too ({{disclosure.record.refused-read}}).
+An editor removes `planning` from the page. The table's staleness budget, a declared
+duration ({{disclosure.bound-staleness.budget-grammar}}), bounds how long the old grant
+keeps answering. If the sweep stalls past the budget, the reader's next
+read fails instead of serving a revoked grant ({{disclosure.bound-staleness.access-stale}}).
 
-## Worked example
+A table declared `public_only` instead narrows to public rows past its budget
+({{disclosure.bound-staleness.public-only}}). The engine retains no reachable set computed in
+either state ({{disclosure.reach.degraded-uncached}}).
 
-A wiki page is shared with `planning`, which contains `eng-leads`, which contains Ada.
+## Explaining a decision
 
-The wiki pack maps the source's `viewer` level to read, names the `item-exception`
-family, and binds the `pages` table as `mirrored` with `on_stale = "refuse"` and a budget in the grammar of
-{{disclosure.bound-staleness.budget-grammar}}. The sweep lands one resource row, one grant
-to `planning`, and two membership rows.
+Asked why a colleague lacks access to the page, `audit explain` decides from current grants
+({{disclosure.explain.decision}}). The explanation names groups on the path and omits
+their members ({{disclosure.explain.groups-not-members}}).
 
-Ada's question touches `pages`. Reach walks `planning`, then `eng-leads`, then Ada,
-subtracts tombstones in force, and caches the set ({{disclosure.reach.cache-capacity}}).
-The source lag sits inside the budget, so the semi-join admits the page and the envelope
-reports fidelity and lag. The read appends a chain entry carrying a keyed digest of the
-statement, and rows return after the fsync.
+## Disclosure: releasing a figure
 
-An editor removes `planning` from the page. The budget bounds how long the old grant
-keeps answering. If the sweep stalls past it, Ada's next read refuses instead of serving a
-revoked grant, and nothing produced in that state is retained
-({{disclosure.reach.degraded-uncached}}).
+A release computes statistics over contributors' rows. Before computing, it reserves
+each contributor's spend against a lifetime budget, and a failed reservation publishes
+nothing ({{disclosure.release.budget-reservation}}). A group key outside the permitted
+columns fails ({{disclosure.release.group-key}}).
 
-Asked why Bo cannot see it, explain decides from current grants
-({{disclosure.explain.decision}}) along a path naming groups without members
-({{disclosure.explain.path}}, {{disclosure.explain.groups-not-members}}), replays a window
-({{disclosure.explain.replay}}) under coverage ({{disclosure.explain.coverage}}), lists its
-audience ({{disclosure.explain.audience}}), and returns no page content
-({{disclosure.explain.no-row}}).
+The release suppresses a group whose distinct contributors fall under the declared
+minimum ({{disclosure.suppress.min-group-size}}). Every suppressed group together leaves one
+sentinel row with no key or figure ({{disclosure.suppress.sentinel-row}}).
 
-Ada leaves and is erased under the forget grant ({{disclosure.erase.privilege}}). The
-cascade invalidates facts derived from her rows ({{disclosure.erase.cascade}}) or commits
-nothing ({{disclosure.erase.cascade-unbounded}}); files and cached copies of her rows are
-collected ({{disclosure.erase.physical-removal}}); re-synthesis replays untouched
-batches through the cache ({{disclosure.erase.restage-cache}}). A tenant purge
-({{disclosure.erase.tenant-rewrite}}) signs a receipt naming a salted pseudonym
-({{disclosure.receipt.pseudonym}}) within its version's claim ({{disclosure.receipt.coverage}}).
+A cohort key resolving to one person fails at declaration
+({{disclosure.bound-cohort.singleton-cohort}}). A named query template holds exactly one
+statement ({{disclosure.template.single-statement}}). The offline diagnostic checks every
+published model's policy from local files ({{disclosure.set-mode.check-verb}}).
 
-## Where to look
+## Accountability: the audit chain
 
-| Question | Operation |
-| --- | --- |
-| Which table claims which fidelity? | `disclosure.declare-fidelity` |
-| How old may permission state be? | `disclosure.bound-staleness` |
-| When is a group withheld? | `disclosure.suppress` |
-| Why can this person see that page? | `disclosure.explain` |
-| What does a purge prove? | `disclosure.receipt` |
+Each read appends one audit entry, and rows leave only after that entry syncs
+({{disclosure.record.read-entry}}). Entries hash-link into segments, each closed by a
+signed root ({{disclosure.record.segment}}).
+
+A proof for one entry verifies offline under the signer's public key alone
+({{disclosure.attest.inclusion-proof}}). Verification of a damaged chain fails at the
+earliest broken index ({{disclosure.attest.broken-chain}}).
+
+## Erasure
+
+The reader leaves the organization, and an operator erases the reader's rows. Erasure needs the forget grant
+({{disclosure.erase.privilege}}). The cascade invalidates every fact derived from the
+erased rows in the same operation ({{disclosure.erase.cascade}}), and the files holding
+them are rewritten or collected ({{disclosure.erase.physical-removal}}).
+
+A tenant purge returns a signed receipt naming a salted pseudonym, not the tenant
+identifier ({{disclosure.receipt.pseudonym}}).

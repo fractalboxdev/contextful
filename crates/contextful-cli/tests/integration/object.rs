@@ -53,7 +53,7 @@ fn validate_builds_an_object_source_and_refuses_its_malformed_declarations() {
 
 /// `incremental` beside `skip_unchanged` on an `s3` source refuses at validation: the
 /// position records each object's ETag.
-// spec: connector.source.object-position-owned@4ed72fb9
+// spec: connector.package.component-position@a87bf129
 #[test]
 fn an_incremental_field_beside_an_etag_position_is_refused_at_validation() {
     let manifest = |skip: bool| {
@@ -147,7 +147,7 @@ fn a_fixed_key_object_lands_once_per_etag() {
 
 /// A `session_token` beside the key pair, hydrated per read, signs each request as a
 /// temporary credential: every presigned URL carries the token.
-// spec: connector.source.object-session-token@ea65e5ac
+// spec: connector.source.object-credentials@1c02d9dc
 #[test]
 fn a_session_token_signs_every_request_as_a_temporary_credential() {
     let bucket = Bucket::start(&[("feed/orders.jsonl", "{\"id\":\"o1\"}\n")]);

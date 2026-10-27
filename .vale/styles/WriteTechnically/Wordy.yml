@@ -1,0 +1,17 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: https://www.plainlanguage.gov/guidelines/words/use-simple-words-phrases/
+level: suggestion
+ignorecase: true
+swap:
+  utilize: use
+  utilise: use
+  in order to: to
+  prior to: before
+  subsequent to: after
+  in the event that: if
+  at this point in time: now
+  for the purpose of: to
+  facilitate: help
+  commence: start
+  terminate: end

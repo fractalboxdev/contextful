@@ -30,6 +30,7 @@ fn the_postgres_profile_executes_every_required_scenario_on_remote_state() {
     assert_eq!(report.scenarios.len(), 7);
 }
 
+// spec: assurance.consumer.storage-profile@dc4e2706
 #[test]
 #[cfg(unix)]
 fn unexpected_storage_initialization_errors_fail_without_exporting_credentials() {
@@ -93,6 +94,33 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
             .unwrap()
             .contains("credential-material"));
     }
+}
+
+// spec: assurance.consumer.artifact-stability@68a33dfc
+#[test]
+#[cfg(unix)]
+fn an_artifact_whose_bytes_change_during_the_run_earns_no_compatibility_verdict() {
+    use contextful_acceptance::conformance::Outcome;
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    let _restore = fixture_tools(dir.path());
+    std::fs::write(&binary, "#!/bin/sh\nif [ \"$1\" = --version ]; then printf '#\\n' >> \"$0\"; printf 'contextful fixture development\\n'; exit 0; fi\nif [ \"$2\" = --help ]; then exit 0; fi\nif [ \"$1 $2\" = 'storage initialize' ]; then printf 'StorageProfileUnsupported: postgres\\n' >&2; exit 1; fi\nexit 99\n").unwrap();
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let report = conformance::run(&Options {
+        binary: binary.clone(),
+        storage_profile: "postgres".into(),
+        required: vec!["pagination-checkpoint".into()],
+        timeout_seconds: 60,
+    })
+    .unwrap();
+    assert!(!report.passed());
+    let changed = report.scenarios.iter().find(|s| s.id == "artifact-stability").unwrap_or_else(|| panic!("{report:?}"));
+    assert!(changed.required);
+    assert_eq!(changed.outcome, Outcome::Failed);
+    assert_eq!(changed.diagnostic.as_deref(), Some("ConformanceArtifactChanged"));
 }
 
 #[test]

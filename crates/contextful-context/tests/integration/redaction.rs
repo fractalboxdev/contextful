@@ -26,6 +26,7 @@ redaction = [{ table = "messages", column = "body", match = "whole", operation =
     (dir, store)
 }
 
+// spec: authority.redact.prepared-effects@d0897e0c
 #[test]
 // spec: authority.redact.effect-scope@a6bc8d71
 fn effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payloads() {
@@ -104,6 +105,7 @@ fn composed_destinations_keep_static_removal_and_add_producer_rules() {
     }
 }
 
+// spec: authority.redact.combined-authority@736b5549
 #[test]
 fn composed_destinations_refuse_conflicting_types_combined_overflow_and_duplicate_rules() {
     let dir = composed_declarations("columns = { body = 'binary' }", "tables = [{ name = 'messages', columns = { body = 'utf8' } }]");
@@ -175,6 +177,7 @@ fn sparse_removed_cells_retain_nullable_batch_semantics_without_inventing_column
     assert!(refusal.contains("removal column `body` is absent"), "{refusal}");
 }
 
+// spec: authority.redact.prepared-payload@f42038d1
 #[test]
 fn canonical_prepared_recording_admits_only_its_rewritten_payload_and_current_authority() {
     let (_dir, store) = declared();
@@ -238,6 +241,7 @@ fn a_protected_clock_refuses_before_recording_while_an_independent_clock_remains
     store.validate_source_plan(&plan("independent", "body"), None).unwrap();
 }
 
+// spec: authority.redact.prepared-continuation@001b3ffd
 #[test]
 fn protected_continuation_accepts_no_bytes_or_exact_terminal_form_and_refuses_hidden_values() {
     let (_dir, store) = declared();
@@ -319,6 +323,7 @@ fn a_bare_caller_declaration_cannot_omit_the_durable_writer_rule() {
     assert_eq!(body(&path), "[REDACTED:phone]");
 }
 
+// spec: authority.redact.every-land-entry@64bb79d3
 #[test]
 fn a_staged_part_contains_the_same_removed_form_before_commit() {
     let (_direct_dir, direct) = declared();
@@ -376,6 +381,7 @@ fn relational_staging_removes_selected_child_cells_and_raw_derived_ids() {
     assert_eq!(batch.column_by_name("text").unwrap().as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(0), "[REDACTED:phone]");
 }
 
+// spec: authority.redact.normalized-authority@ee414f4c
 #[test]
 fn protected_relational_authority_refuses_unbound_stages_but_admits_declared_independent_tables() {
     let dir = tempfile::tempdir().unwrap();
@@ -585,6 +591,7 @@ redaction = [{ table = "messages", column = "body", match = { pattern = "[0-9]{3
     assert_eq!(body(&path), "{\"parts\":[{\"kind\":\"prompt\",\"text\":\"☎ call [REDACTED:phone] now\"}],\"z\":\"public 415-555-0100\"}");
 }
 
+// spec: authority.redact.rewritten-identities@753656de
 #[test]
 fn independently_declared_child_rules_precede_all_persisted_group_identities() {
     use contextful_context::land::{stage_normalized_group, NormalizedStage};
@@ -628,6 +635,7 @@ redaction = [{ table = "messages_body", column = "text", operation = "replace", 
     assert_eq!(outputs[0], outputs[1], "a removed child value contributes no root, parent or child identity");
 }
 
+// spec: authority.redact.child-selector-lineage@678d0ad2
 #[test]
 fn a_child_row_selector_without_typed_sibling_lineage_refuses_before_files() {
     use contextful_context::land::{stage_normalized_group, NormalizedStage};
@@ -773,6 +781,7 @@ body = { class = { from_column = "kind" }, strategies = { completion = "hash" },
     let batch = reader.next().unwrap().unwrap();
     assert!(batch.column_by_name("body").unwrap().is_null(0), "strict drop nulls a non-text cell");
 }
+// spec: authority.redact.prepared-clock@c8f86529
 #[test]
 fn prepared_clock_admission_checks_derived_json_path_and_relational_removal_authority() {
     let (dir, _) = declared();
