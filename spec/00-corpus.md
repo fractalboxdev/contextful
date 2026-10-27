@@ -307,6 +307,8 @@ The fenced diagram, and the shape every flowchart, sequence and state diagram ke
   *because one label naming two nodes leaves the reader to decide whether they are one thing*
 - `layout` — A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.
   *because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams*
+- `no-link` — A flowchart carries no `click` directive; a node's link or tooltip raises `SpecDiagramLink`.
+  *because tooltip prose restates rules outside every clause, where no lint rule reads it and it goes stale*
 - `sequence` — A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.
   *because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart*
 - `message` — A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.

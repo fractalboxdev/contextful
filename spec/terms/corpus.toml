@@ -51,6 +51,7 @@ SpecDiagramBranch      = { clause = "corpus.diagram.branch", gloss = "A non-deci
 SpecDiagramOrphan      = { clause = "corpus.diagram.connected", gloss = "A flowchart node no edge reaches, directly or through its subgraph." }
 SpecDiagramDuplicate   = { clause = "corpus.diagram.unique-label", gloss = "Two nodes of one flowchart carrying one label." }
 SpecDiagramLayout      = { clause = "corpus.diagram.layout", gloss = "A flowchart without a direction, with a subgraph direction, nested too deep, or over its size." }
+SpecDiagramLink        = { clause = "corpus.diagram.no-link", gloss = "A flowchart node carrying a `click` link or tooltip." }
 SpecDiagramSequence    = { clause = "corpus.diagram.sequence", gloss = "A sequence diagram with undeclared or unused participants, or over a size bound." }
 SpecDiagramMessage     = { clause = "corpus.diagram.message", gloss = "A sequence message or note over its word bound." }
 SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state diagram without one start, with an unreachable or dead-end state, or a long transition label." }
@@ -122,7 +123,7 @@ term-first-use = 0
 assurance = 10961
 authority = 7667
 connector = 10126
-corpus = 5089
+corpus = 5120
 disclosure = 5217
 read = 9502
 run = 18244

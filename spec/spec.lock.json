@@ -1146,6 +1146,17 @@
       "line": 308
     },
     {
+      "id": "corpus.diagram.no-link",
+      "contract": "corpus",
+      "operation": "diagram",
+      "subject": "no-link",
+      "kind": "refusal",
+      "statement": "A flowchart carries no `click` directive; a node's link or tooltip raises `SpecDiagramLink`.",
+      "why": "because tooltip prose restates rules outside every clause, where no lint rule reads it and it goes stale",
+      "file": "spec/00-corpus.md",
+      "line": 310
+    },
+    {
       "id": "corpus.diagram.sequence",
       "contract": "corpus",
       "operation": "diagram",
@@ -1154,7 +1165,7 @@
       "statement": "A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.",
       "why": "because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart",
       "file": "spec/00-corpus.md",
-      "line": 310
+      "line": 312
     },
     {
       "id": "corpus.diagram.message",
@@ -1165,7 +1176,7 @@
       "statement": "A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.",
       "why": "because a message names one call; its parameters and bounds belong in clauses",
       "file": "spec/00-corpus.md",
-      "line": 312
+      "line": 314
     },
     {
       "id": "corpus.diagram.state",
@@ -1176,7 +1187,7 @@
       "statement": "A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.",
       "why": "because an unreachable or dead-end state is a lifecycle the system cannot run",
       "file": "spec/00-corpus.md",
-      "line": 314
+      "line": 316
     },
     {
       "id": "corpus.targets.file",
@@ -1187,7 +1198,7 @@
       "statement": "Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.",
       "why": "A-topology#build-profiles",
       "file": "spec/00-corpus.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "corpus.targets.roles",
@@ -1198,7 +1209,7 @@
       "statement": "A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "corpus.targets.primitives",
@@ -1209,7 +1220,7 @@
       "statement": "A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.",
       "why": "because a shape's roles name products, and only a primitive list makes a missing one checkable",
       "file": "spec/00-corpus.md",
-      "line": 324
+      "line": 326
     },
     {
       "id": "corpus.targets.incomplete",
@@ -1220,7 +1231,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 326
+      "line": 328
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -1231,7 +1242,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 328
+      "line": 330
     },
     {
       "id": "corpus.targets.function-profile",
@@ -1242,7 +1253,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "corpus.targets.page",
@@ -1253,7 +1264,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 332
+      "line": 334
     },
     {
       "id": "corpus.guide.file",
@@ -1264,7 +1275,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose outside diagrams of at most 400 words plus 20 words per operation its contract's fragment registers.",
       "why": "A-corpus#teaching-reference-live",
       "file": "spec/00-corpus.md",
-      "line": 339
+      "line": 341
     },
     {
       "id": "corpus.guide.non-normative",
@@ -1275,7 +1286,7 @@
       "statement": "A guide holds no clause item and names no registered error. It reaches a rule by `{{<clause id>}}` and an operation by `{{<contract>.<operation>}}`, which resolves against that contract's fragment. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 341
+      "line": 343
     },
     {
       "id": "corpus.guide.reach",
@@ -1286,7 +1297,7 @@
       "statement": "Each operation a contract's fragment registers appears in the contract's guide as an operation pointer or a pointer to one of its clauses; an operation the guide misses raises `SpecGuideReach`, naming it.",
       "why": "because a guide that skips an operation leaves its reader no route from the flow to that operation's rules",
       "file": "spec/00-corpus.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "corpus.guide.pointer-density",
@@ -1297,7 +1308,7 @@
       "statement": "A guide paragraph, list item or table row holds at most 3 pointers to clauses and at least 8 words of prose per clause pointer; a denser one raises `SpecGuidePointerDensity`.",
       "why": "because a paragraph of pointers is an index without the reasoning that connects its entries, and the card already is the index",
       "file": "spec/00-corpus.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "corpus.guide.bound",
@@ -1308,7 +1319,7 @@
       "statement": "A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.",
       "why": "because a restated number drifts when its bound changes, and the pointer names the one place to change it",
       "file": "spec/00-corpus.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -1319,7 +1330,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 349
+      "line": 351
     },
     {
       "id": "corpus.topic.file",
@@ -1330,7 +1341,7 @@
       "statement": "A topic page `spec/topics/<slug>.md` carries front matter `topic`, one `# ` title equal to its entry's `title` in `spec/terms/topic.toml`, then prose of at most 600 words outside diagrams.",
       "why": "because a topic routes a reader to the clauses, and a page past one screen of reading starts restating them",
       "file": "spec/00-corpus.md",
-      "line": 356
+      "line": 358
     },
     {
       "id": "corpus.topic.pages",
@@ -1341,7 +1352,7 @@
       "statement": "The corpus holds at most 8 pages under `spec/topics/`.",
       "why": "because each topic answers a question the contracts split, and a growing set of them becomes a second corpus",
       "file": "spec/00-corpus.md",
-      "line": 358
+      "line": 360
     },
     {
       "id": "corpus.topic.answers",
@@ -1352,7 +1363,7 @@
       "statement": "A topic entry lists under `answers` the clause ids its page answers; the page reaches each within one pointer step, by pointing at it or at a clause whose statement points at it.",
       "why": "because a reader of a topic follows one link to the rule, and a longer path is the search the page exists to save",
       "file": "spec/00-corpus.md",
-      "line": 360
+      "line": 362
     },
     {
       "id": "corpus.topic.contract-pointers",
@@ -1363,7 +1374,7 @@
       "statement": "A topic page holds at most 3 pointers into any one contract, counting a repeated pointer once.",
       "why": "because a page pointing at most of one contract is that contract's guide, and a topic crosses contracts",
       "file": "spec/00-corpus.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "corpus.topic.non-normative",
@@ -1374,7 +1385,7 @@
       "statement": "A topic page holds no clause item and names no registered error, reaching each rule by `{{id}}`; no contract file links a topic page.",
       "why": "because a rule restated on a topic page is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "corpus.topic.bad-topic",
@@ -1385,7 +1396,7 @@
       "statement": "A page without an entry or an entry without a page, a page off its shape, words, pointer bound or {{corpus.topic.non-normative}}, more pages than {{corpus.topic.pages}}, and an unreachable or missing answer raise `SpecTopic`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 366
+      "line": 368
     },
     {
       "id": "topology.compose.workspace",
@@ -40396,6 +40407,10 @@
             "clause": "corpus.diagram.layout",
             "gloss": "A flowchart without a direction, with a subgraph direction, nested too deep, or over its size."
           },
+          "SpecDiagramLink": {
+            "clause": "corpus.diagram.no-link",
+            "gloss": "A flowchart node carrying a `click` link or tooltip."
+          },
           "SpecDiagramMessage": {
             "clause": "corpus.diagram.message",
             "gloss": "A sequence message or note over its word bound."
@@ -53837,6 +53852,15 @@
         "kind": "test",
         "path": "tools/spec/tests/integration/diagram.rs",
         "name": "a_long_message_or_note_is_a_message_finding",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.diagram.no-link": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/diagram.rs",
+        "name": "a_click_directive_on_a_flowchart_node_is_a_link_finding",
         "verdict": "performed",
         "proved": false
       }

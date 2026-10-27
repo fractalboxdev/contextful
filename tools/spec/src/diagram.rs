@@ -54,6 +54,8 @@ pub struct Flowchart {
     pub header_line: usize,
     pub direction: Option<String>,
     pub direction_lines: Vec<usize>,
+    /// Each `click` directive: the node it targets and its line (`corpus.diagram.no-link`).
+    pub clicks: Vec<(String, usize)>,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     pub subgraphs: Vec<Subgraph>,
@@ -275,7 +277,8 @@ fn flowchart(first: usize, header: &str, lines: &[(usize, &str)]) -> Flowchart {
                 b.stack.pop();
             }
             "direction" => b.f.direction_lines.push(n),
-            "classDef" | "class" | "style" | "linkStyle" | "click" => {}
+            "click" => b.f.clicks.push((t.split_whitespace().nth(1).unwrap_or("").to_string(), n)),
+            "classDef" | "class" | "style" | "linkStyle" => {}
             _ => b.statement(t, n),
         }
     }
@@ -641,6 +644,9 @@ fn unique_label(x: &mut Ctx, rel: &str, f: &Flowchart) {
 }
 
 fn layout(x: &mut Ctx, rel: &str, f: &Flowchart) {
+    for (node, line) in &f.clicks {
+        x.push(rel, *line, "SpecDiagramLink", format!("node `{node}` carries a `click` link or tooltip"));
+    }
     if !matches!(f.direction.as_deref(), Some("LR" | "TB" | "TD")) {
         x.push(rel, f.header_line, "SpecDiagramLayout", "flowchart header declares no `LR`, `TB` or `TD`".into());
     }
