@@ -53,11 +53,42 @@ fn brace(t: &TokenTree) -> Option<TokenStream> {
     }
 }
 
-/// Whether `t` is the bracket group of a `#[test]` or `#[cfg(test)]`-like attribute.
+/// Whether `t` is the bracket group of a `#[test]`, `#[cfg(test)]` or `#[cfg(all(test, ...))]`
+/// attribute. `cfg(not(test))` and `cfg(any(test, ...))` admit production builds.
 fn test_attribute(t: Option<&TokenTree>) -> bool {
     let Some(TokenTree::Group(g)) = t else { return false };
-    let text = g.stream().to_string();
-    g.delimiter() == Delimiter::Bracket && (text == "test" || (text.starts_with("cfg") && text.contains("test")))
+    if g.delimiter() != Delimiter::Bracket {
+        return false;
+    }
+    let tokens: Vec<TokenTree> = g.stream().into_iter().collect();
+    match tokens.as_slice() {
+        [TokenTree::Ident(i)] => i == "test",
+        [TokenTree::Ident(cfg), TokenTree::Group(args)] if cfg == "cfg" && args.delimiter() == Delimiter::Parenthesis => test_only(args.stream()),
+        _ => false,
+    }
+}
+
+/// Whether the cfg predicate `p` holds only under `test`: `test`, or `all(...)` holding a
+/// test-only predicate.
+fn test_only(p: TokenStream) -> bool {
+    let tokens: Vec<TokenTree> = p.into_iter().collect();
+    match tokens.as_slice() {
+        [TokenTree::Ident(i)] => i == "test",
+        [TokenTree::Ident(all), TokenTree::Group(args)] if all == "all" && args.delimiter() == Delimiter::Parenthesis => {
+            let mut arg = TokenStream::new();
+            for t in args.stream().into_iter().chain(std::iter::once(TokenTree::Punct(proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone)))) {
+                if punct(Some(&t), ',') {
+                    if test_only(std::mem::take(&mut arg)) {
+                        return true;
+                    }
+                } else {
+                    arg.extend(std::iter::once(t));
+                }
+            }
+            false
+        }
+        _ => false,
+    }
 }
 
 /// Identifiers, `A::b` path pairs and `.m` method calls in `tokens`, groups included.
@@ -299,7 +330,7 @@ pub fn check(root: &Path, contracts: &[String], lower: bool) -> Result<()> {
     let mut live: BTreeMap<usize, BTreeSet<String>> = BTreeMap::new();
     let entries: BTreeSet<&str> = sources.iter().flat_map(|s| s.entries.iter().map(String::as_str)).collect();
     let mut found = BTreeSet::new();
-    // Each clause maps to its pins: `kind`, `path`, `name`, `line`, and the clause's `verdict`.
+    // Each clause maps to its pins: `kind`, `path`, `name`, and the clause's `verdict`.
     for (id, pins) in lock["pins"].as_object().into_iter().flatten() {
         let contract = id.split('.').next().unwrap_or_default();
         let pins = pins.as_array().map(Vec::as_slice).unwrap_or_default();

@@ -4,8 +4,8 @@ use crate::{stderr, Repo};
 use std::process::{Command, Output};
 
 const LOCK: &str = r#"{"clauses": [], "pins": {
-  "store.replicate.periodic": [{"kind": "test", "path": "crates/demo/tests/integration/replicate.rs", "name": "replicates", "line": 1, "verdict": "performed", "proved": false}],
-  "store.replicate.broken": [{"kind": "test", "path": "crates/demo/tests/integration/replicate.rs", "name": "broken", "line": 6, "verdict": "broken", "proved": false}]
+  "store.replicate.periodic": [{"kind": "test", "path": "crates/demo/tests/integration/replicate.rs", "name": "replicates", "verdict": "performed", "proved": false}],
+  "store.replicate.broken": [{"kind": "test", "path": "crates/demo/tests/integration/replicate.rs", "name": "broken", "verdict": "broken", "proved": false}]
 }}
 "#;
 
@@ -45,6 +45,22 @@ fn an_item_only_a_performed_test_calls_is_unwired_until_a_binary_calls_it_or_mar
     r.write("crates/demo/src/main.rs", "fn main() {\n    // entry: store.replicate.periodic\n    demo::replica_spawn(1);\n}\n");
     let o = unwired(&r, &[]);
     assert!(o.status.success(), "{}", stderr(&o));
+}
+
+#[test]
+fn only_cfg_test_and_cfg_all_test_gate_an_item_to_tests() {
+    for gate in ["#[cfg(not(test))]", "#[cfg(any(test, feature = \"cli\"))]"] {
+        let r = fixture();
+        r.write("crates/demo/src/main.rs", &format!("{gate}\nfn main() {{\n    demo::replica_spawn(1);\n}}\n"));
+        let err = stderr(&unwired(&r, &[]));
+        assert!(!err.contains("replica_spawn"), "{gate} gates a production item: {err}");
+    }
+    for gate in ["#[cfg(test)]", "#[cfg(all(test, feature = \"cli\"))]"] {
+        let r = fixture();
+        r.write("crates/demo/src/main.rs", &format!("fn main() {{}}\n\n{gate}\nfn probe() {{\n    demo::replica_spawn(1);\n}}\n"));
+        let err = stderr(&unwired(&r, &[]));
+        assert!(err.contains("replica_spawn"), "{gate} gates a test item: {err}");
+    }
 }
 
 #[test]
