@@ -90,6 +90,8 @@ Assertion construction, guard validation, suite placement, test-first and accept
   *because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change*
 - `refactor-trailer` — A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.
   *because a behavior-preserving change has no failing test to write, and the existing suite is its specification*
+- `comment-only` — A source file whose diff from the base alters only `//` comment lines and blank lines needs no test under {{assurance.test.test-first}}, with or without the trailer.
+  *because a squash merge drops each commit's trailer, and a comment change has no behavior a test could observe*
 - `acceptance-surface` — An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.
   *A-assurance#source-change-carries*
 
