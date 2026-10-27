@@ -126,5 +126,5 @@ export type FixtureManifest = {
   bytes_per_row: number;
   issuer_dir: string;
   public_key: string;
-  fixtures: Array<{ name: string; prefix: string; runs: number; rows: number; objects: number; parquet_bytes: number }>;
+  fixtures: Array<{ name: string; prefix: string; runs: number; rows: number; objects: number; landed_bytes: number; parquet_bytes: number }>;
 };

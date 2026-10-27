@@ -7,7 +7,9 @@
   "workers_dev": false,
   "vars": {
     // The idle period after which the query container sleeps; `measure --sleep-after-secs` matches it.
-    "QUERY_SLEEP_AFTER": "5m"
+    "QUERY_SLEEP_AFTER": "5m",
+    // The instance type each start requests.
+    "QUERY_INSTANCE_TYPE": "standard-1"
   },
   "secrets": {
     "required": [
@@ -23,10 +25,10 @@
     {
       "name": "contextful-query-bench",
       "class_name": "QueryBenchContainer",
-      "image": "./image/Dockerfile",
-      "image_build_context": "./image",
-      "max_instances": 1,
-      "instance_type": "standard-1"
+      "scheduling_policy": "durable_object",
+      "images": {
+        "query": { "dockerfile": "./image/Dockerfile", "build_context": "./image" }
+      }
     }
   ],
   "durable_objects": {

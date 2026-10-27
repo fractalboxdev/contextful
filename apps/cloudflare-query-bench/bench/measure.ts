@@ -35,9 +35,9 @@ const idleFixture = args.get("idle-fixture") ?? IDLE_FIXTURE;
 let target: Target;
 let runner: string;
 if (kind === "cloudflare") {
-  const url = args.get("url");
+  const url = args.get("url") ?? process.env.BENCH_URL;
   const token = process.env.BENCH_TOKEN;
-  if (!url || !token) throw new Error("BenchTargetUnbound: --url and BENCH_TOKEN are required for --target cloudflare");
+  if (!url || !token) throw new Error("BenchTargetUnbound: --url (or BENCH_URL) and BENCH_TOKEN are required for --target cloudflare");
   target = new CloudflareTarget(url, token);
   runner = `cloudflare container ${args.get("instance-type") ?? "standard-1"}`;
 } else if (kind === "local") {

@@ -1,7 +1,7 @@
 /** The results one measurement run holds, the issue table and the ledger records they render to. */
 import { quantile, type HydrationLog, type Summary } from "../src/plan.ts";
 
-export type FixtureFacts = { name: string; prefix: string; runs: number; rows: number; objects: number; parquet_bytes: number };
+export type FixtureFacts = { name: string; prefix: string; runs: number; rows: number; objects: number; landed_bytes: number; parquet_bytes: number };
 export type Hydration = { ready_ms: number; hydrated_ms: number; log: HydrationLog | null };
 export type Lazy = { boot_ms: number; first_read_ms: number; warm_read_ms: number; parts: number };
 
@@ -35,7 +35,7 @@ const mb = (x: number) => `${(x / 1e6).toFixed(1)} MB`;
 
 function fixtureCell(results: Results, name: string): string {
   const f = results.fixtures.find((x) => x.name === name);
-  return f ? `\`${name}\`: ${f.rows.toLocaleString("en-US")} rows, ${f.objects.toLocaleString("en-US")} objects, ${mb(f.parquet_bytes)} Parquet` : `\`${name}\``;
+  return f ? `\`${name}\`: ${f.rows.toLocaleString("en-US")} rows, ${f.objects.toLocaleString("en-US")} objects, ${mb(f.landed_bytes)} landed (${mb(f.parquet_bytes)} Parquet with snapshots)` : `\`${name}\``;
 }
 
 /** The issue's measurement table, filled with what `results` holds. */

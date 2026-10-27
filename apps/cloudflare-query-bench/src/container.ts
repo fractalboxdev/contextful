@@ -12,6 +12,28 @@ const STOP_WAIT_MS = 30_000;
 const LOG_LIMIT = 65_536;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * A Durable Object-managed container application names its images in `ctx.container.images`
+ * and takes the image and instance type at each start; `@cloudflare/containers` passes
+ * neither, so every start this object makes carries the first image and `instance`.
+ */
+function pinImage(runtime: DurableObjectState["container"], instance: ContainerStartupOptions["instance"]) {
+  let images: Record<string, string> = {};
+  try {
+    images = runtime?.images ?? {};
+  } catch {
+    return;
+  }
+  const image = Object.values(images)[0];
+  if (!runtime || !image) return;
+  const start = runtime.start.bind(runtime);
+  Object.defineProperty(runtime, "start", {
+    configurable: true,
+    writable: true,
+    value: (options?: ContainerStartupOptions) => start({ enableInternet: true, ...options, image, instance } as ContainerStartupOptions),
+  });
+}
+
 /** One `contextful serve --http` query container whose cold starts the bench times. */
 export class QueryBenchContainer extends Container<QueryBenchEnv> {
   defaultPort = SERVE_PORT;
@@ -19,6 +41,7 @@ export class QueryBenchContainer extends Container<QueryBenchEnv> {
   private startedAt = 0;
 
   constructor(ctx: DurableObjectState<{}>, env: QueryBenchEnv) {
+    pinImage(ctx.container, (env.QUERY_INSTANCE_TYPE || "standard-1") as ContainerStartupOptions["instance"]);
     super(ctx, env);
     this.sleepAfter = env.QUERY_SLEEP_AFTER || "5m";
     ctx.blockConcurrencyWhile(async () => {

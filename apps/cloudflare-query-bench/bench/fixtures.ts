@@ -9,7 +9,7 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { AUDIENCE, DIM_TABLE, FIXTURES, PROJECT, PROJECT_DECLARATION, SEED, planFixture, storeConfig, type Fixture, type SyncTarget } from "../src/plan.ts";
+import { AUDIENCE, DIM_TABLE, FIXTURES, TABLE, PROJECT, PROJECT_DECLARATION, SEED, planFixture, storeConfig, type Fixture, type SyncTarget } from "../src/plan.ts";
 import { contextful, dimensionLine, filesUnder, landSession, parseArgs, sessionLine, Stream, type FixtureManifest } from "./support.ts";
 
 const args = parseArgs(process.argv.slice(2));
@@ -75,12 +75,13 @@ async function build(fixture: Fixture): Promise<FixtureManifest["fixtures"][numb
   await landSession(bin, dir, PROJECT, [dimensionLine()], DIM_TABLE);
   const pushed = /pushed (\d+) objects/.exec(contextful(bin, dir, ["sync", "push", "--project", PROJECT]));
   const parquet = filesUnder(join(dir, ".contextful/context", PROJECT), ".parquet");
+  const landed = filesUnder(join(dir, ".contextful/context", PROJECT, "tables", TABLE, "data/runs"), ".parquet");
   const entry = {
     name: fixture.name, prefix, runs: plan.runs, rows: plan.runs * plan.rowsPerRun,
-    objects: pushed ? Number(pushed[1]) : -1, parquet_bytes: parquet.bytes,
+    objects: pushed ? Number(pushed[1]) : -1, landed_bytes: landed.bytes, parquet_bytes: parquet.bytes,
   };
   console.log(`${fixture.name}: ${entry.rows} rows in ${entry.runs} runs, ${entry.objects} objects, ` +
-    `${(entry.parquet_bytes / 1e6).toFixed(1)} MB Parquet, built and pushed in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+    `${(entry.landed_bytes / 1e6).toFixed(1)} MB landed, ${(entry.parquet_bytes / 1e6).toFixed(1)} MB Parquet with snapshots, built and pushed in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   return entry;
 }
 

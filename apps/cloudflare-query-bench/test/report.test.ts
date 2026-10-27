@@ -7,7 +7,7 @@ const results: Results = {
   target: "cloudflare",
   runner: "cloudflare container standard-1",
   sleep_after_secs: 300,
-  fixtures: [{ name: "1gb-8k", prefix: "bench/1gb-8k", runs: 3998, rows: 1_000_000, objects: 8_000, parquet_bytes: 1_000_000_000 }],
+  fixtures: [{ name: "1gb-8k", prefix: "bench/1gb-8k", runs: 3998, rows: 1_000_000, objects: 8_000, landed_bytes: 1_000_000_000, parquet_bytes: 2_500_000_000 }],
   ready: { n: 2, p50: 1_200, p99: 2_400, min: 1_200, max: 2_400, samples: [1_200, 2_400] },
   hydrate: [{ fixture: "1gb-8k", runs: [
     { ready_ms: 1_500, hydrated_ms: 600_000, log: { objects: 8_000, pointers: 1, files: 3_998, bytes: 1_000_000_000 } },
