@@ -16,6 +16,7 @@ const results: Results = {
   lazy: [{ fixture: "1gb-8k", runs: [{ boot_ms: 4_000, first_read_ms: 44_000, warm_read_ms: 4_020, parts: 3998 }] }],
   idle: { fixture: "1gb-8k", e2e_ms: 610_000, attempts: 600 },
   warm: null,
+  failures: [],
 };
 
 test("the table fills one row per measured section", () => {

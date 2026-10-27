@@ -93,12 +93,39 @@ async function hydrated(prefix: string, lazy: boolean): Promise<Hydration> {
 
 const results: Results = {
   target: kind, runner, sleep_after_secs: sleepAfterSecs, fixtures: manifest.fixtures,
-  ready: null, hydrate: [], lazy: [], idle: null, warm: null,
+  ready: null, hydrate: [], lazy: [], idle: null, warm: null, failures: [],
 };
 const log = (line: string) => console.error(`[${new Date().toISOString()}] ${line}`);
 
+/** Write what the run holds so far; a later failure keeps every finished section. */
+function save(): string {
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, "results.json"), JSON.stringify(results, null, 2) + "\n");
+  const table = renderTable(results);
+  writeFileSync(join(out, "results.md"), table);
+  const records = process.env.CONTEXTFUL_MEASURE_DIR ?? join(out, "records");
+  mkdirSync(records, { recursive: true });
+  for (const record of ledgerRecords(results, manifest.seed)) {
+    writeFileSync(join(records, `${record.id}.json`), JSON.stringify(record, null, 2) + "\n");
+  }
+  return table;
+}
+
+/** Run one section; a failure is recorded against it and the next section still runs. */
+async function section(name: string, run: () => Promise<void>) {
+  if (!sections.has(name)) return;
+  try {
+    await run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    results.failures.push({ section: name, error: message.slice(0, 500) });
+    log(`${name} failed: ${message}`);
+  }
+  save();
+}
+
 try {
-  if (sections.has("ready")) {
+  await section("ready", async () => {
     const samples: number[] = [];
     for (let i = 0; i < starts; i++) {
       await target.begin({ prefix: null, lazy_parts: false });
@@ -108,8 +135,8 @@ try {
       log(`ready ${i + 1}/${starts}: ${Math.round(ready.elapsed_ms)} ms`);
     }
     results.ready = { ...summarize(samples), samples };
-  }
-  if (sections.has("hydrate")) {
+  });
+  await section("hydrate", async () => {
     for (const name of built) {
       const runs: Hydration[] = [];
       for (let i = 0; i < hydrateRuns; i++) {
@@ -118,8 +145,8 @@ try {
       }
       results.hydrate.push({ fixture: name, runs });
     }
-  }
-  if (sections.has("lazy")) {
+  });
+  await section("lazy", async () => {
     for (const name of built) {
       const f = fixture(name);
       const runs: Lazy[] = [];
@@ -133,8 +160,9 @@ try {
       }
       results.lazy.push({ fixture: name, runs });
     }
-  }
-  if (sections.has("warm") && built.includes(warmFixture)) {
+  });
+  await section("warm", async () => {
+    if (!built.includes(warmFixture)) return;
     const f = fixture(warmFixture);
     await hydrated(f.prefix, false);
     await read(QUERIES.aggregate, f.rows);
@@ -152,8 +180,9 @@ try {
       aggregate: summarize(shapes.aggregate), join: summarize(shapes.join),
     };
     log(`warm ${JSON.stringify(results.warm)}`);
-  }
-  if (sections.has("idle") && built.includes(idleFixture)) {
+  });
+  await section("idle", async () => {
+    if (!built.includes(idleFixture)) return;
     const f = fixture(idleFixture);
     await hydrated(f.prefix, false);
     await read(QUERIES.aggregate, f.rows);
@@ -171,18 +200,10 @@ try {
     }
     results.idle = { fixture: idleFixture, e2e_ms: performance.now() - at, attempts };
     log(`idle ${JSON.stringify(results.idle)}`);
-  }
+  });
 } finally {
   await target.close();
 }
 
-mkdirSync(out, { recursive: true });
-writeFileSync(join(out, "results.json"), JSON.stringify(results, null, 2) + "\n");
-const table = renderTable(results);
-writeFileSync(join(out, "results.md"), table);
-const records = process.env.CONTEXTFUL_MEASURE_DIR ?? join(out, "records");
-mkdirSync(records, { recursive: true });
-for (const record of ledgerRecords(results, manifest.seed)) {
-  writeFileSync(join(records, `${record.id}.json`), JSON.stringify(record, null, 2) + "\n");
-}
-console.log(table);
+console.log(save());
+if (results.failures.length) process.exitCode = 1;

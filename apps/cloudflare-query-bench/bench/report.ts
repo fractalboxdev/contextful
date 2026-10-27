@@ -15,6 +15,7 @@ export type Results = {
   lazy: Array<{ fixture: string; runs: Lazy[] }>;
   idle: { fixture: string; e2e_ms: number; attempts: number } | null;
   warm: { fixture: string; point: Summary; range: Summary; aggregate: Summary; join: Summary } | null;
+  failures: Array<{ section: string; error: string }>;
 };
 
 /** The ledger entries a run fills (`evals/ledger.toml`, trend tier). */
@@ -77,7 +78,9 @@ export function renderTable(results: Results): string {
     for (const [shape, x] of shapes) rows.push(["Warm read", `${shape}, ${cell}`, `p50 ${ms(x.p50)}, p99 ${ms(x.p99)} over ${x.n}`]);
   }
   const header = "| Measurement | Fixture | Result |\n| --- | --- | --- |\n";
-  return `Target: ${results.target} (${results.runner})\n\n` + header + rows.map((r) => `| ${r.join(" | ")} |`).join("\n") + "\n";
+  const failed = results.failures.map((f) => `- \`${f.section}\` failed: ${f.error}`).join("\n");
+  return `Target: ${results.target} (${results.runner})\n\n` + header + rows.map((r) => `| ${r.join(" | ")} |`).join("\n") + "\n" +
+    (failed ? `\n${failed}\n` : "");
 }
 
 /** The ledger records `results` fills; an unmeasured entry has none. */
