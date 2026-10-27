@@ -5,6 +5,7 @@ mod affected;
 mod capability;
 mod compile;
 mod deny;
+mod deploy;
 mod egress;
 mod e2e;
 mod allowlist;
@@ -305,7 +306,7 @@ enum Cmd {
         #[arg(long, default_value = "origin")]
         remote: String,
     },
-    /// Deploy-time checks.
+    /// Deploy-time checks, the deploy workflow's shape, and one Cloudflare app's deploy.
     Deploy {
         #[command(subcommand)]
         cmd: DeployCmd,
@@ -325,6 +326,19 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum DeployCmd {
+    /// Hold `.github/workflows` to the one fixed-shape deploy workflow
+    /// (`assurance.deploy-apps.workflow-refused`).
+    Workflow,
+    /// Deploy one Cloudflare app with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`:
+    /// ensure its bound resources, build its image, run `wrangler deploy`, check its health.
+    Cloudflare {
+        /// The app, by its directory under `apps/`.
+        #[arg(long, value_enum)]
+        app: deploy::App,
+        /// Seconds the health check waits for one of the app's expected statuses.
+        #[arg(long, default_value_t = deploy::HEALTH_WAIT_SECS)]
+        health_wait: u64,
+    },
     /// Hold the probe table to the hostname descriptors, then send each published hostname
     /// one anonymous `GET /` and judge its answer against the descriptor's gate.
     Probe {
@@ -449,6 +463,8 @@ fn main() {
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Deploy { cmd: DeployCmd::Probe { dir, resolve } } => repo_root().and_then(|root| probe::run(&root.join(dir), &resolve)),
         Cmd::Deploy { cmd: DeployCmd::Parity { reference, target } } => parity::run(&reference, &target),
+        Cmd::Deploy { cmd: DeployCmd::Workflow } => repo_root().and_then(|root| deploy::workflow(&root)),
+        Cmd::Deploy { cmd: DeployCmd::Cloudflare { app, health_wait } } => repo_root().and_then(|root| deploy::cloudflare(&root, app, std::time::Duration::from_secs(health_wait))),
         Cmd::Measure { tiers, status, check, since } => repo_root().and_then(|root| {
             if let Some(rev) = &since {
                 measure::raises(&root, rev)?;
@@ -655,6 +671,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             stage::toolchain(root)?
         }
         "schema" => {
+            deploy::workflow(root)?;
             secrets(root)?;
             mirrors(root)?;
             measure::raises(root, base)?;

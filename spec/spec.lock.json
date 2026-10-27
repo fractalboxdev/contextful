@@ -30368,7 +30368,7 @@
       "statement": "An automation step carrying a branch, a loop or a retry, or running past 5 lines, is a typed subcommand shelling out to compiled binaries.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 21
+      "line": 22
     },
     {
       "id": "assurance.automate.subcommand-surface",
@@ -30379,7 +30379,7 @@
       "statement": "A subcommand exposes typed options, generated help and an entry point a test calls directly.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 23
+      "line": 24
     },
     {
       "id": "assurance.automate.one-path",
@@ -30390,7 +30390,7 @@
       "statement": "The gate invokes the subcommand a contributor invokes.",
       "why": "because a local reproduction and a gate run then execute one code path",
       "file": "spec/83-gate.md",
-      "line": 24
+      "line": 25
     },
     {
       "id": "assurance.automate.unchecked-shell",
@@ -30401,7 +30401,7 @@
       "statement": "A shell file in the tree that `shellcheck` rejects raises `ShellCheckFailed` in the toolchain stage.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 26
+      "line": 27
     },
     {
       "id": "assurance.automate.test-shellcheck",
@@ -30412,7 +30412,7 @@
       "statement": "A gate stage starting a test process over a tree tracking a shell file puts the `shellcheck` {{assurance.automate.unchecked-shell}} runs first on that process's `PATH`.",
       "why": "because a suite asserting a script passes `shellcheck` otherwise depends on whether the sandbox image ships the linter",
       "file": "spec/83-gate.md",
-      "line": 28
+      "line": 29
     },
     {
       "id": "assurance.automate.build-time-toolchain",
@@ -30423,7 +30423,7 @@
       "statement": "The automation toolchain links into no build profile and enters no release artifact.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 30
+      "line": 31
     },
     {
       "id": "assurance.gate.stage-sequence",
@@ -30434,7 +30434,7 @@
       "statement": "The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, unwired, budget — all of both tiers when none is named, else the named subset, which `--plan` prints.",
       "why": "A-assurance#stage-subset-runs",
       "file": "spec/83-gate.md",
-      "line": 36
+      "line": 37
     },
     {
       "id": "assurance.gate.nightly-tier",
@@ -30445,7 +30445,7 @@
       "statement": "`contextful-ci stages --parts --tier nightly` prints the features, formal, unwired and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.",
       "why": "A-assurance#feature-runs-formal",
       "file": "spec/83-gate.md",
-      "line": 38
+      "line": 39
     },
     {
       "id": "assurance.gate.stage-subset",
@@ -30456,7 +30456,7 @@
       "statement": "A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.",
       "why": "A-assurance#stage-subset-runs",
       "file": "spec/83-gate.md",
-      "line": 40
+      "line": 41
     },
     {
       "id": "assurance.gate.test-first-parts",
@@ -30467,7 +30467,7 @@
       "statement": "The test-first parts require a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package's part checks only its own changed tests against the base.",
       "why": "because one base build per package fits the sandbox's wall clock more reliably",
       "file": "spec/83-gate.md",
-      "line": 42
+      "line": 43
     },
     {
       "id": "assurance.gate.workspace-parts",
@@ -30478,7 +30478,7 @@
       "statement": "The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.",
       "why": "A-assurance#workspace-fits-stage",
       "file": "spec/83-gate.md",
-      "line": 44
+      "line": 45
     },
     {
       "id": "assurance.gate.cli-shard-map",
@@ -30489,7 +30489,7 @@
       "statement": "`tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 9 min per shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.",
       "why": "A-assurance#workspace-fits-stage",
       "file": "spec/83-gate.md",
-      "line": 46
+      "line": 47
     },
     {
       "id": "assurance.gate.folded-parts",
@@ -30500,7 +30500,7 @@
       "statement": "`stages --parts` folds pins, toolchain, schema and test-first validation into `preflight`; each package group's workspace and evaluate parts into `suite.<group>`, probes into `suite.ci`; crate graph, connectors and surfaces into `perimeter`; members stay runnable alone.",
       "why": "because every part pays its own sandbox setup and compile, and a fold pays it once for every member",
       "file": "spec/83-gate.md",
-      "line": 48
+      "line": 49
     },
     {
       "id": "assurance.gate.compile-only",
@@ -30511,7 +30511,7 @@
       "statement": "`gate --stage <part> --compile-only` runs each `cargo test` invocation the part runs, in its own target directory with `--no-run` and without its `--` arguments, and nothing else; a CLI shard compiles every shard's invocations.",
       "why": "because a compile cache serves a part only when the warming build's cargo arguments, environment and target directory match the part's",
       "file": "spec/83-gate.md",
-      "line": 50
+      "line": 51
     },
     {
       "id": "assurance.gate.compile-groups",
@@ -30522,7 +30522,7 @@
       "statement": "`stages --parts --compile-groups` lists, in run order, the first part of each distinct compile signature — its ordered `--compile-only` invocations and target directory — across both tiers unless `--tier` names one.",
       "why": "because the eight CLI shards share one signature, and warming each compiles it eight times",
       "file": "spec/83-gate.md",
-      "line": 52
+      "line": 53
     },
     {
       "id": "assurance.gate.fold-verdicts",
@@ -30533,7 +30533,7 @@
       "statement": "A fold runs each member after an earlier member fails, skips a member reading a failed member's output, and fails when any member fails.",
       "why": "because one fold check replaces a check per member, and one run reports every member's verdict",
       "file": "spec/83-gate.md",
-      "line": 54
+      "line": 55
     },
     {
       "id": "assurance.gate.stage-reports",
@@ -30544,7 +30544,7 @@
       "statement": "Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.",
       "why": "because memory exhaustion is silent, and a kill then reads as a number in the log",
       "file": "spec/83-gate.md",
-      "line": 56
+      "line": 57
     },
     {
       "id": "assurance.gate.pins-stage",
@@ -30555,7 +30555,7 @@
       "statement": "The pins stage resolves every pinned artifact identity a run depends on before any compilation.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 58
+      "line": 59
     },
     {
       "id": "assurance.gate.evaluate-stage",
@@ -30566,7 +30566,7 @@
       "statement": "The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 59
+      "line": 60
     },
     {
       "id": "assurance.gate.schema-stage",
@@ -30577,7 +30577,7 @@
       "statement": "The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 60
+      "line": 61
     },
     {
       "id": "assurance.gate.secret-ciphertext",
@@ -30588,7 +30588,7 @@
       "statement": "In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key.",
       "why": "because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked",
       "file": "spec/83-gate.md",
-      "line": 61
+      "line": 62
     },
     {
       "id": "assurance.gate.secret-scope",
@@ -30599,7 +30599,7 @@
       "statement": "In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file whose block — the assignments above it, up to the first blank line — opens with no comment carrying text raises `SecretScopeMissing`, naming file and key.",
       "why": "because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches",
       "file": "spec/83-gate.md",
-      "line": 63
+      "line": 64
     },
     {
       "id": "assurance.gate.formal-stage",
@@ -30610,7 +30610,7 @@
       "statement": "The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}}, the protocol differential over 10000 generated cases on both lease paths, and {{assurance.model.journal-check}}; a non-zero exit from any reds the run.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 65
+      "line": 66
     },
     {
       "id": "assurance.gate.typescript-surfaces",
@@ -30621,7 +30621,7 @@
       "statement": "The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 67
+      "line": 68
     },
     {
       "id": "assurance.gate.native-test-files",
@@ -30632,7 +30632,7 @@
       "statement": "The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.",
       "why": "because a package script can omit a pinned test while reporting success",
       "file": "spec/83-gate.md",
-      "line": 68
+      "line": 69
     },
     {
       "id": "assurance.gate.surface-check-failed",
@@ -30643,7 +30643,7 @@
       "statement": "A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 70
+      "line": 71
     },
     {
       "id": "assurance.gate.affected-parts",
@@ -30654,7 +30654,7 @@
       "statement": "`contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 77,
+      "line": 78,
       "group": "affected parts"
     },
     {
@@ -30666,7 +30666,7 @@
       "statement": "A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 79,
+      "line": 80,
       "group": "affected parts"
     },
     {
@@ -30678,7 +30678,7 @@
       "statement": "A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 81,
+      "line": 82,
       "group": "affected parts"
     },
     {
@@ -30690,7 +30690,7 @@
       "statement": "A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.",
       "why": "because those stages read the file directly, apart from any clause pin",
       "file": "spec/83-gate.md",
-      "line": 83,
+      "line": 84,
       "group": "affected parts"
     },
     {
@@ -30702,7 +30702,7 @@
       "statement": "A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.",
       "why": "because the evaluate stage refuses a ledger entry naming a clause the lock lacks",
       "file": "spec/83-gate.md",
-      "line": 85,
+      "line": 86,
       "group": "affected parts"
     },
     {
@@ -30714,7 +30714,7 @@
       "statement": "An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.",
       "why": "because a pin the listing cannot place runs on a part the listing cannot name",
       "file": "spec/83-gate.md",
-      "line": 87,
+      "line": 88,
       "group": "affected parts"
     },
     {
@@ -30726,7 +30726,7 @@
       "statement": "A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 89,
+      "line": 90,
       "group": "affected parts"
     },
     {
@@ -30738,7 +30738,7 @@
       "statement": "A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/83-gate.md",
-      "line": 91,
+      "line": 92,
       "group": "affected parts"
     },
     {
@@ -30750,7 +30750,7 @@
       "statement": "The crate-graph stage holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.",
       "why": "P5",
       "file": "spec/83-gate.md",
-      "line": 98,
+      "line": 99,
       "group": "dependency rules"
     },
     {
@@ -30762,7 +30762,7 @@
       "statement": "The crate-graph stage resolves every graph `--locked` against the committed `Cargo.lock`, so a lock behind its manifests, or one rewritten before the stage starts, fails the stage before any rule runs; the stage never rewrites it.",
       "why": "because a rule held over a graph the lock file does not record passes a build that resolves another",
       "file": "spec/83-gate.md",
-      "line": 100,
+      "line": 101,
       "group": "dependency rules"
     },
     {
@@ -30774,7 +30774,7 @@
       "statement": "Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function.",
       "why": "P5",
       "file": "spec/83-gate.md",
-      "line": 102,
+      "line": 103,
       "group": "dependency rules"
     },
     {
@@ -30786,7 +30786,7 @@
       "statement": "The crate-graph stage runs pinned cargo-deny `check bans` over each profile's resolved graph, denying every crate a profile-wide dependency refusal names; a hit raises that refusal's error, naming the profile and the path.",
       "why": "A-assurance#profile-graphs-answer",
       "file": "spec/83-gate.md",
-      "line": 104,
+      "line": 105,
       "group": "dependency rules"
     },
     {
@@ -30798,7 +30798,7 @@
       "statement": "A profile's graph is the binary resolved with default features off and the profile's feature on, across every target, excluding development dependencies; the stage prints each profile the binary declares no feature for.",
       "why": "A-assurance#profile-graphs-answer",
       "file": "spec/83-gate.md",
-      "line": 106,
+      "line": 107,
       "group": "dependency rules"
     },
     {
@@ -30810,7 +30810,7 @@
       "statement": "`deny.toml` holds one `[bans]` entry per crate or feature a profile-wide dependency refusal names, its reason that refusal's clause id; an entry missing or extra raises `DenyListDrift`, naming it.",
       "why": "because a refusal whose crate the list omits passes every profile graph linking it",
       "file": "spec/83-gate.md",
-      "line": 108,
+      "line": 109,
       "group": "dependency rules"
     },
     {
@@ -30822,7 +30822,7 @@
       "statement": "An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site.",
       "why": "because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record",
       "file": "spec/83-gate.md",
-      "line": 110,
+      "line": 111,
       "group": "dependency rules"
     },
     {
@@ -30834,7 +30834,7 @@
       "statement": "A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.",
       "why": "P1",
       "file": "spec/83-gate.md",
-      "line": 112,
+      "line": 113,
       "group": "dependency rules"
     },
     {
@@ -30846,7 +30846,7 @@
       "statement": "A footprint build's parallel job count is its build memory — the cgroup memory ceiling, else the physical or container-engine memory — divided by 3 GiB, at least one and at most the processor count.",
       "why": "because one optimized C++ unit of the SQL engine peaks near 3 GiB",
       "file": "spec/83-gate.md",
-      "line": 119,
+      "line": 120,
       "group": "footprint"
     },
     {
@@ -30858,7 +30858,7 @@
       "statement": "A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 121,
+      "line": 122,
       "group": "footprint"
     },
     {
@@ -30870,7 +30870,7 @@
       "statement": "The edge profile compresses to at most 50 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 123,
+      "line": 124,
       "group": "footprint"
     },
     {
@@ -30882,7 +30882,7 @@
       "statement": "The full profile compresses to at most 150 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 124,
+      "line": 125,
       "group": "footprint"
     },
     {
@@ -30894,7 +30894,7 @@
       "statement": "The control profile compresses to at most 60 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 125,
+      "line": 126,
       "group": "footprint"
     },
     {
@@ -30906,7 +30906,7 @@
       "statement": "Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 126,
+      "line": 127,
       "group": "footprint"
     },
     {
@@ -30918,7 +30918,7 @@
       "statement": "The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.",
       "why": "because one link-time-optimized release build of the full profile fills most of one stage's wall clock",
       "file": "spec/83-gate.md",
-      "line": 128,
+      "line": 129,
       "group": "footprint"
     },
     {
@@ -30930,7 +30930,7 @@
       "statement": "An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 130,
+      "line": 131,
       "group": "footprint"
     },
     {
@@ -30942,7 +30942,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 141
+      "line": 142
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -30953,7 +30953,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 142,
+      "line": 143,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -30967,7 +30967,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 144,
+      "line": 145,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -30981,7 +30981,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry decides nothing, and `contextful-ci measure` runs the gate tier alone unless `--tier` names `trend`, `scheduled` or `all`.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 145
+      "line": 146
     },
     {
       "id": "assurance.measure.judged-tier",
@@ -30992,7 +30992,7 @@
       "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
       "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
       "file": "spec/83-gate.md",
-      "line": 146
+      "line": 147
     },
     {
       "id": "assurance.measure.count-first",
@@ -31003,7 +31003,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/83-gate.md",
-      "line": 148
+      "line": 149
     },
     {
       "id": "assurance.measure.record",
@@ -31014,7 +31014,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 150
+      "line": 151
     },
     {
       "id": "assurance.measure.seeded",
@@ -31025,7 +31025,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/83-gate.md",
-      "line": 152
+      "line": 153
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -31036,7 +31036,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/83-gate.md",
-      "line": 154
+      "line": 155
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -31047,7 +31047,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 156
+      "line": 157
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -31058,7 +31058,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 157
+      "line": 158
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -31069,7 +31069,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 158
+      "line": 159
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -31080,7 +31080,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 160,
+      "line": 161,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -31094,7 +31094,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 162,
+      "line": 163,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -31108,7 +31108,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 163
+      "line": 164
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -31119,7 +31119,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 164
+      "line": 165
     },
     {
       "id": "assurance.measure.threshold-cost",
@@ -31130,7 +31130,7 @@
       "statement": "A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.",
       "why": "because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded",
       "file": "spec/83-gate.md",
-      "line": 165
+      "line": 166
     },
     {
       "id": "assurance.measure.history",
@@ -31141,7 +31141,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 167
+      "line": 168
     },
     {
       "id": "assurance.measure.run-report",
@@ -31152,7 +31152,7 @@
       "statement": "`contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — with an integer run id, and reads back every earlier note whatever its run id's JSON type.",
       "why": "because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline",
       "file": "spec/83-gate.md",
-      "line": 169,
+      "line": 170,
       "scenarios": [
         "WHEN the baseline note's run id is the text `contextful-measures_2026-10-14` and the run's is `42`, THEN the report writes `42` and its annotation names that text run id as its baseline."
       ]
@@ -31166,7 +31166,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 171
+      "line": 172
     },
     {
       "id": "assurance.release.version",
@@ -31177,7 +31177,7 @@
       "statement": "A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 185,
+      "line": 186,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -31191,7 +31191,7 @@
       "statement": "A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 187,
+      "line": 188,
       "scenarios": [
         "WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`."
       ]
@@ -31205,7 +31205,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 189
+      "line": 190
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -31216,7 +31216,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/83-gate.md",
-      "line": 191
+      "line": 192
     },
     {
       "id": "assurance.release.off-branch",
@@ -31227,7 +31227,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 193
+      "line": 194
     },
     {
       "id": "assurance.release.version-regressed",
@@ -31238,7 +31238,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 195,
+      "line": 196,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -31252,7 +31252,7 @@
       "statement": "A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 197,
+      "line": 198,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`."
       ]
@@ -31266,7 +31266,7 @@
       "statement": "A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`",
       "why": "because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits",
       "file": "spec/83-gate.md",
-      "line": 199
+      "line": 200
     },
     {
       "id": "assurance.release.workspace-version",
@@ -31277,7 +31277,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 201
+      "line": 202
     },
     {
       "id": "assurance.release.gate-failed",
@@ -31288,7 +31288,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 203
+      "line": 204
     },
     {
       "id": "assurance.release.release-tag-version",
@@ -31299,7 +31299,172 @@
       "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
       "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
       "file": "spec/83-gate.md",
-      "line": 205
+      "line": 206
+    },
+    {
+      "id": "assurance.deploy-apps.workflow-trigger",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "workflow-trigger",
+      "kind": "behavior",
+      "statement": "The workflow `.github/workflows/deploy-cloudflare.yml`, written in YAML's JSON subset, starts on `workflow_dispatch` alone, with a required `app` choice listing every app the deploy command ships and an optional `ref` string.",
+      "why": "because a deploy then starts only when an operator names one app, never from a push, a schedule or a pull request",
+      "file": "spec/83-gate.md",
+      "line": 220
+    },
+    {
+      "id": "assurance.deploy-apps.workflow-permissions",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "workflow-permissions",
+      "kind": "behavior",
+      "statement": "The workflow grants `contents: read` alone, runs one job on the `ubuntu-24.04` image, pins each `uses` to a 40-hex commit of `actions/checkout` or `actions/setup-node`, and checks out without persisting credentials.",
+      "why": "because a tag an action's owner moves runs unreviewed code beside the deploy token",
+      "file": "spec/83-gate.md",
+      "line": 222
+    },
+    {
+      "id": "assurance.deploy-apps.workflow-credentials",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "workflow-credentials",
+      "kind": "behavior",
+      "statement": "The workflow reads exactly the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, into its deploy step's environment, and carries no URL, hostname or run of 32 hex digits outside a pinned commit.",
+      "why": "because the repository is public, and each organization deploys into its own account",
+      "file": "spec/83-gate.md",
+      "line": 224
+    },
+    {
+      "id": "assurance.deploy-apps.job-timeout",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "job-timeout",
+      "kind": "limit",
+      "statement": "The deploy job's `timeout-minutes` is at most 90 min.",
+      "why": "because a full-profile release build with its conformance pass fits that, and a hung deploy holds the token no longer",
+      "file": "spec/83-gate.md",
+      "line": 226
+    },
+    {
+      "id": "assurance.deploy-apps.one-command",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "one-command",
+      "kind": "behavior",
+      "statement": "The workflow's one `run` step is `contextful-ci deploy cloudflare --app \"$APP\"`, the command an operator runs locally with the same two environment variables.",
+      "why": "because a local deploy and a workflow deploy then execute one code path",
+      "file": "spec/83-gate.md",
+      "line": 228
+    },
+    {
+      "id": "assurance.deploy-apps.workflow-refused",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "workflow-refused",
+      "kind": "refusal",
+      "statement": "Another file under `.github/workflows`, or a deploy workflow breaching {{assurance.deploy-apps.workflow-trigger}}, {{assurance.deploy-apps.workflow-permissions}}, {{assurance.deploy-apps.workflow-credentials}}, {{assurance.deploy-apps.job-timeout}} or {{assurance.deploy-apps.one-command}}, raises `DeployWorkflowRefused` in the schema stage, naming the file and the breach.",
+      "why": "because the token's reach then stays reviewable in one file every change is checked against",
+      "file": "spec/83-gate.md",
+      "line": 230
+    },
+    {
+      "id": "assurance.deploy-apps.credentials-absent",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "credentials-absent",
+      "kind": "refusal",
+      "statement": "`contextful-ci deploy cloudflare` with `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` unset or empty raises `DeployCredentialsAbsent`, naming the variable, before any command runs.",
+      "why": "because wrangler otherwise falls back to an interactive login or a cached account",
+      "file": "spec/83-gate.md",
+      "line": 232
+    },
+    {
+      "id": "assurance.deploy-apps.resources",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "resources",
+      "kind": "behavior",
+      "statement": "The command creates each D1 database and R2 bucket the app's `wrangler.example.jsonc` binds when absent, named after the Worker and binding, and writes their identifiers only into the untracked `wrangler.deploy.jsonc` beside it.",
+      "why": "because an identifier belongs to one account, and the committed template serves every account",
+      "file": "spec/83-gate.md",
+      "line": 234
+    },
+    {
+      "id": "assurance.deploy-apps.container-image",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "container-image",
+      "kind": "behavior",
+      "statement": "For an app declaring a container, the command packages the `contextful-full` `x86_64-unknown-linux-musl` release inside the Dockerfile's pinned Alpine builder and prepares each `images` build context from that archive before `wrangler deploy`.",
+      "why": "because the image then carries the exact binary its release metadata and compatibility report name",
+      "file": "spec/83-gate.md",
+      "line": 236
+    },
+    {
+      "id": "assurance.deploy-apps.builder-jobs",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "builder-jobs",
+      "kind": "limit",
+      "statement": "The builder compiles with the caller's `CARGO_BUILD_JOBS` when set, and otherwise with one job per 1536 MiB of the memory `docker info` reports, at least one.",
+      "why": "because one job per CPU in a smaller Docker VM gets the C++ compiler killed during the SQL engine and link-time optimization builds",
+      "file": "spec/83-gate.md",
+      "line": 238
+    },
+    {
+      "id": "assurance.deploy-apps.worktree-mount",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "worktree-mount",
+      "kind": "behavior",
+      "statement": "From a git worktree, the builder also mounts the common git directory `git rev-parse --git-common-dir` names, read-only at its own path.",
+      "why": "because a worktree's `.git` file points outside the source mount, and the release records the source commit",
+      "file": "spec/83-gate.md",
+      "line": 240
+    },
+    {
+      "id": "assurance.deploy-apps.scheduling-policy",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "scheduling-policy",
+      "kind": "behavior",
+      "statement": "The execution app's container declares the `durable_object` scheduling policy and an `images` map, and its container class starts each instance with that map's image and the `standard-1` instance type.",
+      "why": "because an account may refuse the default policy, and the container library passes neither image nor instance type to a Durable Object-managed start",
+      "file": "spec/83-gate.md",
+      "line": 242
+    },
+    {
+      "id": "assurance.deploy-apps.health",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "health",
+      "kind": "refusal",
+      "statement": "After `wrangler deploy`, the command repeats an anonymous `GET /` to the URL wrangler reports until a status in the app's expected set arrives or `--health-wait` elapses, printing each status alone; the wait elapsing raises `DeployUnhealthy`, naming the last status.",
+      "why": "because wrangler reports success before the Worker answers, and a fresh `workers.dev` route answers a redirect first",
+      "file": "spec/83-gate.md",
+      "line": 244
+    },
+    {
+      "id": "assurance.deploy-apps.expected-status",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "expected-status",
+      "kind": "behavior",
+      "statement": "The execution app answers `GET /` with 404, the gateway with 404 or 503, and the console with 200 or 302.",
+      "why": "because each answer is the app's unauthenticated default: no route, no configured store, the prerendered page",
+      "file": "spec/83-gate.md",
+      "line": 246
+    },
+    {
+      "id": "assurance.deploy-apps.quiet-output",
+      "contract": "assurance",
+      "operation": "deploy-apps",
+      "subject": "quiet-output",
+      "kind": "behavior",
+      "statement": "The command prints its step names and the health status; wrangler's output prints only on failure, with each URL and each run of 32 or more hex digits replaced.",
+      "why": "because a public repository's Actions logs are public, and wrangler's output names the account's subdomain and resource identifiers",
+      "file": "spec/83-gate.md",
+      "line": 248
     }
   ],
   "owns": {
@@ -31533,7 +31698,8 @@
       "automate",
       "gate",
       "measure",
-      "release"
+      "release",
+      "deploy-apps"
     ]
   },
   "ledes": {
@@ -31543,6 +31709,7 @@
     "assurance.baseline": "Holding a run against committed baselines and absolute floors, intervals, golden custody and case generation.",
     "assurance.build": "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist.",
     "assurance.consumer": "Artifact compatibility: source-independent execution, required capabilities, scenario evidence, storage profiles and release distribution.",
+    "assurance.deploy-apps": "The one GitHub Actions workflow, its trigger, permission and credential shape, and `contextful-ci deploy cloudflare`, the command it and an operator run to ship one Cloudflare app.",
     "assurance.differential-test": "The executable reference models, the case generators, the minimized counterexample corpus and the command running them.",
     "assurance.evaluate": "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge.",
     "assurance.forecast": "Probability forecasts over consumer-declared outcomes: freeze instant, settlement, lead time, imputation, coverage, reference baselines and separate scoring tracks. Prediction-market baselines belong to an explicitly selected profile ({{topology.bound-application.domain-neutral}}).",
@@ -35972,6 +36139,26 @@
     [
       "assurance.measure.absolute-threshold",
       "assurance.baseline.raise-only"
+    ],
+    [
+      "assurance.deploy-apps.workflow-refused",
+      "assurance.deploy-apps.workflow-trigger"
+    ],
+    [
+      "assurance.deploy-apps.workflow-refused",
+      "assurance.deploy-apps.workflow-permissions"
+    ],
+    [
+      "assurance.deploy-apps.workflow-refused",
+      "assurance.deploy-apps.workflow-credentials"
+    ],
+    [
+      "assurance.deploy-apps.workflow-refused",
+      "assurance.deploy-apps.job-timeout"
+    ],
+    [
+      "assurance.deploy-apps.workflow-refused",
+      "assurance.deploy-apps.one-command"
     ]
   ],
   "types": {
@@ -38090,6 +38277,10 @@
             "gloss": "",
             "aliases": []
           },
+          "deploy-apps": {
+            "gloss": "",
+            "aliases": []
+          },
           "differential-test": {
             "gloss": "",
             "aliases": []
@@ -38203,6 +38394,18 @@
           "DependencyAllowlistViolation": {
             "clause": "assurance.build.dependency-allowlist",
             "gloss": "A profile graph reaching a backtracking regular-expression engine or a parser with its depth limit off."
+          },
+          "DeployCredentialsAbsent": {
+            "clause": "assurance.deploy-apps.credentials-absent",
+            "gloss": "A deploy started without the Cloudflare API token or account identifier in its environment."
+          },
+          "DeployUnhealthy": {
+            "clause": "assurance.deploy-apps.health",
+            "gloss": "A deployed app answering outside its expected status set, or not at all."
+          },
+          "DeployWorkflowRefused": {
+            "clause": "assurance.deploy-apps.workflow-refused",
+            "gloss": "A workflow file other than the deploy workflow, or a deploy workflow outside its fixed shape."
           },
           "EnforceInterpolatedSubjectClaim": {
             "clause": "assurance.gate.interpolated-claim",
@@ -38496,6 +38699,20 @@
             "unit": "percent",
             "basis": "chosen",
             "gloss": "Dead band of a rate entry with no override."
+          },
+          "assurance-deploy-builder-job-memory": {
+            "clause": "assurance.deploy-apps.builder-jobs",
+            "value": 1536,
+            "unit": "MiB",
+            "basis": "chosen",
+            "gloss": "Docker memory one release builder job takes when the caller sets no job count."
+          },
+          "assurance-deploy-job-timeout": {
+            "clause": "assurance.deploy-apps.job-timeout",
+            "value": 90,
+            "unit": "min",
+            "basis": "chosen",
+            "gloss": "Wall clock of the deploy workflow's one job."
           },
           "assurance-differential-budget": {
             "clause": "assurance.differential-test.run-budget",
@@ -45332,6 +45549,141 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/verdict.rs",
         "name": "a_suite_exiting_on_its_failing_verdict_records_no_process_failure",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.builder-jobs": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.container-image": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.credentials-absent": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "a_deploy_without_either_cloudflare_variable_names_it_before_any_command",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.expected-status": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.health": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "health_retries_past_a_fresh_route_redirect_and_refuses_the_last_status_after_the_wait",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.job-timeout": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.one-command": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_committed_workflow_passes_and_runs_the_operator_command",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.quiet-output": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.resources": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_execution_deploy_creates_absent_resources_packages_the_release_and_prints_no_identifier",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.scheduling-policy": [
+      {
+        "kind": "test",
+        "path": "apps/cloudflare-execution/test/pin-image.test.ts",
+        "name": "apps/cloudflare-execution/test/pin-image.test.ts::every start of a Durable Object-managed container carries the declared image and the standard-1 instance",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.workflow-credentials": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.workflow-permissions": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.workflow-refused": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.workflow-trigger": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "the_deploy_workflow_refuses_broad_triggers_write_permissions_unpinned_actions_and_literal_credentials",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.deploy-apps.worktree-mount": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/deploy.rs",
+        "name": "a_worktree_deploy_mounts_the_common_git_directory_read_only",
         "verdict": "performed",
         "proved": false
       }

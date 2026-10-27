@@ -131,3 +131,7 @@ the specification rule it serves ({{assurance.measure.ledger}}).
 working tree fails first ({{assurance.release.dirty-tree}}). The conformance suite runs
 the released artifact through its public surfaces, outside a source checkout
 ({{assurance.consumer.suite}}).
+
+A Cloudflare app ships through one hand-dispatched workflow whose single step is the
+command an operator runs locally ({{assurance.deploy-apps.one-command}}); the deploy
+succeeds only once the app answers its expected status ({{assurance.deploy-apps.health}}).
