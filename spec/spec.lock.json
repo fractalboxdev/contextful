@@ -5735,10 +5735,35 @@
       "operation": "drain",
       "subject": "status",
       "kind": "refusal",
-      "statement": "`contextful sync status` prints JSON `error` and `runs`, each marked run with pipeline, table, node, end instant and `lost`; any run not `lost` reports `SyncRunsUnpushed`, exiting 3.",
+      "statement": "`contextful sync status` prints JSON `error`, the counts `open` and `lost` of marked runs, and `runs`, each with pipeline, table, node, end instant and `lost`; any run not `lost` reports `SyncRunsUnpushed`, exiting 3.",
       "why": "because a release step replacing a container discards each unpushed run",
       "file": "spec/14-drain.md",
       "line": 28
+    },
+    {
+      "id": "store.drain.status-summary",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "status-summary",
+      "kind": "limit",
+      "statement": "Without `--all`, `runs` lists at most 20 runs of each kind, `lost` and not, in run id order; the counts still number every marked run.",
+      "why": "because a caller keeping a bounded tail of stdout parses the whole document, and the counts carry what the list leaves out",
+      "file": "spec/14-drain.md",
+      "line": 30,
+      "scenarios": [
+        "WHEN the execution database holds 300 lost marks and one open mark, THEN `sync status` lists the open run and 20 lost runs, counts 1 open and 300 lost, and exits 3."
+      ]
+    },
+    {
+      "id": "store.drain.status-all",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "status-all",
+      "kind": "behavior",
+      "statement": "`sync status --all` lists every marked run in `runs`.",
+      "why": "because an operator auditing every mark reads the full list on request, apart from the release gate's bounded read",
+      "file": "spec/14-drain.md",
+      "line": 32
     },
     {
       "id": "store.drain.status-unread",
@@ -5749,7 +5774,21 @@
       "statement": "A `sync status` failing to read the execution database prints `runs` as null and `error` as `SyncStatusUnread` with its cause, exiting 1.",
       "why": "because a release gate tells a store holding unpushed runs from a check that read nothing",
       "file": "spec/14-drain.md",
-      "line": 30
+      "line": 34
+    },
+    {
+      "id": "store.drain.prune",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "prune",
+      "kind": "limit",
+      "statement": "A committed push clears each `lost` mark, any node's, more than 7 d after {{store.drain.clear}} set it, keeping the run row; a mark lost without its instant takes the push's.",
+      "why": "because only a push sets `lost`, so pruning there bounds the marks to one window of losses while status stays a read",
+      "file": "spec/14-drain.md",
+      "line": 36,
+      "scenarios": [
+        "WHEN a push settles while one mark turned lost 8 d before and another 6 d before, THEN the push clears the first mark and the second stays listed."
+      ]
     },
     {
       "id": "store.endpoint.schemes",
@@ -34366,6 +34405,10 @@
       "store.drain.deadline"
     ],
     [
+      "store.drain.prune",
+      "store.drain.clear"
+    ],
+    [
       "store.endpoint.credentials",
       "connector.reference.whole-value-reference"
     ],
@@ -44181,6 +44224,22 @@
             "basis": "chosen",
             "gloss": "Longest push a stopping serve attempts before it exits.",
             "const": "crates/contextful-cli/src/sync.rs::DRAIN_SECS"
+          },
+          "store-drain-lost-retention": {
+            "clause": "store.drain.prune",
+            "value": 7,
+            "unit": "d",
+            "basis": "chosen",
+            "gloss": "Age past which a committed push clears a lost mark.",
+            "const": "crates/contextful-cli/src/sync.rs::LOST_RETENTION_SECS"
+          },
+          "store-drain-status-runs": {
+            "clause": "store.drain.status-summary",
+            "value": 20,
+            "unit": "runs",
+            "basis": "chosen",
+            "gloss": "Most runs of each kind, lost and not, a status lists without `--all`.",
+            "const": "crates/contextful-cli/src/sync.rs::STATUS_RUNS"
           },
           "store-endpoint-answer": {
             "clause": "store.endpoint.transport",
@@ -65773,6 +65832,15 @@
         "proved": false
       }
     ],
+    "store.drain.prune": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_push_prunes_lost_marks_past_their_retention",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "store.drain.record-unmarked": [
       {
         "kind": "test",
@@ -65787,6 +65855,31 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
         "name": "a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_status_over_many_lost_marks_prints_a_bounded_summary",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.drain.status-all": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_status_over_many_lost_marks_prints_a_bounded_summary",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.drain.status-summary": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_status_over_many_lost_marks_prints_a_bounded_summary",
         "verdict": "performed",
         "proved": false
       }
