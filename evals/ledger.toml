@@ -1095,6 +1095,39 @@ direction = "lower_is_better"
 method = { test = "contextful_sync::pull::cold_pull_wall_over_a_fixed_latency_bucket" }
 seed   = 0x5eed_0091
 
+# ---------------------------------------------------------------- query container on worker-container-d1
+#
+# `apps/cloudflare-query-bench` measures a deployed bench Worker and writes these records
+# (`npm run measure`); no tier of `contextful-ci measure` reaches a Cloudflare account, so
+# each entry reports open against its issue.
+
+[entry.container-cold-start-wall]
+clause = "topology.publish-hostname.container-readiness"
+metric = "container.cold_start.ready_ms.p50"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { issue = 733 }
+seed   = 0x5eed_0733
+
+[entry.container-hydrate-wall]
+clause = "read.cache.cold-start"
+metric = "container.hydrate.wall_ms.1gb_8k"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { issue = 733 }
+seed   = 0x5eed_0733
+
+[entry.container-first-read-after-idle]
+clause = "read.cache.warming-read"
+metric = "container.first_read_after_idle.ms"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { issue = 733 }
+seed   = 0x5eed_0733
+
 # ---------------------------------------------------------------- surface
 
 [entry.dispatch-backlog-ticks]

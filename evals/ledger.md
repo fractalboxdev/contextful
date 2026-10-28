@@ -2,7 +2,7 @@
 
 # Target ledger
 
-168 entries: 118 gated, 35 recorded, 7 scheduled, 8 open.
+171 entries: 118 gated, 35 recorded, 7 scheduled, 11 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -36,6 +36,9 @@
 | `cjk-subrun` | `read.retrieve.script-split-matching` | `retrieve.cjk.reciprocal_rank` | gate | test `contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg` | `== 1` | gated |
 | `commit-lock-hold-w8` | `store.reserve.commit-order` | `land.commit_lock.hold_ms.w8.p95` | scheduled | test `contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock` | — | scheduled |
 | `commit-lock-refusals-w8` | `store.reserve.commit-order` | `land.commit_lock.refusals.w8` | scheduled | test `contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock` | `<= 0` | scheduled |
+| `container-cold-start-wall` | `topology.publish-hostname.container-readiness` | `container.cold_start.ready_ms.p50` | trend | issue 733 | — | open (issue 733) |
+| `container-first-read-after-idle` | `read.cache.warming-read` | `container.first_read_after_idle.ms` | trend | issue 733 | — | open (issue 733) |
+| `container-hydrate-wall` | `read.cache.cold-start` | `container.hydrate.wall_ms.1gb_8k` | trend | issue 733 | — | open (issue 733) |
 | `derivation-freshness` | `run.emit.stale-supersedes` | `derive.empty_reads` | gate | test `contextful_core::run::derive::a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty` | `== 0` | gated |
 | `dispatch-backlog-ticks` | `surface.dispatch.refill` | `dispatch.max_ticks_waited_by_due_unit` | gate | test `contextful_engine::scheduler::a_backlog_of_twenty_units_clears_one_tick_after_recovery` | `<= 1` | gated |
 | `dispatch-failing-head` | `surface.arm.next-fire-from-history` | `dispatch.units_started_behind_failing_head` | gate | test `contextful_engine::scheduler::a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler` | `>= 9` | gated |

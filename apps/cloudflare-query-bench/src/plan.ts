@@ -1,0 +1,175 @@
+/** Fixture shapes, store configuration and the figures a measurement reports. */
+
+/** The project, table and audience every fixture store and query container share. */
+export const PROJECT = "bench";
+export const TABLE = "events";
+export const AUDIENCE = "contextful://bench";
+export const ZONE = "on-prem:hq";
+/** The header carrying the contextful credential the bench Worker forwards as the MCP bearer. */
+export const QUERY_TOKEN_HEADER = "Contextful-Authorization";
+/** The port `contextful serve --http` listens on inside the query container. */
+export const SERVE_PORT = 8080;
+/** The seed every fixture row derives from. */
+export const SEED = 0x5eed_0733;
+
+/** The dimension table the join reads: one row per `k`. */
+export const DIM_TABLE = "dims";
+export const DIM_ROWS = 1_000;
+/** Days the event rows spread over, in run order; each run's rows share one `day`. */
+export const DAYS = 100;
+const DAY_ZERO = Date.UTC(2026, 0, 1);
+
+/** The `day` value of day index `index`. */
+export const dayOf = (index: number) => new Date(DAY_ZERO + index * 86_400_000).toISOString().slice(0, 10);
+
+/** Bucket objects one landed run adds: its Parquet part and its run manifest. */
+export const OBJECTS_PER_RUN = 2;
+/**
+ * Bucket objects a push adds besides the event runs: run state, bucket manifest and
+ * generation manifest, the event schema, and the dimension table's run and schema.
+ */
+export const OBJECTS_PER_PUSH = 7;
+
+export type Fixture = { name: string; bytes: number; objects: number };
+
+const MB = 1_000_000;
+
+/** The four hydration stores: 100 MB and 1 GB, each at about 1k and 8k bucket objects. */
+export const FIXTURES: readonly Fixture[] = [
+  { name: "100mb-1k", bytes: 100 * MB, objects: 1_000 },
+  { name: "100mb-8k", bytes: 100 * MB, objects: 8_000 },
+  { name: "1gb-1k", bytes: 1_000 * MB, objects: 1_000 },
+  { name: "1gb-8k", bytes: 1_000 * MB, objects: 8_000 },
+];
+
+/** The fixture the idle-read and warm-read measurements run on. */
+export const IDLE_FIXTURE = "1gb-8k";
+export const WARM_FIXTURE = "1gb-1k";
+
+export type Plan = { runs: number; rowsPerRun: number };
+
+/**
+ * Runs and rows per run reaching `fixture`'s object count and Parquet bytes, given the
+ * calibrated on-disk bytes of one row. `scale` shrinks bytes alone, so a scaled fixture
+ * keeps its object count.
+ */
+export function planFixture(fixture: Fixture, bytesPerRow: number, scale = 1): Plan {
+  if (!(bytesPerRow > 0) || !(scale > 0)) throw new Error("FixturePlanInvalid");
+  const runs = Math.max(1, Math.round((fixture.objects - OBJECTS_PER_PUSH) / OBJECTS_PER_RUN));
+  const rows = (fixture.bytes * scale) / bytesPerRow;
+  return { runs, rowsPerRun: Math.max(1, Math.ceil(rows / runs)) };
+}
+
+export type SyncTarget = {
+  endpoint: string;
+  bucket: string;
+  prefix: string;
+  lazyParts: boolean;
+  /** Credentials as `env://NAME` references; absent for a `file://` endpoint. */
+  credentials?: { accessKeyId: string; secretAccessKey: string };
+};
+
+const quoted = (value: string) => JSON.stringify(value);
+
+/** `.contextful/context/<project>/config.toml` for node `node`, pulling `sync` before it serves. */
+export function storeConfig(node: string, sync: SyncTarget | null, pullBeforeRun = true): string {
+  const lines = ["[node]", `id = ${quoted(node)}`];
+  if (sync) {
+    lines.push("", "[sync]", `endpoint = ${quoted(sync.endpoint)}`, `bucket = ${quoted(sync.bucket)}`,
+      `prefix = ${quoted(sync.prefix)}`, `coordination = "single-writer"`);
+    if (pullBeforeRun) lines.push("pull_before_run = true");
+    if (sync.lazyParts) lines.push("lazy_parts = true");
+    if (sync.credentials) {
+      lines.push(`access_key_id = ${quoted(sync.credentials.accessKeyId)}`,
+        `secret_access_key = ${quoted(sync.credentials.secretAccessKey)}`);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+/** The project's `contextful.toml`: the event table and its dimension table. */
+export const PROJECT_DECLARATION =
+  `authoring_posture = "per_request"\n[[pipeline.tables]]\nname = ${quoted(TABLE)}\n[[pipeline.tables]]\nname = ${quoted(DIM_TABLE)}\n`;
+
+/**
+ * The SQL each read measurement sends through `context.query`. `aggregate` and `join`
+ * answer `[group, n, …]` rows whose counts sum to every event row.
+ */
+export const QUERIES = {
+  /** A point lookup on `id`, which ascends across runs. */
+  point: (id: number) => `SELECT id, k, v, day FROM ${TABLE} WHERE id = ${Math.trunc(id)}`,
+  /** One day of events; each part's `day` statistics let the scan skip the others. */
+  range: (day: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("BenchDayInvalid");
+    return `SELECT count(*) AS n, avg(v) AS mean FROM ${TABLE} WHERE day = '${day}'`;
+  },
+  /** A GROUP BY over every event row. */
+  aggregate: `SELECT k, count(*) AS n, avg(v) AS mean FROM ${TABLE} GROUP BY k ORDER BY k`,
+  /** Every event row joined to its dimension row, grouped by the dimension's name. */
+  join: `SELECT d.name, count(*) AS n, avg(e.v) AS mean FROM ${TABLE} e JOIN ${DIM_TABLE} d ON e.k = d.k GROUP BY d.name ORDER BY d.name`,
+} as const;
+
+/** One JSON-RPC `tools/call` of `context.query`. */
+export function queryCall(sql: string, id = 1): string {
+  return JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "context.query", arguments: { sql } } });
+}
+
+/** What `serve` reports on stderr once its hydration pull and mapping finish. */
+export type HydrationLog = { objects: number | null; pointers: number | null; files: number | null; bytes: number | null };
+
+/** Parse the `pull_before_run: pulled …` and `hydrated: …` lines of a serve log. */
+export function parseServeLog(log: string): HydrationLog {
+  const pulled = /pulled (\d+) objects and (\d+) pointers/.exec(log);
+  const mapped = /hydrated: snapshot set mapped \(files: (\d+), bytes: (\d+)\)/.exec(log);
+  return {
+    objects: pulled ? Number(pulled[1]) : null,
+    pointers: pulled ? Number(pulled[2]) : null,
+    files: mapped ? Number(mapped[1]) : null,
+    bytes: mapped ? Number(mapped[2]) : null,
+  };
+}
+
+/** The health path each probe polls. */
+export const healthPath = (until: "ready" | "hydrated") => (until === "ready" ? "/health" : "/health?ready=hydrated");
+
+/**
+ * Whether a `/health` answer meets `until`. Hydration also requires the body to name it
+ * `complete`, which a build answering `200` to `?ready=hydrated` while warming still reports.
+ */
+export function healthHolds(until: "ready" | "hydrated", status: number, body: string): boolean {
+  if (status !== 200) return false;
+  if (until === "ready") return true;
+  try {
+    return (JSON.parse(body) as { hydration?: unknown }).hydration === "complete";
+  } catch {
+    return false;
+  }
+}
+
+/** The `q`-quantile of `samples` by the nearest-rank method. */
+export function quantile(samples: readonly number[], q: number): number {
+  if (samples.length === 0 || !(q > 0 && q <= 1)) throw new Error("QuantileUndefined");
+  const sorted = [...samples].sort((a, b) => a - b);
+  return sorted[Math.ceil(q * sorted.length) - 1];
+}
+
+export type Summary = { n: number; p50: number; p99: number; min: number; max: number };
+
+export function summarize(samples: readonly number[]): Summary {
+  return {
+    n: samples.length,
+    p50: quantile(samples, 0.5),
+    p99: quantile(samples, 0.99),
+    min: Math.min(...samples),
+    max: Math.max(...samples),
+  };
+}
+
+/** Constant-time equality of two header values. */
+export function sameSecret(supplied: string, expected: string): boolean {
+  const a = new TextEncoder().encode(supplied);
+  const b = new TextEncoder().encode(expected);
+  let diff = a.byteLength ^ b.byteLength;
+  for (let i = 0; i < b.byteLength; i++) diff |= (a[i] ?? 0) ^ b[i];
+  return expected.length > 0 && diff === 0;
+}
