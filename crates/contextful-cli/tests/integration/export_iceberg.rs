@@ -479,3 +479,90 @@ fn a_table_at_another_format_version_refuses() {
     assert!(refused.contains("format version 2") && refused.contains("declares 3"), "{refused}");
     assert_eq!(remote.catalog.commits(), 1);
 }
+
+/// Characters a JSON string spells as themselves: printable ASCII less `"` and `\`.
+const PRINTABLE: &[u8] = b" !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+
+/// `len` characters from a seeded SplitMix64 stream, which zstd cannot shrink below their entropy.
+fn noise(state: &mut u64, len: usize) -> String {
+    let mut out = Vec::with_capacity(len);
+    while out.len() < len {
+        *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^= z >> 31;
+        let take = (len - out.len()).min(8);
+        out.extend(z.to_le_bytes()[..take].iter().map(|b| PRINTABLE[*b as usize % PRINTABLE.len()]));
+    }
+    String::from_utf8(out).unwrap()
+}
+
+/// Land `(span_id, payload)` rows into `spans` as run `run`.
+fn land_payloads(dir: &Path, run: &str, now: &str, rows: impl Iterator<Item = (String, String)>) {
+    let file = format!("{run}.jsonl");
+    let mut out = std::io::BufWriter::new(std::fs::File::create(dir.join(&file)).unwrap());
+    for (id, payload) in rows {
+        for part in [format!("{{\"span_id\":\"{id}\",\"payload\":\""), payload, "\"}\n".to_string()] {
+            std::io::Write::write_all(&mut out, part.as_bytes()).unwrap();
+        }
+    }
+    drop(out);
+    ok(&cf(dir, &["context", "land", "spans", "--project", "research", "--rows", &file, "--run-id", run, "--site-id", "site", "--now", now], &[]));
+    std::fs::remove_file(dir.join(&file)).unwrap();
+}
+
+/// A Parquet object's row count, read from its footer.
+fn parquet_rows(bytes: &[u8]) -> i64 {
+    use parquet::file::metadata::{FooterTail, ParquetMetaDataReader};
+    let tail: &[u8; 8] = bytes[bytes.len() - 8..].try_into().unwrap();
+    let length = FooterTail::try_new(tail).unwrap().metadata_length();
+    ParquetMetaDataReader::decode_metadata(&bytes[bytes.len() - 8 - length..bytes.len() - 8]).unwrap().file_metadata().num_rows()
+}
+
+/// Every data object of `remote` in write order, as its size in bytes and its row count.
+fn data_files(remote: &Remote) -> Vec<(u64, i64)> {
+    let mut keys = remote.data_objects();
+    keys.sort();
+    keys.iter().map(|k| remote.s3.object(k).unwrap()).map(|b| (b.len() as u64, parquet_rows(&b))).collect()
+}
+
+/// Rows whose encoded bytes pass the data file ceiling fill a file toward it and open the next before crossing it;
+/// one row larger than the ceiling fills a file alone, apart from the rows on either side of it.
+// spec: run.export-iceberg.file-size@0e2de590
+#[test]
+fn data_files_stay_under_the_ceiling_and_an_oversized_row_fills_one_alone() {
+    // 11,000 rows of 16 KiB noise encode to about 141 MiB; eight runs bound each landing.
+    const ROWS: usize = 11_000;
+    const PAYLOAD: usize = 16 * 1024;
+    const RUNS: usize = 8;
+    let ceiling = contextful_core::export::iceberg::ICEBERG_DATA_FILE_BYTES;
+    let mut seed = 0x5eed_u64;
+    {
+        let remote = Remote::start();
+        let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+        let p = dir.path();
+        for run in 0..RUNS {
+            let ids = run * ROWS / RUNS..(run + 1) * ROWS / RUNS;
+            land_payloads(p, &format!("load-{run}"), &format!("2030-01-01T00:00:{run:02}Z"), ids.map(|i| (format!("r{i:05}"), noise(&mut seed, PAYLOAD))));
+        }
+        let out = ok(&export(p, "spans-lake", &public, &token));
+        assert!(out.contains(&format!("committed {ROWS} rows in 2 files")), "{out}");
+        let files = data_files(&remote);
+        let [first, second] = files[..] else { panic!("two data files: {files:?}") };
+        assert_eq!(first.1 + second.1, ROWS as i64, "{files:?}");
+        assert!(first.0 + second.0 > ceiling, "the rows encode past the ceiling, so no one file holds them: {files:?}");
+        assert!(first.0 <= ceiling && second.0 <= ceiling, "no file passes the ceiling: {files:?}");
+        assert!(first.0 > ceiling / 2, "the first file fills toward the ceiling before the next opens: {files:?}");
+    }
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land_payloads(p, "load-0", "2030-01-01T00:00:00Z", std::iter::once(("s0".to_string(), noise(&mut seed, 64))));
+    land_payloads(p, "load-1", "2030-01-01T00:01:00Z", std::iter::once(("big".to_string(), "x".repeat(ceiling as usize + 1024))));
+    land_payloads(p, "load-2", "2030-01-01T00:02:00Z", std::iter::once(("s1".to_string(), noise(&mut seed, 64))));
+    let out = ok(&export(p, "spans-lake", &public, &token));
+    assert!(out.contains("committed 3 rows in 3 files"), "{out}");
+    let files = data_files(&remote);
+    assert_eq!(files.iter().map(|f| f.1).collect::<Vec<_>>(), [1, 1, 1], "the oversized row fills the middle file alone: {files:?}");
+}
