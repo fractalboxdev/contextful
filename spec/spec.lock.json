@@ -14243,7 +14243,7 @@
       "operation": "export-iceberg",
       "subject": "route",
       "kind": "behavior",
-      "statement": "Where a deployment adds a catalog query engine, the routing Worker sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.",
+      "statement": "Where a deployment adds a catalog query engine, the read router sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.",
       "why": "A-topology#catalog-read-add-on",
       "file": "spec/31-pipeline.md",
       "line": 524

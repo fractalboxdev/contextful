@@ -60,7 +60,7 @@ The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to t
 
 Cloudflare Queues carries receive batches and object-arrival notifications. The Rust engine writes the store. A separate Durable Object manages hibernating WebSocket connections for run updates. Workers Secrets supplies credentials to configured bindings. The optional console server runs on a Node.js host. The React assets provide a static browser preview without that server.
 
-The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The routing Worker sends a caller whose credential maps to an export namespace to Basin SQL over REST with that audience's read-only token, one Worker secret per audience bucket, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
+The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The read router sends a caller whose credential maps to an export namespace to Basin SQL over REST with that audience's read-only token, one Worker secret per audience bucket, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
 
 The example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`. Its Container runs `contextful-conformance` against the packaged Linux `contextful` binary. This endpoint tests execution storage; it serves no query or orchestration routes. `status.md` records clause implementation evidence.
 
@@ -86,7 +86,7 @@ flowchart LR
   CALLER(["MCP or HTTP client"]):::muted
   subgraph ACCOUNT["Cloudflare target"]
     subgraph WORKERS["Workers V8 isolates"]
-      ROUTER["routing Worker"]:::accent
+      ROUTER["read router"]:::accent
       RECON["reconciler Worker"]:::accent
       BIND["execution binding handler"]:::accent
       OWNER["Container Durable Object"]:::accent
