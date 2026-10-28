@@ -192,3 +192,14 @@ A consent callback can retry while other connections mutate the same control doc
 | Versioned connection claim and shared dispatch *(chosen)* | — | Each connection adds a control entry and a due-history record. |
 | One scheduler thread per connection | Capacity | Thread count grows with tenant count. |
 | An unversioned connection map | Concurrent edits | Retried callbacks overwrite a different declaration. |
+
+## maintenance-kinds — A maintenance kind dispatches only where a command does its work on a cadence
+
+A declared fold job that serve never fires leaves a store fed by small landings holding one run directory per landing, while the declaration reads as covered. `fold` and `sync-push` each reach a command that does their work, `sync compact` or `context compact` and `sync push`, so serve fires them as `job fire` children. `sweep` reaches no command. `rebuild-catalog` repairs a lost derived catalog, a condition an operator observes rather than a cadence. `validate` checks a declaration before apply, and an applied snapshot already passed it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Dispatch `fold` and `sync-push`; refuse the other three by name *(chosen)* | — | Three union kinds still parse in an applied snapshot and arm no entry. |
+| Dispatch every maintenance kind | Meaning | A `sweep` fire runs nothing, a scheduled rebuild repeats a repair over a healthy cache, and a scheduled validate rechecks a validated snapshot. |
+| Arm none and log each one unarmed | Bounded stores | Landings accumulate until an operator compacts by hand. |
+| Remove the three kinds from the union | Applied snapshots | A snapshot applied with one stops parsing, and serve arms nothing from it. |

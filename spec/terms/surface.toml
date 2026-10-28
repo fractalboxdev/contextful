@@ -42,6 +42,7 @@ JobKindUnknown                = { clause = "surface.fire.job-kind-unknown", glos
 JobConcurrencyUnset           = { clause = "surface.fire.store-driven-concurrency", gloss = "A store-driven job block declaring no positive `max_in_flight`." }
 JobBodyUnregistered           = { clause = "surface.fire.store-driven-body", gloss = "A store-driven job block naming a body the binary does not register." }
 JobTargetUnbound              = { clause = "surface.fire.target-unbound", gloss = "A job target binding to no produced table or declared model." }
+JobKindUndispatched           = { clause = "surface.fire.kind-undispatched", gloss = "A job block naming a maintenance kind no fire runs." }
 CycleControlSourceUnresolved  = { clause = "surface.fire.cycle-control-source", gloss = "A control source that does not resolve under one-shot evaluation." }
 DispatchUnitNotAHead          = { clause = "surface.dispatch.not-a-head", gloss = "A due id that is a step of a dependent run rather than its head." }
 StepResultRefused             = { clause = "surface.dispatch.step-result", gloss = "A step callback body that is no pointer, object-store key, catalog row id or failure line, or passes the cap." }

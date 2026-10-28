@@ -64,6 +64,10 @@ together or neither ({{store.fold.partial-snapshot}}).
 A statement already running keeps the snapshot it started on, so a fold blocks no
 reader ({{store.fold.non-blocking}}).
 
+A `fold` job puts compaction on a schedule, which `pipeline serve` keeps
+({{surface.fire.scheduled-maintenance}}); each fire folds the job's target table
+({{store.fold.job-pass}}).
+
 A sidecar is a vector graph, a full-text index or a key lookup
 ({{store.index.kinds}}). A sidecar returns candidate ids only, and
 retrieval joins them through the access-controlled relation

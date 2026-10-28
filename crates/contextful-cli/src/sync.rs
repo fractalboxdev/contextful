@@ -795,29 +795,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         }
         SyncCmd::Push { args } => {
             let (s, _) = open(&args)?;
-            let r = push(&s, now(&args.now)?)?;
-            for refusal in &r.refused {
-                eprintln!("warning: {refusal}");
-            }
-            let mut stranded: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
-            for (key, owner) in &r.stranded {
-                stranded.entry(owner.as_str()).or_default().push(key.as_str());
-            }
-            for (owner, keys) in stranded {
-                eprintln!(
-                    "warning: {} local key(s) owned by node `{owner}` are absent from the bucket manifest and stay unpushed ({}); push them with CONTEXTFUL_NODE_ID={owner}",
-                    keys.len(),
-                    keys.join(", ")
-                );
-            }
-            println!(
-                "pushed {} objects and {} pointers; generation {} lists {} entries after {} round(s)",
-                r.uploaded.len(),
-                r.pointers.len(),
-                r.generation,
-                r.entries,
-                r.rounds
-            );
+            report_push(&push(&s, now(&args.now)?)?);
             Ok(())
         }
         SyncCmd::Pull { args, tables, generation } => {
@@ -864,22 +842,112 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         }
         SyncCmd::Compact { table, args, held } => {
             let (s, decls) = open(&args)?;
-            let at = now(&args.now)?;
-            let lease = if held {
-                s.held(&table)?.with_context(|| format!("this node holds no lease on `{table}`"))?
-            } else {
-                s.acquire(&table, at)?
-            };
-            // The pass renews its lease while it pulls, folds and pushes (`store.lease.renewal`).
-            let every = std::time::Duration::from_secs(contextful_core::store::lease::RENEWAL_SECS);
-            let outcome = s.renewing(&table, &lease, at, every, || compact(&s, &decls, &table, &lease, at));
-            if !held {
-                s.release(&table)?;
-            }
-            println!("{table}: {}", outcome?);
+            println!("{table}: {}", compact_leased(&s, &decls, &table, now(&args.now)?, held)?);
             Ok(())
         }
     }
+}
+
+/// Print a push's refusals, its stranded keys by owner, and its summary line.
+fn report_push(r: &contextful_sync::sync::PushReport) {
+    for refusal in &r.refused {
+        eprintln!("warning: {refusal}");
+    }
+    let mut stranded: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for (key, owner) in &r.stranded {
+        stranded.entry(owner.as_str()).or_default().push(key.as_str());
+    }
+    for (owner, keys) in stranded {
+        eprintln!(
+            "warning: {} local key(s) owned by node `{owner}` are absent from the bucket manifest and stay unpushed ({}); push them with CONTEXTFUL_NODE_ID={owner}",
+            keys.len(),
+            keys.join(", ")
+        );
+    }
+    println!(
+        "pushed {} objects and {} pointers; generation {} lists {} entries after {} round(s)",
+        r.uploaded.len(),
+        r.pointers.len(),
+        r.generation,
+        r.entries,
+        r.rounds
+    );
+}
+
+/// Fold `table` under its compaction lease: the one this node `held`, else one acquired
+/// for the pass and released after it.
+fn compact_leased(s: &Syncer, decls: &[TableDecl], table: &str, at: Instant, held: bool) -> Result<FoldOutcome> {
+    let lease = if held {
+        s.held(table)?.with_context(|| format!("this node holds no lease on `{table}`"))?
+    } else {
+        s.acquire(table, at)?
+    };
+    // The pass renews its lease while it pulls, folds and pushes (`store.lease.renewal`).
+    let every = std::time::Duration::from_secs(contextful_core::store::lease::RENEWAL_SECS);
+    let outcome = s.renewing(table, &lease, at, every, || compact(s, decls, table, &lease, at));
+    if !held {
+        s.release(table)?;
+    }
+    outcome
+}
+
+/// `job fire` on a fold job: one pass over `target`, or over every table the store holds
+/// when it names none, each table reported and a failed one failing the fire after the
+/// rest (`store.fold.job-pass`). A store declaring `[sync]` folds each table as
+/// `sync compact` does, and any other folds locally as `context compact` does
+/// (`store.fold.job-pass-synced`).
+#[cfg(feature = "data-plane")]
+pub fn fire_fold(l: &Located, target: Option<&str>, at: Instant) -> Result<()> {
+    let (config, _) = sync_config(l)?;
+    let tables = match target {
+        Some(t) => vec![t.to_string()],
+        None => Store::open(&l.project.dir, &l.project.name)?.tables()?,
+    };
+    let failed = |e: anyhow::Error| FoldOutcome::Failed(format!("{e:#}"));
+    let outcomes: Vec<(String, FoldOutcome)> = match config {
+        Some(config) => {
+            let (s, decls) = open_with(l, config)?;
+            tables.into_iter().map(|t| {
+                let outcome = compact_leased(&s, &decls, &t, at, false).unwrap_or_else(failed);
+                (t, outcome)
+            }).collect()
+        }
+        None => {
+            let store = crate::project::with_erasure_keys(Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?, &l.project, None, None)?;
+            let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
+            let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
+            tables.into_iter().map(|t| {
+                let decl = decls.iter().find(|d| d.name == t).cloned().unwrap_or_else(|| TableDecl::named(&t));
+                let outcome = contextful_context::fold::fold(&store, &decl, at).map_err(anyhow::Error::from).unwrap_or_else(failed);
+                (t, outcome)
+            }).collect()
+        }
+    };
+    let mut failures = 0;
+    for (t, outcome) in outcomes {
+        if let FoldOutcome::Folded { warnings, .. } = &outcome {
+            for w in warnings {
+                eprintln!("warning: {t}: {w}");
+            }
+        }
+        failures += usize::from(outcome.is_failure());
+        println!("{t}: {outcome}");
+    }
+    if failures > 0 {
+        anyhow::bail!("{failures} table(s) failed to fold");
+    }
+    Ok(())
+}
+
+/// `job fire` on a sync-push job: one push of the store to its `[sync]` bucket, as
+/// `sync push` runs it; a store declaring no `[sync]` refuses (`store.push.job-push`).
+#[cfg(feature = "data-plane")]
+pub fn fire_push(l: &Located, at: Instant) -> Result<()> {
+    let (config, config_path) = sync_config(l)?;
+    let config = config.with_context(|| format!("`{}` declares no `[sync]`", config_path.display()))?;
+    let (s, _) = open_with(l, config)?;
+    report_push(&push(&s, at)?);
+    Ok(())
 }
 
 /// Pull, fold and publish under `lease`. A fenced publish restores the local pointer, so

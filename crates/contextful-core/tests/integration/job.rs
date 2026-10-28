@@ -226,3 +226,25 @@ fn a_synthesize_fire_reaches_its_source_claims_and_entities_tables() {
     let store = parse_jobs(&store_driven("max_in_flight = 1\n"), &registered).unwrap();
     assert!(store[0].reach(&MemoryDeclarations::parse(facts).unwrap()).is_none(), "a store-driven job's reads come from its statement");
 }
+
+/// A `[[job]]` of kind `sweep`, `rebuild-catalog` or `validate` raises `JobKindUndispatched`, naming the command doing
+/// its work; the union still parses each, and serve dispatches the other maintenance kinds.
+// spec: surface.fire.kind-undispatched@dc08aa63
+#[test]
+fn a_maintenance_kind_no_fire_runs_refuses_by_name_and_still_parses() {
+    let block = |kind: &str| format!("[[job]]\nname = \"chore\"\nkind = \"{kind}\"\nschedule = \"every 1h\"\n");
+    assert_eq!(contextful_core::job::UNDISPATCHED.len(), 3);
+    for (kind, instead) in contextful_core::job::UNDISPATCHED {
+        let refused = contextful_core::job::refuse_undispatched(&block(kind)).unwrap_err();
+        assert!(matches!(refused, JobError::JobKindUndispatched(_)), "{refused:?}");
+        assert!(refused.to_string().contains(&format!("`{kind}`")) && refused.to_string().contains(instead), "{refused}");
+        let jobs = parse_jobs(&block(kind), &registered).unwrap();
+        assert!(!jobs[0].dispatched(), "{kind}");
+        assert!(matches!(jobs[0].refuse_undispatched(), Err(JobError::JobKindUndispatched(_))));
+    }
+    for kind in ["fold", "sync-push", "build"] {
+        let text = block(kind).replace("schedule", "target = \"t\"\nschedule");
+        contextful_core::job::refuse_undispatched(&text).unwrap();
+        assert!(parse_jobs(&text, &registered).unwrap()[0].dispatched(), "{kind}");
+    }
+}

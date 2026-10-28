@@ -1143,6 +1143,7 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     let declared = declared(&l.declaration)?;
     let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;
+    contextful_core::job::refuse_undispatched(&declaration_text)?;
     let models = crate::model_source::collect(&manifests(&l.declaration)?)?;
     let tables = crate::effective::standalone_tables(&manifests(&l.declaration)?)?;
     let externals = declared_externals(&l.declaration)?;
@@ -1208,6 +1209,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         let changes: Vec<Change> = diff(&target, &base).into_iter().filter(|c| c.action != "unchanged").collect();
         let prior_jobs = applied_jobs(source, version, &base)?;
         let jobs = if id.is_some() { prior_jobs.clone() } else {
+            contextful_core::job::refuse_undispatched(&declaration_text)?;
             job_blocks(&declaration_text, Some(bodies), &target)?
         };
         let prior_models = applied_models(source, version)?;
@@ -1707,9 +1709,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
             continue;
         }
         let reason = match (&job.kind, job.schedule.as_deref()) {
-            (JobKind::StoreDriven(_) | JobKind::Synthesize(_), Some(text)) | (JobKind::Maintenance(_), Some(text))
-                if job.kind_name() == "build" || matches!(job.kind, JobKind::StoreDriven(_) | JobKind::Synthesize(_)) =>
-            {
+            (_, Some(text)) if job.dispatched() => {
                 if control.relay.is_some() && !control.workers.is_empty() {
                     bail!("scheduled job `{}` requires the local registered host; worker dispatch handles pipelines", job.name);
                 }
@@ -1719,7 +1719,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
             }
             (_, None) => "it declares no schedule".to_string(),
             (JobKind::Plan(_), Some(_)) => format!("its plan kind fires through `contextful job fire {}`", job.name),
-            _ => "its maintenance kind has no native dispatch adapter".to_string(),
+            (_, Some(_)) => job.refuse_undispatched().err().map_or_else(|| format!("kind `{}` arms no entry", job.kind_name()), |e| e.to_string()),
         };
         eprintln!("job `{}` stays unarmed: {reason}", job.name);
         unarmed.push(Unarmed { id, reason });

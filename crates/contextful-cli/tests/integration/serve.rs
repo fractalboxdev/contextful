@@ -1678,7 +1678,7 @@ fn control_editor_refuses_to_discard_applied_jobs() {
     // A maintenance declaration requires no compiled body, but still belongs to the snapshot.
     let manifest = root.join("contextful.toml");
     let text = std::fs::read_to_string(&manifest).unwrap();
-    std::fs::write(&manifest, format!("{text}\n[[job]]\nname = \"nightly-check\"\nkind = \"validate\"\nschedule = \"every 1h\"\n")).unwrap();
+    std::fs::write(&manifest, format!("{text}\n[[job]]\nname = \"nightly-check\"\nkind = \"sync-push\"\nschedule = \"every 1h\"\n")).unwrap();
     stdout(&run(root, &["pipeline", "import", "--project", "research"]));
     let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
     let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);

@@ -314,6 +314,10 @@ Compaction passes, their triggers and retention, and snapshot publication throug
 - `declared-trigger` — A positive `fold_max_unfolded_runs` replaces {{store.fold.triggers}}'s unfolded-run count for the table; parsing rejects zero.
 - `session-trigger` — A landing session counts the table's unfolded runs at open and each commit, recounting after another writer commits or folds, and runs a pass before landing returns once the trigger fires.
   *because a continuous writer otherwise accrues thousands of unfolded runs between scheduled passes*
+- `job-pass` — `contextful job fire` on a `fold` job runs a pass over its `target`, or over every table the store holds when it names none, reporting each table under {{store.fold.result}} and exiting non-zero once any table fails.
+  *A-surface#maintenance-kinds*
+- `job-pass-synced` — On a store declaring `[sync]`, a fold job's pass takes each table's compaction lease, pulls, folds, pushes and publishes as `contextful sync compact <table>` does; on any other store it folds locally as `contextful context compact <table>` does.
+  *because a node publishing a snapshot outside the lease races every other node's pass on the bucket pointer*
 - `retention` — `retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older than the window.
 - `reference-retention` — Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the collected snapshot's directory, manifest included.
   *A-store#pass-carries-untouched*
@@ -533,8 +537,15 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *because a generation otherwise names a pointer the bucket never held*
 - `stranded` — Push reports local keys other nodes own that the committed bucket manifest neither lists nor tombstones, grouped by owner on stderr with the `CONTEXTFUL_NODE_ID` pushing each group.
   *because a moved store root re-derives the node id, stranding runs under the old one*
+
+### fire-driven pushes
+
+A run or a job fire pushes the store without an operator's push.
+
 - `after-run` — With `[sync] push_after_run = true`, `run start`, `pipeline run` and `job fire` push the store once the fire's runs close, a failed push failing the command.
   *because a push spends bucket writes on every fire, which a scheduled sync avoids*
+- `job-push` — `contextful job fire` on a `sync-push` job pushes the store once as `contextful sync push` does; on a store declaring no `[sync]` the fire fails, naming the store's `config.toml`.
+  *A-surface#maintenance-kinds*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 

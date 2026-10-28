@@ -58,6 +58,8 @@ mod init;
 mod job;
 mod delegate;
 #[cfg(feature = "data-plane")]
+mod maintenance;
+#[cfg(feature = "data-plane")]
 mod mcp;
 #[cfg(feature = "data-plane")]
 mod memory;
