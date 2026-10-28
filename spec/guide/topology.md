@@ -46,7 +46,7 @@ single node uses a local catalog file, a cluster uses Postgres, and Cloudflare u
 ## One deployment, end to end
 
 A Linux writer syncs corpus files to R2. A Cloudflare Linux Container reads a
-synchronized copy behind a routing Worker. The [deployment maps](../targets.md) show
+synchronized copy behind the read router. The [deployment maps](../targets.md) show
 every provider's shapes.
 
 ```mermaid
@@ -60,7 +60,7 @@ flowchart LR
     STORE[("Parquet and manifest files")]:::store
   end
   subgraph PROV["Cloudflare"]
-    HOP["routing Worker"]:::accent
+    HOP["read router"]:::accent
     BUCKET[("R2 corpus bucket")]:::store
     subgraph RET["Linux Container running contextful-edge"]
       FACE["Rust HTTP handlers"]:::accent
@@ -85,7 +85,7 @@ connector, and the writer advances its cursor by one conditional update
 ({{topology.coordinate.cursor-cas}}).
 
 Bucket sync copies the corpus to R2, and the edge binary pulls it and serves queries.
-The routing Worker forwards a caller's request to the query container, which reaches
+The read router forwards a caller's request to the query container, which reaches
 readiness before it finishes loading stored data ({{topology.publish-hostname.container-readiness}}).
 
 The deployment probe checks each hostname against its declared access policy. A public

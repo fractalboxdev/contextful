@@ -37,7 +37,7 @@ when callers write their own SQL.
 
 ### Latency
 
-The measurements below come from a routing Worker that timed 200 sequential Basin SQL
+The measurements below come from a probe Worker that timed 200 sequential Basin SQL
 requests per cell, with every request returning 200. Tables used format v2 with
 compaction disabled. The container figures are the `worker-container-d1` deployment
 running on a `standard-1` instance. Both read paths ran the same four query shapes:
