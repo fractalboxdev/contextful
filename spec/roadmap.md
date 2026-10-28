@@ -292,6 +292,6 @@ Acceptance: `contextful_acceptance::m23::m23_workspace_delegation`
 | --- | --- |
 | `run.export-iceberg` | One audience's admitted rows of a landed table, published as an Iceberg table a catalog query engine reads without reaching the store. |
 
-Reach: Two exports of one table commit two overwrite snapshots to a local Iceberg REST catalog, and a reader of the namespace sees the second export's rows alone.
+Reach: Two exports of one table commit an append and then an overwrite snapshot to a local Iceberg REST catalog, and a reader of the namespace sees the second export's rows alone.
 
 Acceptance: `contextful_acceptance::m24::m24_iceberg_export`

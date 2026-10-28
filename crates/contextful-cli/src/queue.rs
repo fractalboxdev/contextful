@@ -258,6 +258,12 @@ impl Wake for Woken<'_> {
         let mut first = None;
         for export in parse_exports(&text).map_err(|e| failed(e.into()))?.into_iter().filter(|e| tables.contains(&e.table)) {
             if let Err(e) = crate::export::run_once(&export.name, self.project, self.declaration.clone(), self.admit) {
+                // An Iceberg export for another audience waits for a wake under its own credential.
+                #[cfg(feature = "iceberg-export")]
+                if e.downcast_ref::<crate::export::OtherAudience>().is_some() {
+                    eprintln!("export `{}`: skipped: {e:#}", export.name);
+                    continue;
+                }
                 eprintln!("export `{}`: {e:#}", export.name);
                 first.get_or_insert(e);
             }

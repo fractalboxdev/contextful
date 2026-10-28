@@ -353,3 +353,29 @@ fn summarize_only_leaves_the_value_legible() {
     assert_eq!(notes.sql("case_notes", &ColumnType::Utf8), None, "the relation projects the stored value");
     assert!(matches!(policy("case_notes = { strategy = \"summarize_only\" }"), Err(PolicyError::Malformed(_))), "it is no strategy");
 }
+
+/// A masked column reads as text under every strategy but `drop`, which keeps the stored type; an exception beside a
+/// row-selected mask reads as text.
+// spec: authority.mask.projected-type@b405e2b0
+#[test]
+fn a_masked_column_reads_as_text_under_every_strategy_but_drop() {
+    for (strategy, ty, read) in [
+        ("hash", ColumnType::Int64, ColumnType::Utf8),
+        ("hash", ColumnType::Binary, ColumnType::Utf8),
+        ("tokenize", ColumnType::Utf8, ColumnType::Utf8),
+        ("truncate:4", ColumnType::Timestamp, ColumnType::Utf8),
+        ("bucket:5", ColumnType::Int64, ColumnType::Utf8),
+        ("range:5", ColumnType::Int32, ColumnType::Utf8),
+        ("drop", ColumnType::Int64, ColumnType::Int64),
+        ("drop", ColumnType::Binary, ColumnType::Binary),
+        ("drop", ColumnType::FixedSizeList(FloatItem::Float32, 4), ColumnType::FixedSizeList(FloatItem::Float32, 4)),
+    ] {
+        let p = policy(&format!("v = {{ strategy = \"{strategy}\" }}")).unwrap();
+        assert_eq!(p.columns["v"].projected_type(&ty), read, "{strategy} over {ty:?}");
+    }
+    let unmasked = policy("v = { class = \"phi\", summarize_only = true }").unwrap();
+    assert_eq!(unmasked.columns["v"].projected_type(&ColumnType::Int64), ColumnType::Int64, "no mask leaves the stored type");
+    let excepted = policy("age = { strategy = \"drop\", exceptions = [\"subject.agent = 'agent://auditor'\"] }\nhandle = { strategy = \"hash\", exceptions = [\"subject.agent = 'agent://auditor'\"] }").unwrap();
+    assert_eq!(excepted.columns["age"].projected_type(&ColumnType::Int64), ColumnType::Int64, "a dropped arm and its exception share the stored type");
+    assert_eq!(excepted.columns["handle"].projected_type(&ColumnType::Int64), ColumnType::Utf8);
+}

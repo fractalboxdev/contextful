@@ -24,6 +24,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[cfg(feature = "iceberg-export")]
+mod iceberg;
+#[cfg(feature = "iceberg-export")]
+pub(crate) use iceberg::OtherAudience;
 pub(crate) mod publication;
 
 #[derive(Subcommand)]
@@ -62,7 +66,8 @@ pub enum ExportCmd {
         #[arg(long)] declaration: Option<PathBuf>,
         #[command(flatten)] admit: AdmitArgs,
     },
-    /// Deliver every row an export's cursor has not passed to its OTLP target.
+    /// Deliver every row an export's cursor has not passed to its OTLP target, or commit one
+    /// snapshot of an Iceberg export's admitted rows to its catalog.
     Run {
         name: String,
         #[command(flatten)]
@@ -155,6 +160,12 @@ pub(crate) fn run_once(name: &str, project: &ProjectArgs, declaration: Option<Pa
 
             if export.signal == Signal::ChangesV1 {
                 return run_changes(&l, &export, project, admit);
+            }
+            if export.signal == Signal::Iceberg {
+                #[cfg(feature = "iceberg-export")]
+                return iceberg::run(&l, &export, project, admit);
+                #[cfg(not(feature = "iceberg-export"))]
+                anyhow::bail!("ProfileCapabilityAbsent: export `{name}` publishes an Iceberg table, which requires `iceberg-export`");
             }
 
             let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;

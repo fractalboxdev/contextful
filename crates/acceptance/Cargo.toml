@@ -25,6 +25,11 @@ futures-util = { version = "0.3", default-features = false }
 hyper-util = { version = "0.1", features = ["server-auto", "http1", "tokio"] }
 s3s = "0.17"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"] }
+# The loopback Iceberg REST catalog (`iceberg`): the reference library builds and checks its
+# table metadata, and scans a committed snapshot as a third-party reader.
+iceberg = "=0.10.1"
+arrow-array = "58"
+futures = "0.3"
 
 [dev-dependencies]
 # A third-party reader: the store's Parquet opens with no engine code in the process.

@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 4 | 19 | 357 | 79 | 25 | 4 | 357 | 1 | 0 | 357 |
-| `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 290 |
+| `authority` | 2 | 16 | 291 | 79 | 28 | 8 | 291 | 4 | 0 | 291 |
 | `connector` | 3 | 19 | 347 | 83 | 23 | 14 | 318 | 2 | 0 | 318 |
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 6 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 302 | 53 | 29 | 16 | 291 | 0 | 0 | 291 |
-| `run` | 3 | 30 | 586 | 132 | 50 | 20 | 560 | 4 | 0 | 560 |
+| `run` | 3 | 30 | 591 | 133 | 50 | 19 | 581 | 4 | 0 | 581 |
 | `store` | 6 | 20 | 310 | 67 | 23 | 13 | 310 | 13 | 0 | 310 |
 | `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 191 | 0 | 0 | 191 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 27 | 180 | 2788 | 703 | 237 | 86 | 2707 | 24 | 0 | |
+| **total** | 27 | 180 | 2794 | 704 | 237 | 85 | 2729 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 177 | 177 | passing | closed |
 | 3 — The run path | 12 | 293 | 293 | passing | closed |
 | 4 — Ingest | 25 | 553 | 553 | passing | closed |
-| 5 — The read face under enforcement | 17 | 301 | 301 | passing | closed |
+| 5 — The read face under enforcement | 17 | 302 | 302 | passing | closed |
 | 6 — Sync and replicas | 9 | 119 | 119 | passing | closed |
 | 7 — Memory | 6 | 86 | 86 | passing | closed |
 | 8 — Accountability | 5 | 93 | 93 | passing | closed |
@@ -51,6 +51,6 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 21 — Sheet rows | 1 | 8 | 0 | absent | open |
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
-| 24 — Iceberg export | 1 | 20 | 0 | absent | open |
+| 24 — Iceberg export | 1 | 25 | 21 | open | open |
 
 Unscheduled operations: 15.
