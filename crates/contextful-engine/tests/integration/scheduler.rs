@@ -575,6 +575,35 @@ fn a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler() {
     contextful_eval::record::emit("dispatch-failing-head", others as f64, WAKES as u64, 0);
 }
 
+/// A serve restarting every wake re-arms a unit with neither a run nor a dispatch at each
+/// start. Under pool 1 behind ten units backlogged since an earlier slot, it starts on the
+/// first wake, then waits its turn from the dispatch it recorded.
+// spec: surface.dispatch.admission-order@16dc4906
+#[test]
+fn a_never_run_unit_starts_under_a_backlog_though_serve_restarts_each_wake() {
+    const UNITS: usize = 10;
+    const WAKES: i64 = 10;
+    let (barrier, gate) = barrier();
+    let rig = Rig::new();
+    let dispatch = paced(&rig, 0, &[], Some(barrier));
+    let cohort = cron_units(UNITS);
+    journal_cohort(&rig, &cohort);
+    let fresh = Entry { id: "fresh".into(), schedule: Schedule::parse("0 * * * *").unwrap(), priority: 0 };
+    let mut entries = cohort.clone();
+    entries.push(fresh);
+    let recovery = 14 * 3600;
+    let mut started = Vec::new();
+    for k in 0..WAKES {
+        clock_to(&rig, recovery + k * WAKE_GAP_SECS);
+        let mut s = paced_scheduler(&rig, &dispatch);
+        s.arm(1, entries.clone()).unwrap();
+        started.extend(held_wake(&mut s, &gate));
+    }
+    assert_eq!(started.len(), WAKES as usize, "{started:?}");
+    let expected: Vec<String> = std::iter::once("fresh".to_string()).chain(cohort.iter().take(UNITS - 1).map(|e| e.id.clone())).collect();
+    assert_eq!(started, expected);
+}
+
 /// A dispatch declining to claim units while `closed` is set, and counting the claims it
 /// granted that are still held.
 struct Quiescing {

@@ -26272,8 +26272,8 @@
       "operation": "dispatch",
       "subject": "admission-order",
       "kind": "behavior",
-      "statement": "Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.",
-      "why": "A-surface#due-units-admit",
+      "statement": "Due units start with each unit holding neither a last run start nor a last dispatch first, then by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then least recent of the two, then id.",
+      "why": "A-surface#due-units-admit, A-surface#never-run-first",
       "file": "spec/70-control-plane.md",
       "line": 193
     },
@@ -33627,6 +33627,9 @@
     "A-surface#native-model-builds": [
       "surface.fire.model-snapshot",
       "surface.fire.scheduled-build"
+    ],
+    "A-surface#never-run-first": [
+      "surface.dispatch.admission-order"
     ],
     "A-surface#query-admin-use": [
       "surface.open-console.identity-gate",
@@ -68811,6 +68814,20 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/surface/dispatch.rs",
         "name": "ties_start_by_priority_then_least_recent_dispatch",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/surface/dispatch.rs",
+        "name": "a_never_run_unit_starts_before_a_unit_due_earlier",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/scheduler.rs",
+        "name": "a_never_run_unit_starts_under_a_backlog_though_serve_restarts_each_wake",
         "verdict": "performed",
         "proved": false
       }

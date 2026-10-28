@@ -208,6 +208,7 @@ The struct at `crates/contextful-core/src/surface/external.rs`, named by `surfac
 | `A-surface#delegated-body-deploy` | `run.items.delegated-item`, `surface.delegate.binding`, `surface.delegate.call-mode`, `surface.delegate.outcome` |
 | `A-surface#due-units-admit` | `surface.dispatch.not-a-head`, `surface.dispatch.admission-order`, `surface.dispatch.refill` |
 | `A-surface#native-model-builds` | `surface.fire.model-snapshot`, `surface.fire.scheduled-build` |
+| `A-surface#never-run-first` | `surface.dispatch.admission-order` |
 | `A-surface#query-admin-use` | `surface.open-console.identity-gate`, `surface.open-console.page-grants`, `surface.open-console.engine-faces`, `surface.open-console.wrong-page`, `surface.open-console.admin-grant` |
 | `A-surface#residency-divergence-detected` | `surface.reside.region-entries`, `surface.reside.site-regions` |
 | `A-surface#store-driven-job` | `run.journal.store-input`, `run.journal.input-pin` |

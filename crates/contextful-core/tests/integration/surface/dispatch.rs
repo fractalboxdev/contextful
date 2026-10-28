@@ -56,9 +56,9 @@ fn a_key_in_flight_starts_no_second_instance() {
     assert_eq!(keys(&a.start), ["filings", "orders"]);
 }
 
-/// Due units start by earliest next fire, then highest `priority`, then the least recent of
-/// each unit's last run start and last dispatch, a unit with neither first, then id.
-// spec: surface.dispatch.admission-order@b26cf3fe
+/// Due units start with each unit holding neither a last run start nor a last dispatch first,
+/// then by earliest next fire, then highest `priority`, then the least recent of the two, then id.
+// spec: surface.dispatch.admission-order@16dc4906
 #[test]
 fn ties_start_by_priority_then_least_recent_dispatch() {
     let none = BTreeSet::new();
@@ -70,13 +70,27 @@ fn ties_start_by_priority_then_least_recent_dispatch() {
         ranked("e", -1, None),
     ];
     let a = admit(&units, &none, 5);
-    assert_eq!(keys(&a.start), ["d", "c", "b", "a", "e"]);
-    // An earlier due instant outranks any priority, so a unit left pending goes first next.
-    let mut late = units.clone();
-    late.push(due("z", "2030-01-01T00:00:00Z"));
+    assert_eq!(keys(&a.start), ["c", "e", "d", "b", "a"]);
+    // Among units with history an earlier due instant outranks any priority, so a unit left
+    // pending goes first next.
+    let mut late: Vec<Due> = units.iter().filter(|u| u.base.is_some()).cloned().collect();
+    assert_eq!(late.len(), 3);
+    late.push(Due { base: Some(Instant::parse("2029-12-31T23:00:00Z").unwrap()), ..due("z", "2030-01-01T00:00:00Z") });
     let a = admit(&late, &none, 1);
-    assert_eq!((keys(&a.start), a.pending.len()), (vec!["z"], 5));
-    assert_eq!(keys(&a.pending), ["d", "c", "b", "a", "e"]);
+    assert_eq!((keys(&a.start), keys(&a.pending)), (vec!["z"], vec!["d", "b", "a"]));
+}
+
+/// A unit holding neither a run nor a dispatch falls due at the instant its process armed it,
+/// so it starts ahead of a unit due since an earlier slot: a serve restarting every wake
+/// otherwise arms it behind each backlogged unit at every start.
+// spec: surface.dispatch.admission-order@16dc4906
+#[test]
+fn a_never_run_unit_starts_before_a_unit_due_earlier() {
+    let none = BTreeSet::new();
+    let backlog = Due { base: Some(Instant::parse("2030-01-01T00:00:00Z").unwrap()), ..due("backlog", "2030-01-01T01:00:00Z") };
+    let fresh = due("fresh", "2030-01-01T14:00:00Z");
+    let a = admit(&[backlog, fresh], &none, 1);
+    assert_eq!((keys(&a.start), keys(&a.pending)), (vec!["fresh"], vec!["backlog"]));
 }
 
 /// A unit's dispatch record key spells each id apart, a `job:<name>` id included, and keeps
