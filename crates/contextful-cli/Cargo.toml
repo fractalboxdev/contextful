@@ -46,7 +46,9 @@ iceberg = { version = "=0.10.1", optional = true }
 arrow-array = { version = "58", optional = true }
 arrow-buffer = { version = "58", optional = true }
 arrow-schema = { version = "58", optional = true }
-parquet = { version = "58", default-features = false, features = ["arrow", "zstd"], optional = true }
+# The read path links `parquet` whole, as the Iceberg library does in the full build, so no
+# profile resolves a slimmed interchange build (`topology.package.interchange-whole`).
+parquet = { version = "58", features = ["async"], optional = true }
 rusty-s3 = { version = "0.10", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
 uuid = { version = "1", features = ["v4"], optional = true }
@@ -96,6 +98,7 @@ read-plane = [
     "dep:contextful-outbound",
     "dep:contextful-sync",
     "dep:libc",
+    "dep:parquet",
 ]
 # The run path over the read path: the execution core and its scheduler, the connectors,
 # the SQLite run store, memory synthesis and the evaluation runner. A build without it
