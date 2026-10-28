@@ -607,14 +607,6 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because a container on an empty disk otherwise serves without other nodes' runs*
 - `serve-refresh` — Under {{store.pull.before-run}}, `serve` pulls again every 30 s and maps the new generation for reads starting after that pull; a failed refresh keeps serving the held generation and logs the failure.
   *because a separate query face otherwise serves its starting generation until restart*
-- `lazy-parts` — With `[sync] lazy_parts = true`, pull skips table Parquet data parts, which the store fetches whole on first read or fold use and verifies under {{store.pull.digest-mismatch}}.
-  *A-store#cold-store-boots*
-- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.
-  *A-store#cold-store-boots*
-- `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.
-  *because a partial acquisition and a lost index leave completed downloads subject to eviction*
-- `part-collected` — A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.
-  *because retention collects a superseded snapshot's parts while a container holding its pointer reads them*
 - `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads its in-scope keys at their listed digests and writes exactly its pointers regardless of fence.
 - `generation-list` — `contextful sync generations` lists the bucket's `gen-<N>.json` files in ascending order with `committed_at`, `committed_by` and the project's entry and tombstone counts, a missing stamp printing as `-`.
   *because generation numbers carry no time*
@@ -631,7 +623,22 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
 - `control-head` — Pull downloads the bucket manifest's project-scoped control head, snapshot and receipt ancestry at their listed digests. The local applied pointer stays unchanged for {{surface.reconcile.pulled-control}}.
   *A-surface#synced-control-head*
 
-unsettled: Under {{store.pull.lazy-parts}}, does {{store.pull.pointer-last}} wait for the snapshot manifest and its listed digests alone, and {{store.pull.before-run}} for every table's metadata alone? owner: store affects: store.pull
+### lazy parts
+
+A lazy store pulls metadata and fetches each data part when a read first needs it.
+
+- `lazy-parts` — With `[sync] lazy_parts = true`, pull skips table Parquet data parts, which the store fetches whole on first read or fold use and verifies under {{store.pull.digest-mismatch}}.
+  *A-store#cold-store-boots*
+- `lazy-pointer` — Under {{store.pull.lazy-parts}}, {{store.pull.pointer-last}} waits for the named snapshot's `_manifest.json` alone; a part's digest comes from the bucket manifest when a read first fetches it.
+  *A-store#cold-store-boots*
+- `lazy-ready` — Under {{store.pull.lazy-parts}}, {{store.pull.before-run}} waits for every in-scope object except data parts: each `schema.json`, snapshot and run manifest, run state and control object.
+  *because a read resolves each run, folded runs under `as_of` included, from its local `_manifest.json`*
+- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.
+  *A-store#cold-store-boots*
+- `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.
+  *because a partial acquisition and a lost index leave completed downloads subject to eviction*
+- `part-collected` — A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.
+  *because retention collects a superseded snapshot's parts while a container holding its pointer reads them*
 
 A pull converges on the bucket manifest and writes each table pointer last.
 

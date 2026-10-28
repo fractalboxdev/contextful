@@ -372,11 +372,13 @@ unsettled: Does the read face admit a pointwise reranker, and does one whose eve
 
 Locality of the bytes a read touches, reuse of a resolved session and its connections, and reuse of a result across requests.
 
-- `hot-local-parquet` — The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.
+- `hot-local-parquet` — The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path except as {{read.cache.lazy-hydration}} admits.
 - `cold-start` — A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
 - `warming-read` — A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.
   *because a container ready before hydration completes otherwise answers a read from a partial snapshot set*
 - `miss-wait` — Under {{store.pull.lazy-parts}}, each absent part has a 30 s acquisition deadline covering manifest lookup, GET attempts and backoff sleeps. Expiry raises `ReadPartUnavailable`, naming the part.
+  *A-store#cold-store-boots*
+- `lazy-hydration` — Under {{store.pull.lazy-parts}}, hydration completes once the pull returns and the parts on disk are mapped, and a query's first read of an absent part takes the one fetch {{read.cache.miss-wait}} bounds.
   *A-store#cold-store-boots*
 - `result-key` — Result keys include token id, revocation epoch, grants, subject, session zone and incognito state. Keys also include touched relations and files, bounds, statement, parameter values and applied row ceiling.
   *A-read#result-reused-under*
@@ -398,8 +400,6 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
   *because connections hold memory per authority, and an entry under a superseded store state is never hit again*
 - `pool-connections` — One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.
   *because concurrency on one session is bursty, and an idle connection holds its footer cache in memory*
-
-unsettled: Does {{read.cache.hot-local-parquet}} admit the one fetch {{read.cache.miss-wait}} puts in a query's path, and does {{read.cache.warming-read}} end once metadata hydration completes? owner: read-path affects: read.cache
 
 ## resolve-pin
 
