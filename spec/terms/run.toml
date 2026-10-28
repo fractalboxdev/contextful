@@ -100,6 +100,7 @@ ExportTypeUnsupported          = { clause = "run.export-iceberg.type-refused", g
 ExportSchemaChanged            = { clause = "run.export-iceberg.schema-changed", gloss = "An Iceberg export source whose columns no longer match the table's current schema." }
 ExportCommitConflict           = { clause = "run.export-iceberg.commit-retry", gloss = "An Iceberg snapshot commit still conflicting after its last attempt." }
 ExportStorageUndeclared        = { clause = "run.export-iceberg.egress", gloss = "An Iceberg table configuration naming a storage host its export block does not declare." }
+ExportQueryRefused             = { clause = "run.export-iceberg.query-refused", gloss = "A Basin reader request the gateway answers from no engine: a named namespace, unknown template, bad table or shared-warehouse SQL." }
 ExportNamespaceShared          = { clause = "run.export-iceberg.namespace-shared", gloss = "Two Iceberg exports sharing a namespace across credentials, a credential across namespaces, or one table." }
 PublicationIncompatible        = { clause = "run.export.group-incompatible", gloss = "A coordinated publication, predecessor, membership or checkpoint differs from its durable binding." }
 PublicationHeaderTooLarge      = { clause = "run.export.group-request-bound", gloss = "A coordinated group header leaving no room for one event under the typed request ceiling." }
