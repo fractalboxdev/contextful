@@ -37,15 +37,15 @@ fn with_capped(s: &Scratch) -> String {
 fn provider_runtime_diagrams_and_notes_come_from_the_target_file() {
     let s = Scratch::copy();
     let mut target: toml::Value = s.read(CF).parse().unwrap();
-    let diagram = "flowchart LR\n  CLIENT([\"caller\"]) -- \"HTTPS\" --> ROUTER[\"routing Worker\"]\n";
+    let diagram = "flowchart LR\n  CLIENT([\"caller\"]) -- \"HTTPS\" --> GATEWAY[\"gateway\"]\n";
     target.as_table_mut().unwrap().insert("diagram".into(), toml::Value::String(diagram.into()));
-    target.as_table_mut().unwrap().insert("runtime".into(), toml::Value::String("The routing Worker executes TypeScript in a V8 isolate.".into()));
+    target.as_table_mut().unwrap().insert("runtime".into(), toml::Value::String("The gateway executes TypeScript in a V8 isolate.".into()));
     s.write(CF, &toml::to_string(&target).unwrap());
     assert!(s.cmd(&["state"]).status.success());
     let page = s.read("spec/targets.md");
     let cloudflare = page.split("## Cloudflare\n").nth(1).unwrap().split("\n## ").next().unwrap();
     assert!(cloudflare.contains(diagram), "the provider diagram retains the execution boundary: {cloudflare}");
-    assert!(cloudflare.contains("The routing Worker executes TypeScript in a V8 isolate."), "{cloudflare}");
+    assert!(cloudflare.contains("The gateway executes TypeScript in a V8 isolate."), "{cloudflare}");
     assert!(!cloudflare.contains("COMP[\"heavy compute\"]"), "the custom diagram replaces the generic role diagram: {cloudflare}");
     assert!(cloudflare.contains("| heavy compute |"), "the role table remains generated: {cloudflare}");
 }
@@ -229,9 +229,10 @@ fn a_shape_claiming_containers_on_a_provider_without_them_is_refused() {
     assert!(codes(&s.lint("targets"), "TargetShapeUnsupported").is_empty());
     drop_item(&s, CF, "primitives", "containers");
     let found = codes(&s.lint("targets"), "TargetShapeUnsupported");
-    assert_eq!(found.len(), 1, "the Cloudflare deployment runs on a container: {found:?}");
+    assert_eq!(found.len(), 2, "both Cloudflare shapes run on a container: {found:?}");
     assert!(found.iter().all(|m| m.contains("cloudflare") && m.contains("`containers`")), "{found:?}");
     assert!(found.iter().any(|m| m.contains("`worker-container-d1`")), "{found:?}");
+    assert!(found.iter().any(|m| m.contains("`worker-container-d1-basin`")), "{found:?}");
 
     let s = Scratch::copy();
     drop_item(&s, "spec/targets/aws.toml", "primitives", "scheduler");

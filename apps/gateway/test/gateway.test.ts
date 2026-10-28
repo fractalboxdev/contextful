@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { registryFromEnv, routeRequest } from "../src/index.ts";
 
-// spec: topology.publish-hostname.unconfigured-gateway@4bb428f8
+// spec: topology.publish-hostname.unconfigured-gateway@f29c9757
 test("an empty registry returns GatewayUnconfigured on every route", async () => {
   const registry = registryFromEnv("[]");
   for (const path of ["/query", "/", "/stores/field-notes/mcp", "/health"]) {

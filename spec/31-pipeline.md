@@ -521,7 +521,7 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
   *A-run#iceberg-audience*
 - `caller-sql` — Caller-written SQL reaches the catalog's query engine only when the warehouse holds one audience; otherwise the route runs fixed query templates against the mapped namespace.
   *A-run#iceberg-audience*
-- `route` — Where a deployment adds a catalog query engine, the read router sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.
+- `route` — Where a deployment adds a catalog query engine, the gateway sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.
   *A-topology#catalog-read-add-on*
 
 #### Scenarios

@@ -126,10 +126,10 @@ connector = 10126
 corpus = 5120
 disclosure = 5217
 read = 9502
-run = 19236
+run = 19235
 store = 9158
 surface = 6243
-topology = 2642
+topology = 2641
 
 [ceiling.adr-words]
 A-assurance = 2795
@@ -141,4 +141,4 @@ A-read = 2681
 A-run = 3988
 A-store = 3428
 A-surface = 1655
-A-topology = 1575
+A-topology = 1572
