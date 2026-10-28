@@ -2,6 +2,7 @@
 
 [operation]
 journal       = {}
+callback-guard = {}
 items         = {}
 advance       = {}
 suspend       = {}
@@ -43,6 +44,8 @@ StorageCorpusUnavailable       = { clause = "run.journal.corpus-unavailable", gl
 StorageProfileUnsupported      = { clause = "run.journal.storage-unsupported", gloss = "The storage profile or its encryption pairing is unsupported." }
 ExecutionSchemaIncompatible    = { clause = "run.journal.execution-schema", gloss = "The durable execution schema differs from the executable's supported schema." }
 ExecutionRecoveryMismatch      = { clause = "run.journal.execution-recovery", gloss = "A complete execution backup or its project recovery identity is missing." }
+ExecutionGuardEvidenceMismatch = { clause = "run.callback-guard.evidence", gloss = "Reconciliation evidence that carries no recorded key, or an idempotency key past its window." }
+ExecutionGuardHeld             = { clause = "run.callback-guard.live-holder", gloss = "Reconciliation of a guard whose holder may still be running its callback." }
 ExecutionWriterFenced          = { clause = "run.export.writer-fenced", gloss = "An exporter no longer owns its durable writer lease." }
 CursorFieldMismatch            = { clause = "run.advance.field-rename", gloss = "A stored position's field differs from the declared incremental field." }
 CursorPositionUnorderable      = { clause = "run.advance.unorderable-position", gloss = "A clock value with no ordering, or a position type changing mid-pass." }

@@ -2,6 +2,7 @@
 contract: run
 owns:
   - journal
+  - callback-guard
   - items
   - advance
   - suspend
@@ -124,7 +125,7 @@ Journal rows, blobs and awakeables persist through storage ports that SQLite, Po
   *because a write whose answer is lost may have committed, and resending it could apply it twice*
 - `d1-initialize` — Storage initialization's D1 batch, every statement `IF NOT EXISTS` DDL or an insert or update guarded to apply once, resends after a lost answer as a read does under {{run.journal.d1-transport}}.
   *because a second application of that batch leaves the state its first application left*
-- `d1-guard` — A committed D1 guard prevents owner or lease transfer throughout an admitted external callback; a crash guard requires recorded receipt or idempotency evidence before takeover.
+- `d1-guard` — A committed D1 guard blocks transfer of the rows it protects throughout an admitted external callback and outlives the callback's crash, releasing only under {{run.callback-guard.release}}, {{run.callback-guard.replay}} or {{run.callback-guard.manual}}.
   *A-run#run-substrate-storage*
 - `d1-recovery` — The D1 recovery identity binds one project and schema to an R2 object frontier; a missing object or mismatched generation follows {{run.journal.execution-recovery}}.
   *A-run#run-substrate-storage*
@@ -166,6 +167,54 @@ A store-driven run records its input once and runs its registered body once per 
   *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
 - `body-projection` — A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.
   *A-authority#body-projection*
+
+## callback-guard
+
+A D1 callback guard under {{run.journal.d1-guard}}: the rows it protects, the effect identity it records, its release after the holder stops, and what an operator sees of it.
+
+- `scope` — A guard protects each owner scope its callback admits, every ancestor scope and every lease key, entity fences included; another job's admission, an unrelated export and transfer of any unprotected row proceed.
+  *A-run#d1-execution-state*
+- `acquire` — Guard acquisition checks the exact owner, active attempt and fence of every row it protects and binds them in one D1 statement; a row another guard protects admits no second callback.
+  *A-run#d1-execution-state*
+- `holder-identity` — An engine draws a random holder identity at start and registers it in D1 before admitting its first guard.
+- `identity` — A guard records its execution, attempt, holder identity, journal entry key, the key {{run.journal.idempotency-key}} sends, admission time, and its destination's declared deduplication window, `none` when the destination declares none.
+  *A-run#d1-execution-state*
+- `window` — A deduplication window covers a guard's key from its admission time until that time plus the declared window; a `none` window covers nothing.
+  *because the request leaves after admission, so a window counted from admission ends no later than the destination's own*
+- `release` — A holder deletes its own guard when its callback returns, before journaling the callback's value.
+  *A-run#d1-execution-state*
+- `holder-gone` — A guard's holder is gone once its holder identity records an exit, written by the holder on stop or by the serve process reaping it under {{surface.dispatch.children-reaped}}; a lapsed owner lease confirms nothing.
+  *because a stalled holder misses renewals while its request may still reach the destination*
+- `replay` — Without an operator, a guard releases only when its holder is gone, its owner lease has lapsed and {{run.callback-guard.window}} still covers its key; release and takeover commit in one D1 batch, and replay sends that key.
+  *A-run#d1-execution-state*
+- `manual` — Apart from {{run.callback-guard.release}} and {{run.callback-guard.replay}}, a guard releases only through `contextful storage reconcile-guard`, which deletes it and appends an audit row naming token, evidence and operator in one D1 batch.
+  *A-run#d1-execution-state*
+- `live-holder` — Reconciling a guard whose owner lease is unexpired and whose holder records no exit raises `ExecutionGuardHeld` and leaves the guard.
+  *because its callback may still be sending the effect the guard protects*
+- `evidence` — `idempotency:<key>` releases a guard when the key equals its recorded key and {{run.callback-guard.window}} still covers it; `receipt:<key>:<id>` when the receipt's key equals it. Other evidence raises `ExecutionGuardEvidenceMismatch` and leaves the guard.
+  *because evidence the guard cannot tie to its own effect says nothing about whether that effect completed*
+- `class` — A guard's evidence class is `replay-safe` while {{run.callback-guard.window}} covers its key; otherwise `receipt-required` for a publication callback and `unknown` for any other.
+  *A-run#d1-execution-state*
+- `inspect` — `contextful storage guard --project <name>` prints each guard's token, protected scopes and lease keys, execution, attempt, holder identity, journal entry key, idempotency key, admission time, window and evidence class.
+  *because an operator checks the destination for the guard's key before supplying evidence*
+- `blocked` — A transfer a guard blocks answers retryable, naming the guard's token and evidence class, and `contextful storage reconcile-guard` unless the class is `replay-safe`.
+  *because a generic transient failure leaves an operator retrying a guard that only reconciliation releases*
+
+#### Scenarios
+
+- `run.callback-guard.scope`: WHEN a callback on one item holds a guard, THEN takeover of that item's owner, its ancestors and its entity lease refuses, while another job's admission and an unrelated export proceed.
+- `run.callback-guard.scope`: WHEN a guard protects a job scope alone, THEN an item owner beneath it transfers, and that item's next callback waits on the shared job row.
+- `run.callback-guard.acquire`: WHEN two callbacks protect disjoint rows, THEN both run concurrently; WHEN they share a protected row, THEN the second admits no callback.
+- `run.callback-guard.replay`: WHEN a guard's owner lease has lapsed but its holder records no exit, THEN the guard stays.
+- `run.callback-guard.replay`: WHEN a gone holder's window has passed or is `none`, THEN the guard stays for {{run.callback-guard.manual}}.
+- `run.callback-guard.replay`: WHEN a gone holder's window still covers its key, THEN release and takeover commit together and the replayed request carries the original key.
+- `run.callback-guard.live-holder`: WHEN an operator reconciles a guard whose owner lease is unexpired, THEN reconciliation raises `ExecutionGuardHeld` and the guard stays.
+- `run.callback-guard.evidence`: WHEN an operator supplies an idempotency key other than the guard's recorded key, THEN reconciliation raises `ExecutionGuardEvidenceMismatch` and the guard stays.
+- `run.callback-guard.evidence`: WHEN a guard's window is `none`, THEN its recorded key as `idempotency:` evidence raises `ExecutionGuardEvidenceMismatch`, and a receipt carrying that key releases it.
+
+unsettled: Which declaration carries a destination's deduplication window for {{run.callback-guard.identity}}: the connector manifest, the delegate binding or the export target? owner: run-path affects: run.callback-guard
+
+unsettled: What records a holder identity's exit when its whole container stops before any serve process reaps it? owner: run-path affects: run.callback-guard
 
 ## items
 

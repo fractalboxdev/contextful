@@ -295,3 +295,13 @@ Acceptance: `contextful_acceptance::m23::m23_workspace_delegation`
 Reach: Two exports of one table commit an append and then an overwrite snapshot to a local Iceberg REST catalog, and a reader of the namespace sees the second export's rows alone.
 
 Acceptance: `contextful_acceptance::m24::m24_iceberg_export`
+
+## 25 — Scoped callback guards
+
+| Operations | Intent |
+| --- | --- |
+| `run.callback-guard` | A D1 callback guard bound to its own rows, its recorded effect identity, and release only over proven replay-safe effects or matching operator evidence. |
+
+Reach: A guard on one item blocks its owner, ancestors and entity lease while another job's admission proceeds, and a dead holder's replay-safe effect releases with its original key while mismatched evidence leaves the guard.
+
+Acceptance: `contextful_acceptance::m25::m25_callback_guards`
