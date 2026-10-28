@@ -1119,3 +1119,37 @@ fn sync_transfers_sets_the_pull_width() {
     cold.syncer.pull(&PullScope::default()).unwrap();
     assert_eq!(slow.peak.load(Ordering::SeqCst), 4);
 }
+
+/// Pull and push read each table pointer by its key, for each table the bucket manifest lists, and never list the
+/// project's `tables/` prefix: the cost grows with the tables, not with the objects they hold.
+// spec: store.pull.pointer-read@c9c63efa
+#[test]
+fn pull_and_push_read_pointers_by_key_and_list_no_table_objects() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    for i in 0..40 {
+        a.land(&format!("run-{i}"), json!([{ "id": i, "title": "a" }]), "2030-01-01T00:00:00Z");
+    }
+    a.land_into("notes", "notes-1", json!([{ "id": 1 }]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    let held = a.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&a.syncer.store, &TableDecl::named("filings"), at(NOW)).unwrap() else { panic!() };
+    a.syncer.push(at(NOW)).unwrap();
+    a.syncer.publish("filings", &snapshot_id, &held).unwrap();
+
+    let recorded = Arc::new(Scripted { inner: b.clone(), script: Script::default() });
+    let c = node("ingest-b", recorded.clone(), "");
+    let report = c.syncer.pull(&PullScope::default()).unwrap();
+    assert!(report.pointers.iter().any(|k| k.ends_with("filings/_pointer.json")), "{:?}", report.pointers);
+    assert!(c.root().join("tables/filings/_pointer.json").exists());
+    let gets = recorded.script.gets.lock().unwrap().clone();
+    assert!(gets.contains(&"team/research/tables/filings/_pointer.json".to_string()), "{gets:?}");
+    assert!(gets.contains(&"team/research/tables/notes/_pointer.json".to_string()), "a table without a pointer costs one get: {gets:?}");
+    assert_eq!(recorded.script.listed_under("team/research/tables/"), 0, "a pull lists no table object");
+
+    c.land("run-b", json!([{ "id": 99, "title": "b" }]), NOW);
+    recorded.script.reset();
+    c.syncer.push(at(NOW)).unwrap();
+    assert_eq!(recorded.script.listed_under("team/research/tables/"), 0, "a push lists no table object");
+}

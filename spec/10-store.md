@@ -597,6 +597,8 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
 - `cold-own-keys` — A store lacking its own `nodes/<node-id>/run-state.json` pulls the missing keys its node owns, so a replacement host reusing the node id tombstones none of them.
   *because a replacement host otherwise reads none of its node's run history*
+- `pointer-read` — Pull and push read the pointer of each table the bucket manifest lists by its key, `tables/<t>/_pointer.json`, and list no table objects, so the read grows with the tables and not with their objects.
+  *because a bucket gathers parts with every landing, and a pointer read listing them grows with the store's history*
 - `pointer-advance` — Pull advances a pointer only to a higher fence, or the same fence with a later snapshot, verifying every advancing table before writing any pointer.
   *A-store#replica-read-whole*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
