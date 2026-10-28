@@ -608,6 +608,22 @@ pub fn unmark_uncommitted(l: &Located, run_ids: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// After a job fire's runs close: drop the mark of each closed run on this node that holds no
+/// run manifest in a table a push carries, a build fire's and a zero-row landing's among them,
+/// then push as `push_after_run` asks (`store.drain.mark`, `store.push.after-run`). A fire
+/// opens runs under ids it derives, so this settles every closed mark rather than a list.
+#[cfg(feature = "data-plane")]
+pub fn settle_fire(l: &Located, at: Instant) -> Result<()> {
+    let store = Store::open(&l.project.dir, &l.project.name)?;
+    if let Some(catalog) = durable_catalog(&store)? {
+        let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
+        let node = node.to_string();
+        let closed: Vec<String> = marked_for(catalog.as_ref(), &node)?.into_iter().filter(|r| !r.status.is_in_flight()).map(|r| r.run_id).collect();
+        unmark_uncommitted(l, &closed)?;
+    }
+    push_after_run(l, at)
+}
+
 /// The longest push a stopping `pipeline serve` attempts (`store.drain.deadline`).
 #[cfg(feature = "data-plane")]
 pub const DRAIN_SECS: u64 = 15;

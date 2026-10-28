@@ -534,7 +534,7 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *because a generation otherwise names a pointer the bucket never held*
 - `stranded` — Push reports local keys other nodes own that the committed bucket manifest neither lists nor tombstones, grouped by owner on stderr with the `CONTEXTFUL_NODE_ID` pushing each group.
   *because a moved store root re-derives the node id, stranding runs under the old one*
-- `after-run` — With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, a failed push failing the command.
+- `after-run` — With `[sync] push_after_run = true`, `run start`, `pipeline run` and `job fire` push the store once the fire's runs close, a failed push failing the command.
   *because a push spends bucket writes on every fire, which a scheduled sync avoids*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.

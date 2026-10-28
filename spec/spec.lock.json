@@ -4605,7 +4605,7 @@
       "operation": "push",
       "subject": "after-run",
       "kind": "behavior",
-      "statement": "With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, a failed push failing the command.",
+      "statement": "With `[sync] push_after_run = true`, `run start`, `pipeline run` and `job fire` push the store once the fire's runs close, a failed push failing the command.",
       "why": "because a push spends bucket writes on every fire, which a scheduled sync avoids",
       "file": "spec/10-store.md",
       "line": 537
@@ -65435,6 +65435,13 @@
         "name": "a_run_killed_after_its_local_commit_stays_marked_until_a_push_carries_it",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_build_fire_drops_its_mark_and_pushes_its_output",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.drain.record-unmarked": [
@@ -67388,6 +67395,13 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_run_declaring_push_after_run_publishes_on_success_and_on_failure",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_build_fire_drops_its_mark_and_pushes_its_output",
         "verdict": "performed",
         "proved": false
       }

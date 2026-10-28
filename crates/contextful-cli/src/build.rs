@@ -259,7 +259,10 @@ pub(crate) fn fire_job(
         Err(error) => Outcome::Failed(build_failure(error)),
     };
     execution.close(outcome)?;
+    // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
+    let settled = crate::sync::settle_fire(located, wire.clock.now());
     let built = result?;
+    settled?;
     if grouped {
         if built.section.is_none() {anyhow::bail!("PublicationIncompatible: a publication member is a materialized build");}
         let store = Store::open(&located.project.dir,&located.project.name)?;
