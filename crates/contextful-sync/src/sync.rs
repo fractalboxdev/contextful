@@ -8,7 +8,7 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, 
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, HeldKeys,
+    admit_format, confine, generation_key, generation_of, is_commit_log, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, HeldKeys,
     SyncConfig, Tombstone, GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE, PUSH_ROUND_CEILING,
 };
 use crate::transfer::{each, DigestRecord};
@@ -911,8 +911,14 @@ impl Syncer {
     }
 
     /// Every table pointer of this project the bucket holds, keyed under the project.
-    fn project_pointers(&self) -> Result<BTreeMap<String, BucketPointer>> {
-        let keys: Vec<String> = self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)).collect();
+    /// The bucket's table pointers of the project, each read by its key for every table
+    /// `manifest` lists, so the cost grows with the tables and not with the objects they hold
+    /// (`store.pull.pointer-read`). A table's objects reach the manifest before its pointer
+    /// does, so the manifest names every table a pointer can exist for.
+    fn project_pointers(&self, manifest: &BucketManifest) -> Result<BTreeMap<String, BucketPointer>> {
+        let project = format!("{}/", self.project);
+        let tables: BTreeSet<String> = manifest.entries.keys().chain(manifest.pointers.keys()).filter(|k| k.starts_with(&project)).filter_map(|k| table_of(k)).collect();
+        let keys: Vec<String> = tables.iter().map(|t| self.key(&format!("{}/tables/{t}/{POINTER_FILE}", self.project))).collect::<Result<_>>()?;
         let read = each(self.config.transfers(), &keys, |bucket_key| {
             let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(bucket_key).to_string();
             let Some((bytes, _)) = self.bucket.get(bucket_key)? else { return Ok(None) };
@@ -1166,7 +1172,7 @@ impl Syncer {
             last_floor = Some(floor);
             self.admit_control_head(plan, &remote)?;
             // Pointers read before the commit name snapshots whose files earlier commits listed.
-            let pointers: BTreeMap<String, BucketPointer> = self.project_pointers()?.into_iter().filter(|(k, _)| !self.redistribution.withholds(&self.project, k)).collect();
+            let pointers: BTreeMap<String, BucketPointer> = self.project_pointers(&remote)?.into_iter().filter(|(k, _)| !self.redistribution.withholds(&self.project, k)).collect();
             let mut entries = plan.mine.clone();
             // A shared key lists the object the bucket holds now, whoever merged it last.
             for key in plan.shared.keys() {
@@ -1601,7 +1607,7 @@ impl Syncer {
         // Pointers last: every pointer to write is verified before any is written.
         let candidates: Vec<(String, BucketPointer)> = match &generation {
             Some((listed, _)) => listed.pointers.iter().map(|(k, p)| (k.clone(), p.clone())).collect(),
-            None => self.project_pointers()?.into_iter().collect(),
+            None => self.project_pointers(&manifest)?.into_iter().collect(),
         };
         let mut advancing: Vec<(String, PathBuf, Pointer)> = Vec::new();
         for (rel_key, pointer) in candidates {
