@@ -26,6 +26,8 @@ use std::sync::Arc;
 
 #[cfg(feature = "iceberg-export")]
 mod iceberg;
+#[cfg(feature = "iceberg-export")]
+pub(crate) use iceberg::OtherAudience;
 pub(crate) mod publication;
 
 #[derive(Subcommand)]

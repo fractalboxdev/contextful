@@ -134,11 +134,13 @@ impl Catalog {
 
     /// Send one `updateTable` request.
     pub fn commit(&self, body: &Value) -> Result<Commit> {
+        // The REST specification's definite refusals take no effect; every other status, a
+        // proxy's 408 or 429 among them, leaves the outcome open.
         Ok(match self.exchange("POST", &self.table_url()?, Some(body)) {
-            Ok((200, _)) => Commit::Taken,
+            Ok((200..=299, _)) => Commit::Taken,
             Ok((409, body)) => Commit::Conflict(body.to_string()),
-            Ok((status, body)) if status >= 500 => Commit::Unknown(format!("the catalog answered {status}: {body}")),
-            Ok((status, body)) => Commit::Refused(format!("the catalog answered {status}: {body}")),
+            Ok((status @ (400 | 401 | 403 | 404 | 406 | 419 | 422), body)) => Commit::Refused(format!("the catalog answered {status}: {body}")),
+            Ok((status, body)) => Commit::Unknown(format!("the catalog answered {status}: {body}")),
             Err(message) => Commit::Unknown(message),
         })
     }

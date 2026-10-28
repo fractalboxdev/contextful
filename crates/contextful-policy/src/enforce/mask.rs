@@ -296,42 +296,48 @@ impl ColumnPolicy {
         self.selected.as_ref().and_then(|s| selected.and_then(|name| s.masks.get(name))).or(self.mask.as_ref())
     }
 
-    /// The type the session projection reads the column as: [`ColumnPolicy::sql`] keeps the
-    /// stored type under `drop` alone, and casts every other strategy, and an exception arm
-    /// beside a row-selected mask, to text (`authority.mask.projected-type`).
+    /// The type the session projection reads the column as, the stored type when no mask
+    /// applies (`authority.mask.projected-type`).
     pub fn projected_type(&self, ty: &ColumnType) -> ColumnType {
-        let Some(mask) = self.mask.as_ref() else { return ty.clone() };
-        let dropped = mask.primary == Strategy::Drop && self.selected.as_ref().is_none_or(|s| s.masks.values().all(|m| m.primary == Strategy::Drop));
-        if dropped && (self.exceptions.is_empty() || self.selected.is_none()) {
-            ty.clone()
-        } else {
-            ColumnType::Utf8
-        }
+        self.projection("column", ty).map_or_else(|| ty.clone(), |(_, read)| read)
     }
 
     pub fn sql(&self, column: &str, ty: &ColumnType) -> Option<String> {
+        self.projection(column, ty).map(|(sql, _)| sql)
+    }
+
+    /// The projection replacing the column and the type it reads as, built together so the
+    /// two never disagree. Arms of one `CASE` of different types read as text.
+    fn projection(&self, column: &str, ty: &ColumnType) -> Option<(String, ColumnType)> {
         let mask = self.mask.as_ref()?;
-        let fallback = mask.sql(column, ty);
-        let masked = match &self.selected {
-            None => fallback,
+        let (fallback, fallback_type) = mask.projection(column, ty);
+        let common = |a: ColumnType, b: &ColumnType| if a == *b { a } else { ColumnType::Utf8 };
+        let (masked, masked_type) = match &self.selected {
+            None => (fallback, fallback_type),
             Some(selected) => {
-                let cases: String = selected.masks.iter().map(|(name, mask)| format!(" WHEN '{}' THEN {}", name.replace('\'', "''"), mask.sql(column, ty))).collect();
-                format!("CASE {}{cases} ELSE {fallback} END", ident(&selected.column))
+                let mut read = fallback_type;
+                let mut cases = String::new();
+                for (name, mask) in &selected.masks {
+                    let (arm, arm_type) = mask.projection(column, ty);
+                    read = common(read, &arm_type);
+                    cases.push_str(&format!(" WHEN '{}' THEN {arm}", name.replace('\'', "''")));
+                }
+                (format!("CASE {}{cases} ELSE {fallback} END", ident(&selected.column)), read)
             }
         };
         if self.exceptions.is_empty() {
-            return Some(masked);
+            return Some((masked, masked_type));
         }
         // A matching subject reads the stored value, typed as the masked projection is so
         // both arms share one type: `drop` keeps the column's type, every other strategy
         // yields text.
-        let unmasked = if self.selected.is_none() && mask.primary == Strategy::Drop && *ty != ColumnType::Utf8 {
-            ident(column)
+        let (unmasked, unmasked_type) = if self.selected.is_none() && mask.primary == Strategy::Drop && *ty != ColumnType::Utf8 {
+            (ident(column), ty.clone())
         } else {
-            format!("CAST({} AS VARCHAR)", ident(column))
+            (format!("CAST({} AS VARCHAR)", ident(column)), ColumnType::Utf8)
         };
         let when: Vec<String> = self.exceptions.iter().map(|e| format!("({})", e.sql())).collect();
-        Some(format!("CASE WHEN {} THEN {unmasked} ELSE {masked} END", when.join(" OR ")))
+        Some((format!("CASE WHEN {} THEN {unmasked} ELSE {masked} END", when.join(" OR ")), common(masked_type, &unmasked_type)))
     }
 }
 
@@ -531,11 +537,17 @@ impl Mask {
     /// (`authority.mask.native-digest`). `drop` nulls the cell, or yields an empty string
     /// for a string column (`authority.mask.drop`).
     pub fn sql(&self, column: &str, ty: &ColumnType) -> String {
+        self.projection(column, ty).0
+    }
+
+    /// The expression and the type it reads as: `drop` keeps the column's type, every other
+    /// strategy yields text.
+    pub fn projection(&self, column: &str, ty: &ColumnType) -> (String, ColumnType) {
         let c = ident(column);
         let text = format!("CAST({c} AS VARCHAR)");
         let primary = match self.primary {
-            Strategy::Drop if *ty == ColumnType::Utf8 => return "CAST('' AS VARCHAR)".to_string(),
-            Strategy::Drop => return format!("CAST(NULL AS {})", ty.sql()),
+            Strategy::Drop if *ty == ColumnType::Utf8 => return ("CAST('' AS VARCHAR)".to_string(), ColumnType::Utf8),
+            Strategy::Drop => return (format!("CAST(NULL AS {})", ty.sql()), ty.clone()),
             Strategy::Hash if ty.is_binary() => format!("{HASH_BYTES_FUNCTION}({c})"),
             Strategy::Hash => format!("{HASH_FUNCTION}({text})"),
             Strategy::Tokenize => format!("{TOKEN_FUNCTION}({text})"),
@@ -546,9 +558,10 @@ impl Mask {
                 format!("(CAST({lo} AS VARCHAR) || '-' || CAST({lo} + {n} AS VARCHAR))")
             }
         };
-        match self.combine {
+        let sql = match self.combine {
             Some(n) => format!("left({primary}, {n})"),
             None => primary,
-        }
+        };
+        (sql, ColumnType::Utf8)
     }
 }

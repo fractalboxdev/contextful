@@ -44,9 +44,13 @@ impl Remote {
     }
 
     fn block(&self, name: &str, credential: &str, version: u8) -> String {
+        self.block_in(name, credential, NS, version)
+    }
+
+    fn block_in(&self, name: &str, credential: &str, namespace: &str, version: u8) -> String {
         format!(
             "[[export]]\nname = \"{name}\"\ntable = \"spans\"\nformat = \"iceberg\"\ncredential = \"{credential}\"\n\
-             catalog = \"{}\"\nstorage = \"{}\"\nwarehouse = \"exports\"\nnamespace = \"{NS}\"\ntable_name = \"{TABLE}\"\n\
+             catalog = \"{}\"\nstorage = \"{}\"\nwarehouse = \"exports\"\nnamespace = \"{namespace}\"\ntable_name = \"{TABLE}\"\n\
              format_version = {version}\ntoken = \"${{secret://catalog-token}}\"\n",
             self.catalog.endpoint,
             self.s3.endpoint
@@ -113,7 +117,7 @@ fn export(dir: &Path, name: &str, public: &str, token: &str) -> Output {
 /// The first export creates the table and appends its files; each later export commits one `overwrite` snapshot that
 /// marks every live parent file deleted, so the reader sees the latest export's rows alone.
 // spec: run.export-iceberg.create@44e94a58
-// spec: run.export-iceberg.overwrite@b95024bc
+// spec: run.export-iceberg.overwrite@428b32d8
 // spec: run.export-iceberg.retention@1dc99459
 // spec: run.export-iceberg.read@f96b87c1
 #[test]
@@ -173,7 +177,7 @@ fn an_unchanged_export_commits_nothing() {
 /// A commit conflicting with a snapshot another writer committed, as catalog compaction does, reloads the table and
 /// retries with the files it wrote; the last conflict raises `ExportCommitConflict`, and the exporter deletes every
 /// file that export wrote.
-// spec: run.export-iceberg.commit-retry@ed16e180
+// spec: run.export-iceberg.commit-retry@1c61cfa9
 // spec: run.export-iceberg.orphans@671e1959
 #[test]
 fn a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files() {
@@ -201,9 +205,9 @@ fn a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files()
     assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "a001", "b000"]);
 }
 
-/// A commit whose outcome is unknown deletes no file; the next run reloads the table and records the commit as taken
-/// when `main` names its snapshot id.
-// spec: run.export-iceberg.commit-unknown@48a96073
+/// A commit whose outcome is unknown deletes no file while it may still apply; a later run records it as taken when
+/// the table holds its snapshot, and deletes its files once another table stands or `main` leaves its parent.
+// spec: run.export-iceberg.commit-unknown@2c6ded8c
 #[test]
 fn an_unknown_commit_outcome_keeps_its_files_and_the_next_run_records_it() {
     let remote = Remote::start();
@@ -341,4 +345,137 @@ fn a_masked_column_publishes_as_the_text_the_read_face_answers() {
         assert!(digest.bytes().all(|b| b.is_ascii_hexdigit()), "{digest}");
     }
     assert_eq!(strings(&remote.scan(), "span_id"), ids("a", 2));
+}
+
+/// A queue wake runs every export of the woken table under one credential: an Iceberg export publishing for another
+/// credential is skipped, not failed, so per-audience exports of one table each publish under their own wake.
+// spec: run.export-iceberg.wake-audience@3eb0e63e
+#[test]
+fn a_wake_skips_an_iceberg_export_publishing_for_another_credential() {
+    let remote = Remote::start();
+    let manifest = format!("{}{}", remote.block_in("spans-mirror", "svc://mirror", "mirror", 2), remote.block_in("spans-other", "svc://other", "other", 2));
+    let (dir, public, token) = project(&manifest);
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    let env = [("CONTEXTFUL_TOKEN", token.as_str()), ("CATALOG_TOKEN", TOKEN), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")];
+    let out = cf(p, &["queue", "drain", "--project", "research", "--public-key", &public, "--audience", AUD], &env);
+    let said = format!("{}{}", ok(&out), String::from_utf8_lossy(&out.stderr));
+    assert!(said.contains("spans-other") && said.contains("svc://other"), "{said}");
+    assert_eq!(strings(&remote.catalog.scan(&remote.s3, "mirror", TABLE), "span_id"), ids("a", 2));
+    assert!(remote.catalog.metadata("other", TABLE).is_none(), "the other audience's export waits for its own credential");
+}
+
+/// A commit whose outcome is unknown may still be in flight: while `main` stays at its parent the next run keeps its
+/// files, and the held commit landing first turns the next commit into a retry over it.
+// spec: run.export-iceberg.commit-unknown@2c6ded8c
+#[test]
+fn an_in_flight_commit_keeps_its_files_until_main_moves_past_its_parent() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, "spans-lake", &public, &token));
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+    remote.catalog.script(&[Script::Deferred(504)]);
+    assert!(err(&export(p, "spans-lake", &public, &token)).contains("outcome is unknown"));
+    land(p, "load-3", "2030-01-01T00:02:00Z", &ids("c", 1));
+    ok(&export(p, "spans-lake", &public, &token));
+    assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "b000", "c000"]);
+    let metadata = remote.catalog.metadata(NS, TABLE).unwrap();
+    assert_eq!(metadata.snapshots().count(), 3, "the held commit landed, and the next export overwrote it");
+}
+
+/// Any 2xx takes the commit; a status that leaves the outcome open, such as a proxy's 408, deletes no file.
+// spec: run.export-iceberg.commit-status@217d3293
+#[test]
+fn a_2xx_takes_the_commit_and_an_open_status_keeps_the_files() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    remote.catalog.script(&[Script::AppliedThenAnswer(204)]);
+    assert!(ok(&export(p, "spans-lake", &public, &token)).contains("committed 1 rows"));
+    assert!(ok(&export(p, "spans-lake", &public, &token)).contains("unchanged"));
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+    remote.catalog.script(&[Script::AppliedThenAnswer(408)]);
+    assert!(err(&export(p, "spans-lake", &public, &token)).contains("outcome is unknown"));
+    assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "b000"], "the applied commit's files remain");
+    assert!(ok(&export(p, "spans-lake", &public, &token)).contains("unchanged"));
+}
+
+/// A commit requires the table uuid, `main`, the current schema id and the default spec id it was built against; a
+/// table recreated or evolved between load and commit refuses as `ExportCommitConflict` and the export's files go.
+// spec: run.export-iceberg.overwrite@428b32d8
+// spec: run.export-iceberg.commit-retry@1c61cfa9
+#[test]
+fn a_table_recreated_or_evolved_under_the_export_refuses_its_commit() {
+    for script in [Script::Recreate, Script::EvolveSchema] {
+        let remote = Remote::start();
+        let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+        let p = dir.path();
+        land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+        ok(&export(p, "spans-lake", &public, &token));
+        land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+        let before = remote.s3.keys();
+        remote.catalog.script(&[script]);
+        let refused = err(&export(p, "spans-lake", &public, &token));
+        assert!(refused.contains("ExportCommitConflict"), "{script:?}: {refused}");
+        assert_eq!(remote.s3.keys(), before, "{script:?}: the export's files go");
+    }
+}
+
+/// An export writes unpartitioned tables: a table another engine partitioned refuses before any file is written.
+// spec: run.export-iceberg.table-shape@afad5bc4
+#[test]
+fn a_partitioned_table_refuses_before_any_file_is_written() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, "spans-lake", &public, &token));
+    remote.catalog.partition_by(NS, TABLE, "span_id");
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+    let before = remote.s3.keys();
+    let refused = err(&export(p, "spans-lake", &public, &token));
+    assert!(refused.contains("partition"), "{refused}");
+    assert_eq!(remote.s3.keys(), before);
+}
+
+/// An unknown commit against a table dropped since keeps its record until a table stands again, whose other uuid
+/// proves the commit never took; its files then go.
+// spec: run.export-iceberg.commit-unknown@2c6ded8c
+#[test]
+fn an_unknown_commit_against_a_dropped_table_deletes_its_files_once_a_table_stands() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, "spans-lake", &public, &token));
+    let before = remote.s3.keys();
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+    remote.catalog.script(&[Script::NotAppliedThenAnswer(503)]);
+    err(&export(p, "spans-lake", &public, &token));
+    let untaken: Vec<String> = remote.s3.keys().into_iter().filter(|k| !before.contains(k)).collect();
+    assert!(!untaken.is_empty());
+    remote.catalog.drop_table(NS, TABLE);
+    ok(&export(p, "spans-lake", &public, &token));
+    let after = remote.s3.keys();
+    assert!(untaken.iter().all(|k| !after.contains(k)), "{untaken:?}");
+    assert_eq!(strings(&remote.scan(), "span_id"), ["a000", "b000"]);
+}
+
+/// A table standing at another format version than the block declares refuses; the export commits at the declared one.
+// spec: run.export-iceberg.table-shape@afad5bc4
+#[test]
+fn a_table_at_another_format_version_refuses() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, "spans-lake", &public, &token));
+    let manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap().replace("format_version = 2", "format_version = 3");
+    std::fs::write(p.join("contextful.toml"), manifest).unwrap();
+    let refused = err(&export(p, "spans-lake", &public, &token));
+    assert!(refused.contains("format version 2") && refused.contains("declares 3"), "{refused}");
+    assert_eq!(remote.catalog.commits(), 1);
 }

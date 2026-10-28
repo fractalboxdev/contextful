@@ -29,6 +29,13 @@ pub enum Script {
     Refuse(u16),
     /// Apply nothing and answer `status` with no body, as a timeout before the catalog acts leaves it.
     NotAppliedThenAnswer(u16),
+    /// Answer `status` with no body and hold the commit, judging and applying it only when the
+    /// next commit request arrives, as a catalog still processing a timed-out request does.
+    Deferred(u16),
+    /// Drop the table and create it afresh under a new uuid first, as another party may.
+    Recreate,
+    /// Add a column to the current schema first, moving no snapshot.
+    EvolveSchema,
 }
 
 #[derive(Default)]
@@ -42,6 +49,8 @@ struct State {
     storage: Option<String>,
     /// Vend credentials in the table `config` rather than in `storage-credentials`.
     vend_in_config: bool,
+    /// A held commit and the table it targets ([`Script::Deferred`]).
+    deferred: Option<((String, String), Value)>,
 }
 
 /// A running catalog. Every request must carry `Authorization: Bearer <token>`.
@@ -88,6 +97,22 @@ impl Catalog {
     /// the REST specification's `storage-credentials`.
     pub fn vend_in_config(&self) {
         self.state.lock().unwrap().vend_in_config = true;
+    }
+
+    /// Drop `namespace.table`, as another party may, purging nothing.
+    pub fn drop_table(&self, namespace: &str, table: &str) {
+        self.state.lock().unwrap().tables.remove(&(namespace.to_string(), table.to_string()));
+    }
+
+    /// Make `namespace.table` partitioned by the identity of `column`, as another engine may.
+    pub fn partition_by(&self, namespace: &str, table: &str, column: &str) {
+        let mut state = self.state.lock().unwrap();
+        let key = (namespace.to_string(), table.to_string());
+        let current = state.tables[&key].clone();
+        let source = current.current_schema().field_by_name(column).expect("the column exists").id;
+        let spec = iceberg::spec::UnboundPartitionSpec::builder().add_partition_field(source, column, iceberg::spec::Transform::Identity).unwrap().build();
+        let next = TableMetadataBuilder::new_from_metadata(current, None).add_default_partition_spec(spec).unwrap().build().unwrap().metadata;
+        state.tables.insert(key, next);
     }
 
     /// Commit requests received.
@@ -252,13 +277,46 @@ fn compact(current: &TableMetadata) -> TableMetadata {
     apply(current, vec![TableUpdate::AddSnapshot { snapshot }, TableUpdate::SetSnapshotRef { ref_name: MAIN_BRANCH.to_string(), reference }]).expect("the compaction commit applies")
 }
 
+/// Judge `body`'s requirements against `current` and apply its updates.
+fn judge(current: &TableMetadata, body: &Value) -> Result<TableMetadata, Response> {
+    let requirements: Vec<TableRequirement> = serde_json::from_value(body["requirements"].clone()).map_err(|e| error(400, "BadRequestException", &format!("requirements: {e}")))?;
+    let updates: Vec<TableUpdate> = serde_json::from_value(body["updates"].clone()).map_err(|e| error(400, "BadRequestException", &format!("updates: {e}")))?;
+    for requirement in &requirements {
+        requirement.check(Some(current)).map_err(|e| error(409, "CommitFailedException", &e.to_string()))?;
+    }
+    apply(current, updates).map_err(|e| error(400, "BadRequestException", &e.to_string()))
+}
+
 fn commit(state: &mut State, ns: &str, name: &str, request: &Request) -> Response {
     state.commits += 1;
     let key = (ns.to_string(), name.to_string());
+    // A held commit is judged now, ahead of the request that arrived after it.
+    if let Some((held, body)) = state.deferred.take() {
+        if let Some(Ok(next)) = state.tables.get(&held).map(|m| judge(m, &body)) {
+            state.tables.insert(held, next);
+        }
+    }
     let Some(mut current) = state.tables.get(&key).cloned() else {
         return error(404, "NoSuchTableException", &format!("table `{ns}.{name}` does not exist"));
     };
     let script = state.scripts.pop_front();
+    if let Some(Script::Deferred(status)) = script {
+        state.deferred = Some((key, serde_json::from_slice(&request.body).unwrap_or_default()));
+        return Response { status, headers: Vec::new(), body: Vec::new() };
+    }
+    if script == Some(Script::Recreate) {
+        let creation = TableCreation::builder().name(name.to_string()).location(current.location().to_string()).schema(current.current_schema().as_ref().clone()).format_version(current.format_version()).build();
+        current = TableMetadataBuilder::from_table_creation(creation).and_then(|b| b.build()).expect("the table recreates").metadata;
+        state.tables.insert(key.clone(), current.clone());
+    }
+    if script == Some(Script::EvolveSchema) {
+        let schema = current.current_schema();
+        let mut fields: Vec<_> = schema.as_struct().fields().to_vec();
+        fields.push(Arc::new(iceberg::spec::NestedField::optional(current.last_column_id() + 1, "added_elsewhere", iceberg::spec::Type::Primitive(iceberg::spec::PrimitiveType::String))));
+        let evolved = Schema::builder().with_fields(fields).build().unwrap();
+        current = TableMetadataBuilder::new_from_metadata(current, None).add_current_schema(evolved).unwrap().build().unwrap().metadata;
+        state.tables.insert(key.clone(), current.clone());
+    }
     if let Some(Script::Refuse(status)) = script {
         return error(status, "ServiceFailureException", "scripted refusal");
     }
@@ -273,22 +331,9 @@ fn commit(state: &mut State, ns: &str, name: &str, request: &Request) -> Respons
         Ok(v) => v,
         Err(e) => return error(400, "BadRequestException", &e.to_string()),
     };
-    let requirements: Vec<TableRequirement> = match serde_json::from_value(body["requirements"].clone()) {
-        Ok(r) => r,
-        Err(e) => return error(400, "BadRequestException", &format!("requirements: {e}")),
-    };
-    let updates: Vec<TableUpdate> = match serde_json::from_value(body["updates"].clone()) {
-        Ok(u) => u,
-        Err(e) => return error(400, "BadRequestException", &format!("updates: {e}")),
-    };
-    for requirement in &requirements {
-        if let Err(e) = requirement.check(Some(&current)) {
-            return error(409, "CommitFailedException", &e.to_string());
-        }
-    }
-    let next = match apply(&current, updates) {
+    let next = match judge(&current, &body) {
         Ok(m) => m,
-        Err(e) => return error(400, "BadRequestException", &e.to_string()),
+        Err(refusal) => return refusal,
     };
     state.tables.insert(key, next.clone());
     if let Some(Script::AppliedThenAnswer(status)) = script {

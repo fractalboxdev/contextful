@@ -495,22 +495,28 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
   *A-topology#catalog-read-add-on*
 - `create` — An export finding no table creates it at the declared format version and commits its files as one `append` snapshot, requiring that `main` does not exist.
   *A-run#iceberg-overwrite-commit*
-- `overwrite` — Each later export commits one `overwrite` snapshot that adds its new data files and marks every live file of the parent snapshot deleted, requiring the table uuid and `main` at the parent snapshot id.
+- `overwrite` — Each later export commits one `overwrite` snapshot that adds its data files and marks every live file of the parent snapshot deleted, requiring the table uuid, `main` at the parent snapshot id, and the current schema and default spec ids.
   *A-run#iceberg-overwrite-commit*
-- `commit-retry` — A conflicting commit reloads the table and, while the parent's schema and partition spec ids are unchanged, retries with the written files, at most 3 attempts; a changed id or the last conflict raises `ExportCommitConflict`.
+- `commit-retry` — A conflicting commit reloads the table and, while its uuid and schema and partition spec ids are unchanged, retries with the written files, at most 3 attempts; a changed id or the last conflict raises `ExportCommitConflict`.
   *A-run#iceberg-overwrite-commit*
 - `orphans` — After {{run.export-iceberg.commit-retry}} refuses, the exporter deletes every data and manifest file that export wrote; a retry deletes only the manifests it supersedes, keeping the data files it reuses.
   *because catalog maintenance removes only files some snapshot referenced, so an uncommitted file stays until its writer removes it*
-- `commit-unknown` — A commit whose outcome is unknown deletes no file; the next run reloads the table and records the commit as taken when `main` names its snapshot id.
-  *because a commit the catalog applied before the connection dropped references every file it added*
+- `commit-unknown` — A commit whose outcome is unknown deletes no file while it may still apply; a later run records it as taken when the table holds its snapshot, and deletes its files once another table stands or `main` leaves its parent.
+  *because a commit the catalog applied, or is still applying, after the connection dropped references every file it added*
+- `commit-status` — Any 2xx answer takes a commit, 409 conflicts, and 400, 401, 403, 404, 406, 419 and 422 refuse it with no effect; every other answer, or none, leaves its outcome unknown.
+  *because a proxy's 408 or 429 may follow a commit the catalog applied, and only the specification's refusals prove it did not*
 - `retention` — The exporter expires no snapshot and deletes no committed file; the catalog's snapshot expiration owns retention.
   *because a reader may still plan a query against the previous snapshot while the next export commits*
 - `frontier` — The export records its committed snapshot id, source frontier, read identity and declared target, and commits nothing when all four equal the table's current snapshot id and the export's present values.
   *because each retained snapshot holds a full copy, and an unchanged export buys a reader nothing*
 - `schema-changed` — A source whose columns or types no longer match the Iceberg table's current schema raises `ExportSchemaChanged` before any file is written; the export evolves no schema.
   *because a reader's queries name the columns they were written against, and an evolution the exporter chooses changes them unannounced*
+- `table-shape` — An existing table at another format version than the block declares, or partitioned, refuses before any file is written; an export writes unpartitioned tables at its declared version.
+  *because files written to the declared shape mislabel an existing table's version or partition values*
 - `audience` — Each Iceberg export publishes for exactly one admitted credential, which maps to exactly one namespace; the route derives the namespace from the caller's credential, and the caller never names one.
   *A-run#iceberg-audience*
+- `wake-audience` — A queue wake runs each Iceberg export of a woken table under its one admitted credential and skips, without failing, an export publishing for another credential.
+  *because one table's exports serve one audience each, and a wake carries one credential*
 - `namespace-shared` — Two Iceberg exports naming one namespace under different credentials, one credential under two namespaces, or one table raise `ExportNamespaceShared` at preflight, naming both exports.
   *A-run#iceberg-audience*
 - `caller-sql` — Caller-written SQL reaches the catalog's query engine only when the warehouse holds one audience; otherwise the route runs fixed query templates against the mapped namespace.

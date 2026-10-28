@@ -64,10 +64,12 @@ async fn build(meta: &TableMetadata, namespace: &str, name: &str, storage: &Stor
         }
     };
     let schema = meta.current_schema().clone();
-    let spec = meta.default_partition_spec().as_ref().clone();
-    let manifest = |n: usize| -> Result<_> {
+    // A manifest holds entries of one partition spec; a parent written under an earlier spec
+    // keeps that spec in the manifest marking its files deleted.
+    let manifest = |n: usize, spec_id: i32| -> Result<_> {
+        let spec = meta.partition_spec_by_id(spec_id).with_context(|| format!("the table holds no partition spec {spec_id}"))?.as_ref().clone();
         let path = format!("{}/metadata/{commit}-m{n}.avro", meta.location());
-        let builder = ManifestWriterBuilder::new(io.new_output(&path)?, Some(snapshot_id), schema.clone(), spec.clone());
+        let builder = ManifestWriterBuilder::new(io.new_output(&path)?, Some(snapshot_id), schema.clone(), spec);
         Ok((path, match version {
             FormatVersion::V3 => builder.build_v3_data(),
             _ => builder.build_v2_data(),
@@ -77,7 +79,7 @@ async fn build(meta: &TableMetadata, namespace: &str, name: &str, storage: &Stor
     let (added_files, added_rows) = (added.len(), added.iter().map(DataFile::record_count).sum::<u64>());
     let mut manifests = Vec::new();
     if !added.is_empty() {
-        let (path, mut writer) = manifest(0)?;
+        let (path, mut writer) = manifest(0, meta.default_partition_spec_id())?;
         for file in added {
             // A negative sequence number leaves the entry to inherit the snapshot's at commit.
             writer.add_file(file.clone(), -1)?;
@@ -86,12 +88,13 @@ async fn build(meta: &TableMetadata, namespace: &str, name: &str, storage: &Stor
         upload(&io, storage, &path, uploaded).await?;
     }
 
-    // Every live data file of the parent snapshot becomes a `DELETED` entry.
+    // Every live data file of the parent snapshot becomes a `DELETED` entry, one manifest per
+    // partition spec its manifests carry.
     let (mut deleted_files, mut deleted_rows) = (0usize, 0u64);
     if let Some(snapshot) = meta.current_snapshot() {
         fetch(&io, storage, snapshot.manifest_list()).await?;
         let list = table.manifest_list_reader(snapshot).load().await?;
-        let (path, mut writer) = manifest(1)?;
+        let mut writers = std::collections::BTreeMap::new();
         for file in list.entries() {
             // Delete files another engine wrote apply to the data this export replaces; the new
             // snapshot's manifest list leaves them out, so they stop applying with it.
@@ -99,17 +102,25 @@ async fn build(meta: &TableMetadata, namespace: &str, name: &str, storage: &Stor
                 continue;
             }
             fetch(&io, storage, &file.manifest_path).await?;
+            let next = writers.len() + 1;
+            if !writers.contains_key(&file.partition_spec_id) {
+                writers.insert(file.partition_spec_id, (manifest(next, file.partition_spec_id)?, 0usize));
+            }
+            let Some(((_, writer), count)) = writers.get_mut(&file.partition_spec_id) else { continue };
             for entry in file.load_manifest(&io).await?.entries() {
                 if entry.is_alive() {
                     deleted_files += 1;
+                    *count += 1;
                     deleted_rows += entry.data_file().record_count();
                     writer.add_delete_file(entry.data_file().clone(), entry.sequence_number().context("a live manifest entry carries no sequence number")?, entry.file_sequence_number)?;
                 }
             }
         }
-        if deleted_files > 0 {
-            manifests.push(writer.write_manifest_file().await?);
-            upload(&io, storage, &path, uploaded).await?;
+        for ((path, writer), count) in writers.into_values() {
+            if count > 0 {
+                manifests.push(writer.write_manifest_file().await?);
+                upload(&io, storage, &path, uploaded).await?;
+            }
         }
     }
 
@@ -155,7 +166,14 @@ async fn build(meta: &TableMetadata, namespace: &str, name: &str, storage: &Stor
         TableUpdate::SetSnapshotRef { ref_name: MAIN_BRANCH.to_string(), reference: SnapshotReference::new(snapshot_id, SnapshotRetention::branch(None, None, None)) },
     ];
     // An absent parent requires that `main` does not exist (`run.export-iceberg.create`).
-    let requirements = vec![TableRequirement::UuidMatch { uuid: meta.uuid() }, TableRequirement::RefSnapshotIdMatch { r#ref: MAIN_BRANCH.to_string(), snapshot_id: parent }];
+    // The files were written against this table's current schema and spec, so a commit
+    // requires both beside `main` at the parent.
+    let requirements = vec![
+        TableRequirement::UuidMatch { uuid: meta.uuid() },
+        TableRequirement::RefSnapshotIdMatch { r#ref: MAIN_BRANCH.to_string(), snapshot_id: parent },
+        TableRequirement::CurrentSchemaIdMatch { current_schema_id: meta.current_schema_id() },
+        TableRequirement::DefaultSpecIdMatch { default_spec_id: meta.default_partition_spec_id() },
+    ];
     let body = json!({
         "identifier": { "namespace": [namespace], "name": name },
         "requirements": requirements,

@@ -203,6 +203,12 @@ fn structure(fields: &Fields, values: &[&Value], column: &str) -> Result<StructA
     Ok(StructArray::try_new(fields.clone(), children, nulls)?)
 }
 
+/// Each row's size estimate: its JSON text, which spells every value at least as long as its
+/// encoded bytes, plus 8 bytes a column for fixed-width values JSON spells shorter.
+pub(super) fn sizes(rows: &[Vec<Value>]) -> Vec<u64> {
+    rows.iter().map(|r| serde_json::to_vec(r).map_or(0, |b| b.len() as u64) + 8 * r.len() as u64).collect()
+}
+
 /// One page of read-face rows as a batch under the table's Arrow schema; a column the
 /// schema holds and the page does not reads as null.
 pub(super) fn batch(schema: &Arc<ArrowSchema>, columns: &[String], rows: &[Vec<Value>]) -> Result<RecordBatch> {
@@ -246,20 +252,17 @@ impl<'a> Files<'a> {
         WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::try_new(1).unwrap_or_default())).set_max_row_group_row_count(Some(ROW_GROUP_ROWS)).build()
     }
 
-    /// Write `batch` in slices, closing the open file before a slice, at its in-memory size,
-    /// would carry it past the ceiling (`run.export-iceberg.file-size`). Encoded Parquet is no
-    /// larger than the Arrow buffers it encodes, so the estimate keeps each file under it.
-    pub fn write(&mut self, batch: &RecordBatch, uploaded: &mut Vec<String>) -> Result<()> {
-        let rows = batch.num_rows();
-        if rows == 0 {
-            return Ok(());
-        }
-        let per_row = (batch.get_array_memory_size() as u64).div_ceil(rows as u64).max(1);
-        let step = usize::try_from((SLICE_BYTES / per_row).max(1)).unwrap_or(rows).min(rows);
-        let mut offset = 0;
-        while offset < rows {
-            let len = step.min(rows - offset);
-            let estimate = per_row * len as u64;
+    /// Write `batch` in slices of at most [`SLICE_BYTES`] by the per-row estimates `sizes`,
+    /// closing the open file before a slice would carry it past the ceiling; a slice past the
+    /// ceiling alone, one oversized row, fills a file by itself (`run.export-iceberg.file-size`).
+    pub fn write(&mut self, batch: &RecordBatch, sizes: &[u64], uploaded: &mut Vec<String>) -> Result<()> {
+        let mut start = 0;
+        while start < batch.num_rows() {
+            let (mut end, mut estimate) = (start, 0u64);
+            while end < batch.num_rows() && (end == start || estimate + sizes[end] <= SLICE_BYTES) {
+                estimate += sizes[end];
+                end += 1;
+            }
             if let Some(open) = &self.open {
                 if open.current_written_size() as u64 + estimate > ICEBERG_DATA_FILE_BYTES {
                     self.close(uploaded)?;
@@ -273,8 +276,11 @@ impl<'a> Files<'a> {
                 self.open = Some(self.rt.block_on(builder.build(output))?);
             }
             let Some(writer) = self.open.as_mut() else { bail!("no data file is open") };
-            self.rt.block_on(writer.write(&batch.slice(offset, len)))?;
-            offset += len;
+            self.rt.block_on(writer.write(&batch.slice(start, end - start)))?;
+            if estimate > ICEBERG_DATA_FILE_BYTES {
+                self.close(uploaded)?;
+            }
+            start = end;
         }
         Ok(())
     }

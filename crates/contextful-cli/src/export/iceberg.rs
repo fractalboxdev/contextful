@@ -27,22 +27,60 @@ mod remote;
 
 use remote::{Catalog, Commit, Storage};
 
-/// A commit sent whose outcome is unknown, and every file its export wrote
-/// (`run.export-iceberg.commit-unknown`).
+/// A commit sent whose outcome is not yet known: the table and parent it required, and every
+/// file its export wrote (`run.export-iceberg.commit-unknown`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Pending {
     #[serde(flatten)]
     record: IcebergRecord,
-    #[serde(default)]
+    table_uuid: String,
+    parent: Option<i64>,
     files: Vec<String>,
 }
 
-/// The export's record: the snapshot it last committed, and the one it sent last whose
-/// outcome is unknown (`run.export-iceberg.frontier`, `run.export-iceberg.commit-unknown`).
+/// The export's record: the snapshot it last committed, and each commit whose outcome is
+/// unsettled (`run.export-iceberg.frontier`, `run.export-iceberg.commit-unknown`).
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Ledger {
     committed: Option<IcebergRecord>,
-    pending: Option<Pending>,
+    #[serde(default)]
+    unsettled: Vec<Pending>,
+}
+
+/// Settle each unsettled commit against the table as it stands. The table holding its
+/// snapshot took it; another table, or `main` moved off its parent, means its requirements
+/// can never hold, and its files go; otherwise it may still be in flight and stays recorded
+/// (`run.export-iceberg.commit-unknown`, `run.export-iceberg.orphans`). A failed deletion
+/// keeps the record for the next run.
+fn settle(ledger: &mut Ledger, metadata: &iceberg::spec::TableMetadata, storage: &Storage) {
+    let current = metadata.current_snapshot_id();
+    let mut open = Vec::new();
+    for pending in std::mem::take(&mut ledger.unsettled) {
+        let same = metadata.uuid().to_string() == pending.table_uuid;
+        if same && metadata.snapshot_by_id(pending.record.snapshot_id).is_some() {
+            if current == Some(pending.record.snapshot_id) {
+                ledger.committed = Some(pending.record);
+            }
+        } else if !same || current != pending.parent {
+            if storage.delete_all(&pending.files).is_err() {
+                open.push(pending);
+            }
+        } else {
+            open.push(pending);
+        }
+    }
+    ledger.unsettled = open;
+}
+
+/// An Iceberg export publishing for another credential than the admitted one. `export run`
+/// refuses with it; a queue wake, which runs every export of a table under one credential,
+/// skips that export (`run.export-iceberg.audience`).
+#[derive(Debug, thiserror::Error)]
+#[error("export `{export}` publishes for `{credential}`; the admitted credential acts for `{admitted}`, and a namespace serves one credential")]
+pub(crate) struct OtherAudience {
+    pub export: String,
+    pub credential: String,
+    pub admitted: String,
 }
 
 fn read_ledger(store: &contextful_context::Store, path: &Path) -> Result<Ledger> {
@@ -78,11 +116,7 @@ pub(super) fn run(l: &Located, export: &Export, project: &ProjectArgs, admit: &A
     let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;
     let subject = authority.subject().to_subject();
     if subject.on_behalf_of.as_deref() != Some(target.credential.as_str()) {
-        bail!(
-            "export `{name}` publishes for `{}`; the admitted credential acts for `{}`, and a namespace serves one credential",
-            target.credential,
-            subject.on_behalf_of.as_deref().unwrap_or("no principal")
-        );
+        return Err(OtherAudience { export: name.to_string(), credential: target.credential.clone(), admitted: subject.on_behalf_of.unwrap_or_else(|| "no principal".to_string()) }.into());
     }
 
     // The token resolves before any row is read (`run.export-iceberg.token-preflight`).
@@ -142,17 +176,11 @@ pub(super) fn run(l: &Located, export: &Export, project: &ProjectArgs, admit: &A
         None => None,
     };
     let current = existing.as_ref().and_then(|(m, _)| m.current_snapshot_id());
-
-    // A commit whose outcome was unknown counts as taken when the table holds its snapshot;
-    // one the table never took leaves files only its writer removes
-    // (`run.export-iceberg.commit-unknown`, `run.export-iceberg.orphans`).
-    if let Some(pending) = ledger.pending.take() {
-        match &existing {
-            Some((metadata, _)) if metadata.snapshot_by_id(pending.record.snapshot_id).is_some() => ledger.committed = Some(pending.record),
-            Some((_, storage)) => storage.delete_all(&pending.files)?,
-            None => {}
+    if let Some((metadata, storage)) = &existing {
+        if !ledger.unsettled.is_empty() {
+            settle(&mut ledger, metadata, storage);
+            write_ledger(face.store(), &path, &ledger)?;
         }
-        write_ledger(face.store(), &path, &ledger)?;
     }
     if ledger.committed.as_ref().is_some_and(|r| r.holds(current, &under.frontier, &under.identity, &under.declared)) {
         println!("{name}: unchanged at snapshot {}", current.unwrap_or_default());
@@ -166,7 +194,14 @@ pub(super) fn run(l: &Located, export: &Export, project: &ProjectArgs, admit: &A
         None => {
             let table = catalog.create(&schema, &properties)?;
             match Storage::open(name, target, &table.config) {
-                Ok(storage) => (table.metadata, storage),
+                Ok(storage) => {
+                    // A commit left unsettled against a table since dropped never took.
+                    if !ledger.unsettled.is_empty() {
+                        settle(&mut ledger, &table.metadata, &storage);
+                        write_ledger(face.store(), &path, &ledger)?;
+                    }
+                    (table.metadata, storage)
+                }
                 Err(e) => {
                     // The table this export created for an undeclared host goes with the refusal.
                     let _ = catalog.drop_table();
@@ -175,6 +210,17 @@ pub(super) fn run(l: &Located, export: &Export, project: &ProjectArgs, admit: &A
             }
         }
     };
+    let version = match metadata.format_version() {
+        iceberg::spec::FormatVersion::V1 => 1,
+        iceberg::spec::FormatVersion::V2 => 2,
+        iceberg::spec::FormatVersion::V3 => 3,
+    };
+    if version != target.format_version {
+        bail!("export `{name}`: table `{}.{}` stands at format version {version}, and the block declares {}; publish under a new `table_name`", target.namespace, target.table_name, target.format_version);
+    }
+    if !metadata.default_partition_spec().is_unpartitioned() {
+        bail!("export `{name}`: table `{}.{}` is partitioned, and an export writes unpartitioned tables; publish under a new `table_name`", target.namespace, target.table_name);
+    }
     let widths = |p: &HashMap<String, String>| -> BTreeMap<String, String> { p.iter().filter(|(k, _)| k.starts_with(FIXED_SIZE_LIST_PROPERTY)).map(|(k, v)| (k.clone(), v.clone())).collect() };
     if encode::shape(metadata.current_schema()) != encode::shape(&schema) || widths(metadata.properties()) != widths(&properties) {
         return Err(ExportError::ExportSchemaChanged(format!(
@@ -192,6 +238,13 @@ pub(super) fn run(l: &Located, export: &Export, project: &ProjectArgs, admit: &A
         let _ = storage.delete_all(&written);
     }
     let (rows, files, snapshot) = outcome?;
+    // `main` has moved: an earlier commit still unsettled settles against it.
+    if !ledger.unsettled.is_empty() {
+        if let Ok(Some(table)) = catalog.load() {
+            settle(&mut ledger, &table.metadata, &storage);
+            write_ledger(face.store(), &path, &ledger)?;
+        }
+    }
     println!("{name}: committed {rows} rows in {files} files · snapshot {snapshot}");
     Ok(())
 }
@@ -226,15 +279,22 @@ fn publish_and_commit(
             }
         };
         let record = IcebergRecord { snapshot_id: built.snapshot_id, frontier: under.frontier.clone(), identity: under.identity.clone(), target: under.declared.clone() };
-        ledger.pending = Some(Pending { record: record.clone(), files: written.iter().chain(&manifests).cloned().collect() });
+        let sent = built.snapshot_id;
+        ledger.unsettled.push(Pending {
+            record: record.clone(),
+            table_uuid: metadata.uuid().to_string(),
+            parent: metadata.current_snapshot_id(),
+            files: written.iter().chain(&manifests).cloned().collect(),
+        });
         if let Err(e) = write_ledger(face.store(), path, ledger) {
             written.extend(manifests);
             return Err(e);
         }
+        let settled = |ledger: &mut Ledger| ledger.unsettled.retain(|p| p.record.snapshot_id != sent);
         match catalog.commit(&built.body)? {
             Commit::Taken => {
                 *keep = true;
-                ledger.pending = None;
+                settled(ledger);
                 ledger.committed = Some(record);
                 write_ledger(face.store(), path, ledger)?;
                 return Ok((rows, added.len(), built.snapshot_id));
@@ -246,18 +306,19 @@ fn publish_and_commit(
             }
             Commit::Refused(why) => {
                 written.extend(manifests);
-                ledger.pending = None;
+                settled(ledger);
                 write_ledger(face.store(), path, ledger)?;
                 bail!("export `{name}`: the catalog refused the commit, which took no effect: {why}");
             }
             Commit::Conflict(why) => {
                 // A retry replaces the manifests and keeps the data files (`run.export-iceberg.orphans`).
                 let _ = storage.delete_all(&manifests);
-                ledger.pending = None;
+                settled(ledger);
                 write_ledger(face.store(), path, ledger)?;
                 let reloaded = catalog.load()?.map(|t| t.metadata);
-                let Some(next) = reloaded.filter(|m| m.current_schema_id() == metadata.current_schema_id() && m.default_partition_spec_id() == metadata.default_partition_spec_id()) else {
-                    return Err(ExportError::ExportCommitConflict(format!("export `{name}`: the table's schema or partition spec changed under it; every file this export wrote is deleted")).into());
+                let same = |m: &iceberg::spec::TableMetadata| m.uuid() == metadata.uuid() && m.current_schema_id() == metadata.current_schema_id() && m.default_partition_spec_id() == metadata.default_partition_spec_id();
+                let Some(next) = reloaded.filter(same) else {
+                    return Err(ExportError::ExportCommitConflict(format!("export `{name}`: the table was recreated, or its schema or partition spec changed under it; every file this export wrote is deleted")).into());
                 };
                 if attempt == ICEBERG_COMMIT_ATTEMPTS {
                     return Err(ExportError::ExportCommitConflict(format!("export `{name}`: the last of {ICEBERG_COMMIT_ATTEMPTS} attempts conflicted: {why}; every file this export wrote is deleted")).into());
@@ -305,7 +366,7 @@ fn publish(
         let Some(last) = page.rows.last() else { break };
         let position = |i: usize| last.get(i).and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())));
         cursor = ExportCursor { commit_seq: position(c).context("a row carries no commit sequence")?, row_seq: position(r).context("a row carries no row sequence")? };
-        files.write(&encode::batch(&arrow, &page.columns, &page.rows)?, written)?;
+        files.write(&encode::batch(&arrow, &page.columns, &page.rows)?, &encode::sizes(&page.rows), written)?;
         if page.rows.len() < EXPORT_BATCH_ROWS {
             break;
         }

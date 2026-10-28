@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 6 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 302 | 53 | 29 | 16 | 291 | 0 | 0 | 291 |
-| `run` | 3 | 30 | 588 | 133 | 50 | 19 | 578 | 4 | 0 | 578 |
+| `run` | 3 | 30 | 591 | 133 | 50 | 19 | 581 | 4 | 0 | 581 |
 | `store` | 6 | 20 | 310 | 67 | 23 | 13 | 310 | 13 | 0 | 310 |
 | `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 191 | 0 | 0 | 191 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 27 | 180 | 2791 | 704 | 237 | 85 | 2726 | 24 | 0 | |
+| **total** | 27 | 180 | 2794 | 704 | 237 | 85 | 2729 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -51,6 +51,6 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 21 — Sheet rows | 1 | 8 | 0 | absent | open |
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
-| 24 — Iceberg export | 1 | 22 | 18 | open | open |
+| 24 — Iceberg export | 1 | 25 | 21 | open | open |
 
 Unscheduled operations: 15.
