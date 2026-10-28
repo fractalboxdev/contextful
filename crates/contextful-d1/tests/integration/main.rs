@@ -300,7 +300,7 @@ fn a_durable_callback_guard_blocks_lease_transfer_until_release() {
     assert!(next.fence > lease.fence);
 }
 
-// spec: run.journal.d1-guard@c06df09b
+// spec: run.journal.d1-guard@8e9e511c
 #[test]
 fn a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover() {
     let fixture = Fixture::start();

@@ -18,7 +18,7 @@ D1's batch transaction ends with the request, so it holds no database lock acros
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| D1 metadata, R2 content, per-callback durable guards *(chosen)* | — | A Worker bridge and explicit reconciliation of R2 objects and of guards over unproven effects. |
+| D1 metadata, R2 content, per-callback durable guards *(chosen)* | — | A Worker bridge and explicit reconciliation of orphan R2 objects and of guards over unproven effects. |
 | PostgreSQL behind Hyperdrive | Native D1 profile | An external database remains mandatory. |
 | D1 pre-dispatch checks alone | Fencing | Owner transfer can race between the check and the external call. |
 | One global guard | Availability | One orphan blocks every execution. |
