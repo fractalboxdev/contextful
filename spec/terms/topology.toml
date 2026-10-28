@@ -33,7 +33,7 @@ HostnamePostureMismatch     = { clause = "topology.publish-hostname.posture-mism
 ProbeTableDrift             = { clause = "topology.publish-hostname.probe-table", gloss = "The probe table and the descriptor set name different hostname-and-gate pairs." }
 ProbeSetEmpty               = { clause = "topology.publish-hostname.empty-probe", gloss = "A probe with no descriptor directory, no probe table or no declared hostname." }
 DescriptorUnknownField      = { clause = "topology.publish-hostname.unknown-field", gloss = "A descriptor carries a key its contract version does not model." }
-GatewayUnconfigured         = { clause = "topology.publish-hostname.unconfigured-gateway", gloss = "A routing hop holding no store configuration." }
+GatewayUnconfigured         = { clause = "topology.publish-hostname.unconfigured-gateway", gloss = "A gateway holding no store configuration." }
 IssuerKeyUnusable           = { clause = "topology.publish-hostname.issuer-key", gloss = "A verification key that does not resolve or does not parse at engine start." }
 
 [limit]

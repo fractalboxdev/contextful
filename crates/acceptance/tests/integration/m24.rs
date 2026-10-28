@@ -30,7 +30,7 @@ fn span_ids(catalog: &Catalog, s3: &S3Server) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "milestone 24 is open: the read router's route and caller-sql clauses are unperformed"]
+#[ignore = "milestone 24 is open: the gateway's route and caller-sql clauses and the route half of audience are unperformed"]
 fn m24_iceberg_export() {
     let cf = bin("contextful");
     let s3 = S3Server::start("exports");

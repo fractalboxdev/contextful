@@ -2119,7 +2119,7 @@
       "operation": "publish-hostname",
       "subject": "unconfigured-gateway",
       "kind": "refusal",
-      "statement": "A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.",
+      "statement": "A gateway with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.",
       "why": "P3",
       "file": "spec/01-topology.md",
       "line": 296
@@ -14243,7 +14243,7 @@
       "operation": "export-iceberg",
       "subject": "route",
       "kind": "behavior",
-      "statement": "Where a deployment adds a catalog query engine, the read router sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.",
+      "statement": "Where a deployment adds a catalog query engine, the gateway sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.",
       "why": "A-topology#catalog-read-add-on",
       "file": "spec/31-pipeline.md",
       "line": 524
@@ -44848,7 +44848,7 @@
           },
           "GatewayUnconfigured": {
             "clause": "topology.publish-hostname.unconfigured-gateway",
-            "gloss": "A routing hop holding no store configuration."
+            "gloss": "A gateway holding no store configuration."
           },
           "HostnamePostureMismatch": {
             "clause": "topology.publish-hostname.posture-mismatch",

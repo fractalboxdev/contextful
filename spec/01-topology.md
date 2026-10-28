@@ -293,7 +293,7 @@ Hostname access policies, deployment checks and requests through the routing ser
   *because a probe that checks nothing and exits zero reads as a proven access policy to the pipeline that invoked it.*
 - `unknown-field` — An unmodelled descriptor property raises `DescriptorUnknownField`, naming the key and contract version. The decoder rejects the descriptor.
   *P1*
-- `unconfigured-gateway` — A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.
+- `unconfigured-gateway` — A gateway with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.
   *P3*
 - `issuer-key` — The HTTP server requires a verification key that resolves and parses. An unusable key raises `IssuerKeyUnusable`, naming the input, and prevents startup. The server generates no replacement key.
   *P3*

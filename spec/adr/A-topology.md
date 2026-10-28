@@ -68,15 +68,15 @@ Each hostname descriptor names its worker, contract version and gate with an exp
 | A periodic external monitor | Timing | The exposure window is the monitor's interval. |
 | Per-target expected outputs | Detectability | A divergence arrives as a fixture update, which reviewers approve. |
 
-## posture-probe — The posture probe runs in build tooling; the routing hop caches nothing
+## posture-probe — The posture probe runs in build tooling; the gateway caches nothing
 
-The routing hop sits in front of a retrieval container that enforces grants per request, so a cached answer comes from inside the container, after enforcement. Profile footprint decided where the probe runs.
+The gateway sits in front of a retrieval container that enforces grants per request, so a cached answer comes from inside the container, after enforcement. Profile footprint decided where the probe runs.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Probe in `contextful-ci`, no hop cache *(chosen)* | — | Every request crosses to the container; a pipeline that skips the probe goes unprobed. |
 | Probe as an engine subcommand | Footprint | Every profile links a client only a deploy uses. |
-| Probe inside the routing hop at start | Timing | A hop answers traffic before its posture is judged. |
+| Probe inside the gateway at start | Timing | A gateway answers traffic before its posture is judged. |
 | A short hop cache keyed on the enforcement subject | Mediation | A revoked grant still answers from the hop until expiry. |
 
 ## domain-crate — The domain crate holds types and ports with no I/O, and every edge points toward it

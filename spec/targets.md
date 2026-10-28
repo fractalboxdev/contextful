@@ -54,13 +54,13 @@ flowchart LR
 
 Cloudflare deployments with a Linux Container, D1 execution metadata and R2 objects.
 
-Cloudflare's default deployment configuration is `worker-container-d1`. TypeScript routing and reconciliation run in Workers' V8 isolates. Cron Triggers schedule work; Workflows coordinates execution. A Durable Object controls the Linux Container's lifecycle. The Container runs the native `contextful-full` executable with embedded DuckDB and Wasmtime. Workers and Workflows call the Container through requests.
+Cloudflare's default deployment configuration is `worker-container-d1`. The gateway and the reconciler run as TypeScript in Workers' V8 isolates. Cron Triggers schedule work; Workflows coordinates execution. A Durable Object controls the Linux Container's lifecycle. The Container runs the native `contextful-full` executable with embedded DuckDB and Wasmtime. Workers and Workflows call the Container through requests.
 
 The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to the private `contextful.d1` host call a Worker binding handler. The handler reads and writes execution metadata in D1 and execution blobs in R2. A separate R2 bucket stores corpus parts and manifests through its S3-compatible API. Files inside the Container are a replaceable working copy.
 
 Cloudflare Queues carries receive batches and object-arrival notifications. The Rust engine writes the store. A separate Durable Object manages hibernating WebSocket connections for run updates. Workers Secrets supplies credentials to configured bindings. The optional console server runs on a Node.js host. The React assets provide a static browser preview without that server.
 
-The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The read router sends a caller whose credential maps to an export namespace to Basin SQL over REST with that audience's read-only token, one Worker secret per audience bucket, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
+The `worker-container-d1-basin` configuration adds an optional read face for exported audiences. The Container commits each audience's Iceberg export to Basin Catalog, the Iceberg REST catalog of an R2 bucket that holds that audience alone. The gateway sends a caller whose credential maps to an export namespace to Basin SQL over REST with that audience's read-only token, one Worker secret per audience bucket, and sends every other caller to the Container. Each export table runs with Basin compaction disabled; Basin snapshot expiration removes superseded exports.
 
 The example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`. Its Container runs `contextful-conformance` against the packaged Linux `contextful` binary. This endpoint tests execution storage; it serves no query or orchestration routes. `status.md` records clause implementation evidence.
 
@@ -71,7 +71,7 @@ The example under `apps/cloudflare-execution/` exposes authenticated `POST /conf
 | durable orchestrator | Workflows | Workflows |
 | single-writer catalog | D1 through a private Worker outbound binding | D1 through a private Worker outbound binding |
 | object store | R2 | R2, with one Basin Catalog bucket per exported audience |
-| hot-path query face | Worker router → warm contextful-full Container | Worker router → warm contextful-full Container, or Basin SQL for an exported audience |
+| hot-path query face | gateway → warm contextful-full Container | gateway → warm contextful-full Container, or Basin SQL for an exported audience |
 | heavy compute | Container with cloudflare-d1 storage profile | Container with cloudflare-d1 storage profile, which also runs Iceberg exports |
 | secrets | Workers Secrets | Workers Secrets |
 | realtime run projection | Durable Object with a hibernating WebSocket | Durable Object with a hibernating WebSocket |
@@ -86,7 +86,7 @@ flowchart LR
   CALLER(["MCP or HTTP client"]):::muted
   subgraph ACCOUNT["Cloudflare target"]
     subgraph WORKERS["Workers V8 isolates"]
-      ROUTER["read router"]:::accent
+      GATEWAY["gateway"]:::accent
       RECON["reconciler Worker"]:::accent
       BIND["execution binding handler"]:::accent
       OWNER["Container Durable Object"]:::accent
@@ -103,8 +103,8 @@ flowchart LR
     BLOBS[("R2 execution blobs")]:::store
     CORPUS[("R2 corpus bucket")]:::store
   end
-  CALLER -- "HTTPS" --> ROUTER
-  ROUTER -- "store request" --> OWNER
+  CALLER -- "HTTPS" --> GATEWAY
+  GATEWAY -- "store request" --> OWNER
   CRON -- "scheduled event" --> RECON
   RECON -- "due execution" --> FLOW
   FLOW -- "dispatch step" --> OWNER
