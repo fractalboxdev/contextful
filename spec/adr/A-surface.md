@@ -170,6 +170,19 @@ Overload misses rotate across a tied cohort.
 | Dispatch record in process memory | Fresh processes | A unit failing before its run row wins every cycle at pool 1. |
 | Refill from a fire's end path between wakes | Lease safety | A start after the lease lapsed runs beside another holder. |
 
+## never-run-first — A unit with no run and no dispatch starts ahead of every due instant
+
+Such a unit falls due at the instant its process armed it, and a serve started on every wake arms it anew at each start.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Rank it ahead of every due instant *(chosen)* | — | A newly applied unit precedes overdue units for one fire each. |
+| Order it by its arming instant | Restarting processes | Each start re-arms the unit behind every backlogged unit, so it never starts. |
+| Due at its schedule's latest slot before arming | Persistent backlogs | Each restart moves that slot past every unit still due from an earlier one. |
+| Persist its first arming instant | Stateless arming | One more catalog row per unit, read on every arm. |
+
+Revisit: when a newly applied unit must wait behind overdue ones, persist each unit's first arming instant beside its dispatch record.
+
 ## connections-claim-version — Connections claim one version and share dispatch
 
 A consent callback can retry while other connections mutate the same control document.

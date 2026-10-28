@@ -32,14 +32,22 @@ pub struct Admitted {
     pub held: Vec<Due>,
 }
 
-/// Admit `due` into a pool of `bound` slots holding `in_flight`: order by due instant, then
-/// highest priority, then least recent base, then key; one unit per key, a key in flight
-/// held, and slots past the bound pending. Priority orders only units due at one instant,
-/// so a unit left pending keeps its earlier instant and goes first at the next admission.
+/// Admit `due` into a pool of `bound` slots holding `in_flight`: every unit with no base
+/// first, then by due instant, then highest priority, then least recent base, then key; one
+/// unit per key, a key in flight held, and slots past the bound pending. Priority orders only
+/// units due at one instant, so a unit left pending keeps its earlier instant and goes first
+/// at the next admission. A unit with no base falls due at its process's arming instant,
+/// which a restarted process moves later, so it ranks ahead of every instant.
 pub fn admit(due: &[Due], in_flight: &BTreeSet<String>, bound: usize) -> Admitted {
     let mut ordered: Vec<&Due> = due.iter().collect();
     ordered.sort_by(|a, b| {
-        a.at.cmp(&b.at).then_with(|| b.priority.cmp(&a.priority)).then_with(|| a.base.cmp(&b.base)).then_with(|| a.key.cmp(&b.key))
+        a.base
+            .is_some()
+            .cmp(&b.base.is_some())
+            .then_with(|| a.at.cmp(&b.at))
+            .then_with(|| b.priority.cmp(&a.priority))
+            .then_with(|| a.base.cmp(&b.base))
+            .then_with(|| a.key.cmp(&b.key))
     });
     let mut seen = BTreeSet::new();
     let mut out = Admitted::default();

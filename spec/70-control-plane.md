@@ -190,8 +190,8 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
 - `heartbeat-lapse` — A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.
 - `pool-bound` — A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.
   *because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added*
-- `admission-order` — Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.
-  *A-surface#due-units-admit*
+- `admission-order` — Due units start with each unit holding neither a last run start nor a last dispatch first, then by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then least recent of the two, then id.
+  *A-surface#due-units-admit, A-surface#never-run-first*
 - `refill` — A wake whose fire ends before its answer admits each unit its evaluation left pending into the freed slot, through the cadence lease; a unit falling due after the evaluation waits for the next wake.
   *A-surface#due-units-admit*
 - `exclusion-key` — A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.

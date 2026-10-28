@@ -128,7 +128,7 @@ disclosure = 5217
 read = 9502
 run = 19370
 store = 9158
-surface = 6243
+surface = 6247
 topology = 2641
 
 [ceiling.adr-words]
@@ -140,5 +140,5 @@ A-disclosure = 1888
 A-read = 2681
 A-run = 3988
 A-store = 3428
-A-surface = 1655
+A-surface = 1801
 A-topology = 1572
