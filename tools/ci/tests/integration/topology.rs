@@ -1326,9 +1326,10 @@ fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_
         }
     }
     let shapes = catalog("cloudflare");
-    assert_eq!(shapes.len(), 1, "Cloudflare declares one D1 execution deployment");
-    assert!(shapes.iter().all(|(kind, _)| kind == "orchestrated"));
-    assert!(shapes.iter().any(|(_, role)| role == "D1 through a private Worker outbound binding"));
+    // Every Cloudflare shape, the Basin read add-on's included, is one orchestrated D1 execution deployment.
+    assert!(!shapes.is_empty(), "Cloudflare declares a D1 execution deployment");
+    assert!(shapes.iter().all(|(kind, _)| kind == "orchestrated"), "{shapes:?}");
+    assert!(shapes.iter().all(|(_, role)| role == "D1 through a private Worker outbound binding"), "{shapes:?}");
 }
 
 /// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
