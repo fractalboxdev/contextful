@@ -29,8 +29,9 @@ fn span_ids(catalog: &Catalog, s3: &S3Server) -> Vec<String> {
     ids
 }
 
+/// The milestone's Reach through the built binary, against the loopback Iceberg REST catalog
+/// over the loopback S3 bucket.
 #[test]
-#[ignore = "milestone 24 is open: the gateway's route and caller-sql clauses and the route half of audience are unperformed"]
 fn m24_iceberg_export() {
     let cf = bin("contextful");
     let s3 = S3Server::start("exports");

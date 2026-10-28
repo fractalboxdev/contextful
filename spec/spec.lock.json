@@ -60984,6 +60984,15 @@
         "proved": false
       }
     ],
+    "run.export-iceberg.file-size": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/export_iceberg.rs",
+        "name": "data_files_stay_under_the_ceiling_and_an_oversized_row_fills_one_alone",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "run.export-iceberg.fixed-list": [
       {
         "kind": "test",
