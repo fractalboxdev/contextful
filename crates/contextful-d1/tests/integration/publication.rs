@@ -429,3 +429,55 @@ fn a_take_over_fences_a_killed_writer_before_its_lease_expires() {
     assert_eq!(retry.active_namespace("projection").unwrap().as_deref(), Some("initial"));
     assert!(retry.batch("projection", "initial").unwrap().is_none());
 }
+
+/// A reader holding no lease reads a spilled sender's progress: its body from R2, its acknowledged
+/// prefix from the row beside it, and the mark every committed write advances.
+// spec: run.export.status-spilled@9956898e
+#[test]
+fn progress_reads_a_spilled_sender_and_its_acknowledged_sequence_without_a_lease() {
+    use contextful_core::export::{Change, ChangeEvent, ExportPublication};
+    let fixture = start();
+    let reader = D1PublicationLedger::connect(&fixture.endpoint).unwrap();
+    assert_eq!(reader.progress("projection", "initial").unwrap().version, 0);
+    let mut sender = ledger(&fixture, "container-1");
+    sender.stage(&plan("initial", None, 1), &bulk(600, 1024), "reader").unwrap();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    let row = db.query("SELECT body, blob FROM contextful_publication WHERE role = 'sender'", vec![]).unwrap().rows.remove(0);
+    assert_eq!(row["body"], "");
+    assert!(row["blob"].is_string());
+    let staged = reader.progress("projection", "initial").unwrap();
+    let events = staged.pending_events;
+    assert_eq!((staged.pending, staged.acknowledged_sequence, staged.version, staged.last_ack_at), (true, None, 1, None));
+    assert!(events > 1200);
+
+    let mut receiver = ReceiverState::default();
+    let first = sender.batch("projection", "initial").unwrap().unwrap();
+    receiver.receive(&first).unwrap();
+    let through = first.events.last().unwrap().sequence;
+    sender.acknowledge("projection", "initial", &first.group.id, through).unwrap();
+    let partial = reader.progress("projection", "initial").unwrap();
+    assert_eq!((partial.pending, partial.pending_events, partial.acknowledged_sequence, partial.version), (true, events - through - 1, Some(through), 2));
+    let at = partial.last_ack_at.expect("an acknowledgement instant");
+    deliver(&mut sender, &mut receiver, false);
+    let complete = reader.progress("projection", "initial").unwrap();
+    assert_eq!((complete.pending, complete.pending_events, complete.acknowledged_sequence), (false, 0, Some(events - 1)));
+    assert!(complete.version > 2 && complete.last_ack_at.is_some_and(|later| later >= at));
+
+    // The typed ledger counts its outbox the same way under a reader holding no lease.
+    let mut typed = contextful_d1::D1ExportLedger::connect(&fixture.endpoint).unwrap();
+    let row = json!({"id": "one"});
+    let events = vec![
+        ChangeEvent { version: 1, id: "a:p:0".into(), publication: "p".into(), sequence: 0, table: "items".into(), change: Change::Upsert { key: json!({"id": "one"}), row: row.clone() } },
+        ChangeEvent { version: 1, id: "a:p:1".into(), publication: "p".into(), sequence: 1, table: "items".into(), change: Change::PublicationComplete { changes: 1 } },
+    ];
+    let publication = ExportPublication { source: "frontier", id: "p", identity: "reader", destination: "target" };
+    assert!(typed.stage("a", publication, &events, &[("one".into(), row)].into()).unwrap());
+    let typed_reader = contextful_d1::D1ExportLedger::connect(&fixture.endpoint).unwrap();
+    let staged = typed_reader.progress("a").unwrap();
+    assert_eq!((staged.pending, staged.pending_events, staged.acknowledged_sequence, staged.version), (true, 2, None, 1));
+    typed.pending("a", 2).unwrap();
+    typed.acknowledge("a", 1).unwrap();
+    let complete = typed_reader.progress("a").unwrap();
+    assert_eq!((complete.pending, complete.pending_events, complete.acknowledged_sequence, complete.version), (false, 0, Some(1), 2));
+    assert!(complete.last_ack_at.is_some());
+}

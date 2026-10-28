@@ -109,6 +109,7 @@ PublicationIncompatible        = { clause = "run.export.group-incompatible", glo
 PublicationHeaderTooLarge      = { clause = "run.export.group-request-bound", gloss = "A coordinated group header leaving no room for one event under the typed request ceiling." }
 PublicationInputsBusy          = { clause = "run.export.group-quiesce-wait", gloss = "A coordinated export whose publication inputs a running unit or another export still holds past the wait bound." }
 PublicationStorageUnsupported  = { clause = "run.export.group-storage", gloss = "A storage profile lacks the coordinated publication outbox capability." }
+PublicationDeliveryBounded     = { clause = "run.export.group-within-exit", gloss = "A bounded coordinated delivery stopped before its next batch with its group still pending." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
 PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }
 PipelineSeedCompactionMissing  = { clause = "run.seed.compaction-cadence", gloss = "A seeded table no scheduled, enabled fold covers." }

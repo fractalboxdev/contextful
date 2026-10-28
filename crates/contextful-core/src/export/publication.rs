@@ -519,6 +519,27 @@ impl GroupSender {
         Ok(())
     }
 
+    /// The sender's progress under its ledger's mark: a pending group counts its own
+    /// acknowledged prefix, and a settled sender reports its last acknowledgement
+    /// (`run.export.status-sequence`).
+    pub fn progress(&self, mark: &super::DeliveryMark) -> super::DeliveryProgress {
+        let (pending, pending_events, acknowledged_sequence) = match &self.pending {
+            Some(group) => (
+                true,
+                group.events.len().saturating_sub(self.offset) as u64,
+                self.offset.checked_sub(1).and_then(|last| group.events.get(last)).map(|e| e.sequence),
+            ),
+            None => (false, 0, mark.acknowledged),
+        };
+        super::DeliveryProgress {
+            pending,
+            pending_events,
+            acknowledged_sequence,
+            version: mark.version,
+            last_ack_at: mark.at,
+        }
+    }
+
     pub fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>, ExportError> {
         serde_json::to_vec(&(1, name, namespace, self)).map_err(|e| invalid(e.to_string()))
     }

@@ -291,3 +291,46 @@ fn a_sender_resumes_after_an_acknowledged_sequence_whatever_its_batch_boundaries
     advanced.resume(&group, through + 1).unwrap();
     assert_eq!(advanced.batch().unwrap().unwrap().events[0].sequence, through + 2);
 }
+
+/// A pending group counts its own acknowledged prefix; a settled sender and a typed position report the
+/// mark's last acknowledgement, and every write advances the mark's version.
+// spec: run.export.status-sequence@8b5eef4e
+#[test]
+fn delivery_progress_counts_the_pending_outbox_and_reports_the_mark() {
+    use contextful_core::export::publication::{publication, GroupSender};
+    use contextful_core::export::{DeliveryMark, ExportPosition};
+    use contextful_core::time::Instant;
+    let rows: Vec<Value> = (0..1200).map(|id| json!({"id": id})).collect();
+    let states = group_states(&rows);
+    let pending = publication(group_plan(json!("digest")), &BTreeMap::new(), &states).unwrap();
+    let events = pending.events.len() as u64;
+    let mut mark = DeliveryMark::default();
+    mark.wrote();
+    let staged = sender_with(&pending, &states, 0).progress(&mark);
+    assert_eq!((staged.pending, staged.pending_events, staged.acknowledged_sequence, staged.version, staged.last_ack_at), (true, events, None, 1, None));
+
+    let mut sender = sender_with(&pending, &states, 0);
+    let first = sender.batch().unwrap().unwrap();
+    let through = first.events.last().unwrap().sequence;
+    assert!(!sender.acknowledge(&first.group.id, through).unwrap());
+    let at = Instant::parse("2030-01-01T00:00:00Z").unwrap();
+    mark.acknowledged(through, at);
+    let partial = sender.progress(&mark);
+    assert_eq!((partial.pending, partial.pending_events, partial.acknowledged_sequence, partial.version, partial.last_ack_at), (true, events - through - 1, Some(through), 2, Some(at)));
+    while let Some(batch) = sender.batch().unwrap() {
+        let last = batch.events.last().unwrap().sequence;
+        sender.acknowledge(&batch.group.id, last).unwrap();
+        mark.acknowledged(last, at);
+    }
+    let settled = sender.progress(&mark);
+    assert_eq!((settled.pending, settled.pending_events, settled.acknowledged_sequence), (false, 0, Some(events - 1)));
+    assert!(settled.version > 2);
+    assert_eq!(GroupSender::default().progress(&DeliveryMark::default()).version, 0);
+
+    // A typed position counts the events past its acknowledged sequence while a publication is pending.
+    let position = contextful_core::export::ExportPosition { source_publication: None, pending_publication: Some("p".into()), identity: None, destination: None, ack_sequence: Some(4), next_sequence: 12 };
+    let typed = mark.typed(&position);
+    assert_eq!((typed.pending, typed.pending_events, typed.acknowledged_sequence), (true, 7, Some(4)));
+    let settled: ExportPosition = ExportPosition { pending_publication: None, ..position };
+    assert_eq!((mark.typed(&settled).pending, mark.typed(&settled).pending_events), (false, 0));
+}

@@ -2,6 +2,7 @@
 
 use crate::{storage, stores::Db};
 use contextful_core::export::publication::GroupState;
+use contextful_core::export::{DeliveryMark, DeliveryProgress};
 pub use contextful_core::export::publication::SourcePublication;
 use contextful_core::export::publication::{
     GroupBatch, GroupSender, PublicationGroup, PublicationPlan, ReceiverState,
@@ -52,6 +53,20 @@ fn write(
     let body = serde_json::to_string(value).map_err(|e| storage(path, e))?;
     conn.execute("INSERT INTO coordinated_publication(role,name,namespace,body) VALUES(?1,?2,?3,?4) ON CONFLICT(role,name,namespace) DO UPDATE SET body=excluded.body",params![role,name,namespace,body]).map_err(|e| storage(path,e))?;
     Ok(())
+}
+
+/// Apply `edit` to the delivery mark beside outbox `name`/`namespace` in the same transaction
+/// as the outbox write (`run.export.status-version`).
+fn remark(
+    conn: &Connection,
+    path: &Path,
+    name: &str,
+    namespace: &str,
+    edit: impl FnOnce(&mut DeliveryMark),
+) -> Result<(), Failure> {
+    let mut mark: DeliveryMark = read(conn, path, "progress", name, namespace)?.unwrap_or_default();
+    edit(&mut mark);
+    write(conn, path, "progress", name, namespace, &mark)
 }
 
 impl PublicationLedger {
@@ -152,6 +167,7 @@ impl PublicationLedger {
                     &plan.namespace,
                     &sender,
                 )?;
+                remark(tx, &self.path, &plan.name, &plan.namespace, DeliveryMark::wrote)?;
             }
             Ok(())
         })?;
@@ -185,6 +201,7 @@ impl PublicationLedger {
         through: u64,
     ) -> Result<(), Failure> {
         let key = (name.into(), namespace.into());
+        let at = crate::export::wall_clock(&self.path)?;
         if self.offered.get(&key) != Some(&(group.into(), through)) {
             return Err(storage(
                 &self.path,
@@ -200,6 +217,7 @@ impl PublicationLedger {
             {
                 write(tx, &self.path, "active-namespace", name, "", &namespace)?;
             }
+            remark(tx, &self.path, name, namespace, |mark| mark.acknowledged(through, at))?;
             write(tx, &self.path, "sender", name, namespace, &sender)
         })?;
         self.offered.remove(&key);
@@ -232,10 +250,18 @@ impl PublicationLedger {
                 current.as_ref(),
             )
             .map_err(|e| storage(&self.path, e))?;
+            remark(tx, &self.path, name, namespace, DeliveryMark::wrote)?;
             write(tx, &self.path, "sender", name, namespace, &sender)
         })?;
         self.offered.remove(&(name.into(), namespace.into()));
         Ok(())
+    }
+    /// The outbox's progress, read without delivering (`run.export.status`).
+    pub fn progress(&self, name: &str, namespace: &str) -> Result<DeliveryProgress, Failure> {
+        self.db.with_connection(false, |tx| {
+            let mark: DeliveryMark = read(tx, &self.path, "progress", name, namespace)?.unwrap_or_default();
+            Ok(self.sender(tx, name, namespace)?.progress(&mark))
+        })
     }
 }
 

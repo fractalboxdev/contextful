@@ -368,3 +368,46 @@ fn the_publication_ledger_keeps_only_the_latest_completion() {
     assert!(ledger.record_source("projection", &completion("run-49", "other")).is_err());
     assert_eq!(ledger.source("projection").unwrap(), Some(completion("run-49", "f49")));
 }
+
+/// Both machine-local ledgers count a stage and each acknowledgement into the outbox's version, stamp the
+/// acknowledgement's instant, and keep both across a reopen and a promoted outbox.
+// spec: run.export.status-version@723413f0
+#[test]
+fn machine_ledgers_record_each_outbox_write_and_acknowledgement() {
+    use contextful_core::export::publication::PublicationPlan;
+    use contextful_sqlite::PublicationLedger;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("machine.sqlite");
+    let mut typed = ExportLedger::open_sealed(&path, cipher()).unwrap();
+    assert_eq!(typed.progress("a").unwrap().version, 0);
+    let (events, state) = fixture("a");
+    assert!(typed.stage("a", publication(), &events, &state).unwrap());
+    let staged = typed.progress("a").unwrap();
+    assert_eq!((staged.pending, staged.pending_events, staged.acknowledged_sequence, staged.version, staged.last_ack_at), (true, 2, None, 1, None));
+    assert_eq!(typed.pending("a", 2).unwrap().len(), 2);
+    typed.offer("a", 0).unwrap();
+    typed.acknowledge("a", 0).unwrap();
+    drop(typed);
+    let mut typed = ExportLedger::open_sealed(&path, cipher()).unwrap();
+    let partial = typed.progress("a").unwrap();
+    assert_eq!((partial.pending, partial.pending_events, partial.acknowledged_sequence, partial.version), (true, 1, Some(0), 2));
+    let at = partial.last_ack_at.expect("an acknowledgement instant");
+    typed.pending("a", 2).unwrap();
+    typed.acknowledge("a", 1).unwrap();
+    let complete = typed.progress("a").unwrap();
+    assert_eq!((complete.pending, complete.pending_events, complete.acknowledged_sequence, complete.version), (false, 0, Some(1), 3));
+    assert!(complete.last_ack_at.is_some_and(|later| later >= at));
+
+    let mut group = PublicationLedger::open_sealed(&path, cipher()).unwrap();
+    let plan = PublicationPlan { name: "copy".into(), incarnation: "store-1".into(), namespace: "one".into(), destination: "receiver".into(), read_identity: "reader".into(), base: None, order: 1, input: json!("frontier"), members: [("a".into(), "items".into())].into() };
+    let rows = [("a".into(), [("{\"id\":1}".into(), json!({"id": 1}))].into())].into();
+    group.stage(&plan, &rows, "reader").unwrap();
+    let staged = group.progress("copy", "one").unwrap();
+    assert_eq!((staged.pending, staged.pending_events, staged.acknowledged_sequence, staged.version, staged.last_ack_at), (true, 3, None, 1, None));
+    let batch = group.batch("copy", "one").unwrap().unwrap();
+    group.acknowledge("copy", "one", &batch.group.id, 2).unwrap();
+    drop(group);
+    let complete = PublicationLedger::open_sealed(&path, cipher()).unwrap().progress("copy", "one").unwrap();
+    assert_eq!((complete.pending, complete.pending_events, complete.acknowledged_sequence, complete.version), (false, 0, Some(2), 2));
+    assert!(complete.last_ack_at.is_some());
+}

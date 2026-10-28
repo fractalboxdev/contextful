@@ -1,7 +1,7 @@
 //! Machine-local typed export state and its durable delivery outbox.
 
 use crate::{stores::Db, storage};
-use contextful_core::export::{ChangeEvent, ChangeState};
+use contextful_core::export::{ChangeEvent, ChangeState, DeliveryMark, DeliveryProgress};
 pub use contextful_core::export::{ExportPosition, ExportPublication};
 use contextful_core::run::Failure;
 use contextful_core::store::encrypt::FileCipher;
@@ -43,7 +43,31 @@ CREATE TABLE IF NOT EXISTS typed_export_binding (
   pending_source TEXT NOT NULL,
   acknowledged_publication TEXT
 );
+CREATE TABLE IF NOT EXISTS typed_export_mark (
+  name TEXT PRIMARY KEY,
+  body TEXT NOT NULL
+);
 ";
+
+/// The wall-clock instant a ledger stamps on an acknowledgement (`run.export.status-version`).
+pub(crate) fn wall_clock(path: &Path) -> Result<contextful_core::time::Instant, Failure> {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| storage(path, e))?.as_nanos();
+    contextful_core::time::Instant::from_unix_nanos(i128::try_from(nanos).map_err(|e| storage(path, e))?).map_err(|e| storage(path, e))
+}
+
+fn mark(conn: &Connection, path: &Path, name: &str) -> Result<DeliveryMark, Failure> {
+    let body: Option<String> = conn.query_row("SELECT body FROM typed_export_mark WHERE name = ?1", [name], |r| r.get(0)).optional().map_err(|e| storage(path, e))?;
+    body.map_or(Ok(DeliveryMark::default()), |body| serde_json::from_str(&body).map_err(|e| storage(path, e)))
+}
+
+/// Apply `edit` to the export's delivery mark in the transaction writing its outbox.
+fn remark(conn: &Connection, path: &Path, name: &str, edit: impl FnOnce(&mut DeliveryMark)) -> Result<(), Failure> {
+    let mut current = mark(conn, path, name)?;
+    edit(&mut current);
+    let body = serde_json::to_string(&current).map_err(|e| storage(path, e))?;
+    conn.execute("INSERT INTO typed_export_mark (name, body) VALUES (?1, ?2) ON CONFLICT(name) DO UPDATE SET body = excluded.body", params![name, body]).map_err(|e| storage(path, e))?;
+    Ok(())
+}
 
 pub struct ExportLedger {
     path: PathBuf,
@@ -63,6 +87,11 @@ impl ExportLedger {
 
     pub fn position(&self, name: &str) -> Result<ExportPosition, Failure> {
         self.db.with_connection(false, |conn| position(conn, &self.path, name))
+    }
+
+    /// The export's progress, read without delivering (`run.export.status`).
+    pub fn progress(&self, name: &str) -> Result<DeliveryProgress, Failure> {
+        self.db.with_connection(false, |conn| Ok(mark(conn, &self.path, name)?.typed(&position(conn, &self.path, name)?)))
     }
 
     pub fn state(&self, name: &str) -> Result<ChangeState, Failure> {
@@ -117,6 +146,7 @@ impl ExportLedger {
                 .ok_or_else(|| storage(path, "event sequence exceeds machine cursor range"))?;
             tx.execute("UPDATE typed_export SET pending_publication = ?2, next_sequence = ?3 WHERE name = ?1", params![name, publication.id, next_sequence]).map_err(|e| storage(path, e))?;
             tx.execute("INSERT INTO typed_export_binding (name, identity, destination, pending_source) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(name) DO UPDATE SET identity = excluded.identity, destination = excluded.destination, pending_source = excluded.pending_source", params![name, publication.identity, publication.destination, publication.source]).map_err(|e| storage(path, e))?;
+            remark(tx, path, name, DeliveryMark::wrote)?;
             Ok(true)
         })?;
         if staged { self.offered.remove(name); }
@@ -170,6 +200,7 @@ impl ExportLedger {
         if through != offered_last {
             return Err(storage(path, format!("export `{name}` acknowledgement is not the offered frontier")));
         }
+        let (acknowledged, at) = (through, wall_clock(path)?);
         let through = i64::try_from(through).map_err(|e| storage(path, e))?;
         self.db.with_connection(true, |tx| {
             let (ack, pending): (i64, Option<String>) = tx.query_row("SELECT ack_sequence, pending_publication FROM typed_export WHERE name = ?1", [name], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -188,6 +219,7 @@ impl ExportLedger {
             let Some(body) = body else { return Err(storage(path, "acknowledgement skips an event")) };
             let event: ChangeEvent = serde_json::from_str(&body).map_err(|e| storage(path, e))?;
             tx.execute("UPDATE typed_export SET ack_sequence = ?2 WHERE name = ?1", params![name, through]).map_err(|e| storage(path, e))?;
+            remark(tx, path, name, |mark| mark.acknowledged(acknowledged, at))?;
             if matches!(event.change, contextful_core::export::Change::PublicationComplete { .. }) {
                 let source: String = tx.query_row("SELECT pending_source FROM typed_export_binding WHERE name = ?1", [name], |r| r.get(0)).map_err(|e| storage(path, e))?;
                 tx.execute("DELETE FROM typed_export_state WHERE name = ?1", [name]).map_err(|e| storage(path, e))?;
