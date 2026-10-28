@@ -129,6 +129,33 @@ impl Disk {
         rows.first().map(|r| serde_json::from_str(r["row"].as_str().unwrap()).unwrap())
     }
 
+    /// Write `count` lost marks on node `site` into the execution database, run ids
+    /// `<prefix><n>`, each a copy of `template` whose mark turned lost at `lost_at`, or
+    /// carries no instant under `None`.
+    fn seed_lost(&self, template: &Value, prefix: &str, count: usize, lost_at: Option<&str>) {
+        let db = contextful_d1::D1::connect(&self.d1).unwrap();
+        for n in 0..count {
+            let id = format!("{prefix}{n:03}");
+            let mut row = template.clone();
+            row["run_id"] = serde_json::json!(id);
+            row["unpushed"] = serde_json::json!({ "node": "site", "lost": true });
+            if let Some(at) = lost_at {
+                row["unpushed"]["lost_at"] = serde_json::json!(at);
+            }
+            db.query(
+                "INSERT INTO contextful_run (run_id, pipeline_id, host_scope, started_ns, row) VALUES (?, ?, ?, ?, ?)",
+                vec![serde_json::json!(id), row["pipeline_id"].clone(), Value::Null, serde_json::json!("0"), serde_json::json!(row.to_string())],
+            )
+            .unwrap();
+        }
+    }
+
+    /// `sync status` with `extra` arguments: its exit code and its standard output.
+    fn status_out(&self, extra: &[&str]) -> (Option<i32>, Vec<u8>) {
+        let out = self.command(&[&["sync", "status", "--project", "research"], extra].concat()).output().unwrap();
+        (out.status.code(), out.stdout)
+    }
+
     fn local_manifest(&self, run: &str) -> PathBuf {
         self.root().join(STORE).join(format!("tables/filings/data/runs/{run}/site/_manifest.json"))
     }
@@ -153,7 +180,7 @@ fn refuse_next_push(s3: &S3Server) {
 /// takes writes, that next start pushes the marked run before its own opens. The status
 /// names the refusal in its JSON and exits 3 while the mark stands, and exits 0 once clear.
 // spec: store.drain.before-read@94220770
-// spec: store.drain.status@410e1992
+// spec: store.drain.status@89c521eb
 #[test]
 fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
     let s3 = S3Server::start("conformance");
@@ -237,6 +264,83 @@ fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
     let (code, status, stderr) = disk.status();
     assert_eq!(code, Some(0), "a lost run is listed without refusing: {stderr}");
     assert_eq!(runs(&status), vec![("r1".to_string(), true)]);
+}
+
+/// A store holding hundreds of lost marks prints a summary whose whole document a caller
+/// keeping a bounded tail of stdout parses: the counts number every mark, `runs` lists at
+/// most 20 of each kind, and `--all` lists every mark. The open run still refuses.
+// spec: store.drain.status@89c521eb
+// spec: store.drain.status-summary@40f76961
+// spec: store.drain.status-all@36260ecc
+#[test]
+fn a_status_over_many_lost_marks_prints_a_bounded_summary() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    refuse_next_push(&s3);
+    assert!(!disk.start("r1").status.success());
+    let template = disk.row("r1").unwrap();
+    let ended = template["ended_at"].as_str().unwrap().to_string();
+    disk.seed_lost(&template, "gone", 300, Some(&ended));
+
+    let (code, stdout) = disk.status_out(&[]);
+    assert_eq!(code, Some(3), "the open run refuses the summary");
+    assert!(stdout.len() <= 8 * 1024, "the summary stays small: {} bytes", stdout.len());
+    let status: Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(status["error"], "SyncRunsUnpushed", "{status}");
+    assert_eq!((status["open"].as_u64(), status["lost"].as_u64()), (Some(1), Some(300)), "{status}");
+    let listed = runs(&status);
+    assert!(!listed.is_empty());
+    assert_eq!(listed.iter().filter(|(_, lost)| *lost).count(), 20, "{status}");
+    assert_eq!(listed.iter().filter(|(_, lost)| !*lost).cloned().collect::<Vec<_>>(), vec![("r1".to_string(), false)]);
+    let first = status["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == "gone000").unwrap();
+    assert_eq!((first["pipeline"].as_str(), first["node"].as_str(), first["ended_at"].as_str()), (Some("feed"), Some("site"), Some(ended.as_str())));
+
+    let (code, stdout) = disk.status_out(&["--all"]);
+    assert_eq!(code, Some(3));
+    let all: Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!((all["open"].as_u64(), all["lost"].as_u64()), (Some(1), Some(300)), "{all}");
+    let listed = runs(&all);
+    assert_eq!(listed.len(), 301);
+    assert_eq!(listed.iter().filter(|(_, lost)| *lost).count(), 300);
+}
+
+/// A committed push prunes each lost mark that turned lost more than 7 days before, keeps
+/// a younger one, and gives a mark lost without its instant the push's, so it ages from
+/// there.
+// spec: store.drain.prune@d8361131
+#[test]
+fn a_push_prunes_lost_marks_past_their_retention() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    let first = disk.start("r1");
+    assert!(first.status.success(), "{}", String::from_utf8_lossy(&first.stderr));
+    let template = disk.row("r1").unwrap();
+    let ended = contextful_core::time::Instant::parse(template["ended_at"].as_str().unwrap()).unwrap();
+    let day = 24 * 60 * 60;
+    let young = ended.minus_secs(6 * day).to_rfc3339();
+    disk.seed_lost(&template, "old", 3, Some(&ended.minus_secs(8 * day).to_rfc3339()));
+    disk.seed_lost(&template, "young", 2, Some(&young));
+    disk.seed_lost(&template, "bare", 1, None);
+    let (code, before, _) = disk.status();
+    assert_eq!((code, before["lost"].as_u64()), (Some(0), Some(6)), "{before}");
+
+    let next = disk.start("r2");
+    assert!(next.status.success(), "{}", String::from_utf8_lossy(&next.stderr));
+    for old in ["old000", "old001", "old002"] {
+        let row = disk.row(old).unwrap();
+        assert!(row.get("unpushed").is_none(), "the push prunes a mark lost past its window: {row}");
+        assert_eq!(row["run_id"], old, "pruning keeps the run row");
+    }
+    for kept in ["young000", "young001"] {
+        let row = disk.row(kept).unwrap();
+        assert_eq!((row["unpushed"]["lost"].as_bool(), row["unpushed"]["lost_at"].as_str()), (Some(true), Some(young.as_str())), "{row}");
+    }
+    let bare = disk.row("bare000").unwrap();
+    let stamped = contextful_core::time::Instant::parse(bare["unpushed"]["lost_at"].as_str().unwrap_or_else(|| panic!("{bare}"))).unwrap();
+    assert!(stamped >= ended, "a mark lost without its instant takes the push's: {bare}");
+    let (code, after, _) = disk.status();
+    assert_eq!((code, after["lost"].as_u64()), (Some(0), Some(3)), "{after}");
+    assert_eq!(runs(&after).len(), 3);
 }
 
 /// A proxy in front of the execution database that forwards each request until `manifest`

@@ -321,7 +321,8 @@ fn a_marking_catalog_marks_a_run_unpushed_at_its_open() {
     recorded.put_run(&row("r1", RunStatus::Running, Phase::Plan, "2030-01-01T00:00:00Z")).unwrap();
     recorded.put_run(&row("r0", RunStatus::Success, Phase::Commit, "2030-01-01T00:00:00Z")).unwrap();
     let put = inner.2.lock().unwrap().clone();
-    assert_eq!(put[0].unpushed.as_ref().map(|u| (u.node.as_str(), u.lost)), Some(("ingest-a", false)));
+    let fresh = contextful_core::run::record::Unpushed { node: "ingest-a".into(), lost: false, lost_at: None };
+    assert_eq!(put[0].unpushed, Some(fresh), "a fresh mark is neither lost nor timed");
     assert!(put[1].unpushed.is_none(), "a terminal row carries no new mark");
     let recorded_rows = history(&f.store, Bounds::default()).unwrap();
     assert_eq!(recorded_rows.len(), 2, "the run record holds both rows");

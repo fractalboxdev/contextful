@@ -308,7 +308,7 @@ impl Catalog for RecordedCatalog {
         self.record(row)?;
         if self.mark_unpushed && row.status.is_in_flight() && row.unpushed.is_none() {
             let mut marked = row.clone();
-            marked.unpushed = Some(contextful_core::run::record::Unpushed { node: self.node()?.to_string(), lost: false });
+            marked.unpushed = Some(contextful_core::run::record::Unpushed { node: self.node()?.to_string(), lost: false, lost_at: None });
             return self.inner.put_run(&marked);
         }
         self.inner.put_run(row)

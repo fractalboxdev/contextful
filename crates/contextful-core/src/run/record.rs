@@ -216,6 +216,10 @@ pub struct Unpushed {
     pub node: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub lost: bool,
+    /// The catalog instant the mark turned lost, from which its retention runs
+    /// (`store.drain.prune`); absent on a mark not lost, and on one lost before the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lost_at: Option<Instant>,
 }
 
 /// One bound hit: the step whose attempt struck it, that attempt, and the bound

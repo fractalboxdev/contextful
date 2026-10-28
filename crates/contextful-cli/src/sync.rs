@@ -83,11 +83,14 @@ pub enum SyncCmd {
         #[arg(long)]
         json: bool,
     },
-    /// List, as JSON, each run committed on a disposable disk that no committed push has
-    /// carried, refusing while one is not lost.
+    /// Summarize, as JSON, the runs committed on a disposable disk that no committed push
+    /// has carried, refusing while one is not lost.
     Status {
         #[command(flatten)]
         args: SyncArgs,
+        /// List every marked run in place of at most [`STATUS_RUNS`] of each kind.
+        #[arg(long)]
+        all: bool,
     },
     /// Take, renew or release a table's compaction lease in the bucket.
     #[command(subcommand)]
@@ -492,6 +495,7 @@ fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
     let report = s.push(at)?;
     if let Some(c) = &catalog {
         settle(c.as_ref(), &s.store, &s.redistribution.withheld, &s.node, &marked)?;
+        prune_lost(c.as_ref())?;
     }
     Ok(report)
 }
@@ -578,12 +582,42 @@ fn settle(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, nod
                 r.unpushed = None;
             } else if let Some(u) = r.unpushed.as_mut().filter(|_| ours) {
                 u.lost = true;
+                u.lost_at = Some(now);
             }
             Ok(())
         })?;
         if lost {
             eprintln!("warning: run `{}` opened on node `{node}`, and neither the bucket nor this store holds its commit; it is marked lost", row.run_id);
         }
+    }
+    Ok(())
+}
+
+/// How long a `lost` mark stays reported before a committed push prunes it
+/// (`store.drain.prune`).
+pub const LOST_RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
+
+/// After a committed push, clear each `lost` mark, any node's, that turned lost more than
+/// [`LOST_RETENTION_SECS`] before the catalog's now, keeping its run row; a mark lost
+/// without its instant takes now, so it ages from this push (`store.drain.prune`).
+fn prune_lost(catalog: &dyn Catalog) -> Result<()> {
+    let now = catalog.now()?;
+    let horizon = now.minus_secs(LOST_RETENTION_SECS);
+    for row in catalog.unpushed_runs()? {
+        let Some(mark) = row.unpushed.as_ref().filter(|u| u.lost) else { continue };
+        if mark.lost_at.is_some_and(|at| at > horizon) {
+            continue;
+        }
+        catalog.update_run(&row.run_id, &mut |r| {
+            if let Some(u) = r.unpushed.as_mut().filter(|u| u.lost) {
+                match u.lost_at {
+                    None => u.lost_at = Some(now),
+                    Some(at) if at <= horizon => r.unpushed = None,
+                    Some(_) => {}
+                }
+            }
+            Ok(())
+        })?;
     }
     Ok(())
 }
@@ -667,11 +701,17 @@ pub fn drain(l: &Located) -> Result<()> {
 /// that could not read the execution database (`store.drain.status`).
 pub const UNPUSHED_STATUS: i32 = 3;
 
-/// Every run marked unpushed, any node's, as JSON with a typed `error`: `SyncRunsUnpushed`
-/// exiting [`UNPUSHED_STATUS`] while one is not lost (`store.drain.status`), and
-/// `SyncStatusUnread` exiting 1 when the execution database answers no read
-/// (`store.drain.status-unread`).
-fn status(args: &SyncArgs) -> Result<()> {
+/// The most runs of each kind, `lost` and not, a `sync status` without `--all` lists
+/// (`store.drain.status-summary`).
+pub const STATUS_RUNS: usize = 20;
+
+/// Every run marked unpushed, any node's, as JSON with a typed `error` and the `open` and
+/// `lost` counts: `SyncRunsUnpushed` exiting [`UNPUSHED_STATUS`] while one is not lost
+/// (`store.drain.status`), and `SyncStatusUnread` exiting 1 when the execution database
+/// answers no read (`store.drain.status-unread`). `runs` lists at most [`STATUS_RUNS`] of
+/// each kind (`store.drain.status-summary`), or every mark under `all`
+/// (`store.drain.status-all`).
+fn status(args: &SyncArgs, all: bool) -> Result<()> {
     let l = locate(args.project.as_deref(), args.declaration.clone())?;
     let store = Store::open(&l.project.dir, &l.project.name)?;
     let read = durable_catalog(&store).and_then(|c| match c {
@@ -685,25 +725,29 @@ fn status(args: &SyncArgs) -> Result<()> {
             anyhow::bail!("SyncStatusUnread: the execution database answered no read of its unpushed runs: {e:#}");
         }
     };
-    let listed: Vec<serde_json::Value> = rows
-        .iter()
-        .filter_map(|r| {
-            let u = r.unpushed.as_ref()?;
-            Some(serde_json::json!({
+    let (mut open, mut lost) = (0usize, 0usize);
+    let mut listed = Vec::new();
+    for r in &rows {
+        let Some(u) = r.unpushed.as_ref() else { continue };
+        let seen = if u.lost { &mut lost } else { &mut open };
+        *seen += 1;
+        if all || *seen <= STATUS_RUNS {
+            listed.push(serde_json::json!({
                 "run_id": r.run_id,
                 "pipeline": r.pipeline_id,
                 "table": r.table,
                 "node": u.node,
                 "ended_at": r.ended_at.map(|t| t.to_string()),
                 "lost": u.lost,
-            }))
-        })
-        .collect();
-    let open: Vec<RunRow> = rows.into_iter().filter(|r| r.unpushed.as_ref().is_some_and(|u| !u.lost)).collect();
-    let error = (!open.is_empty()).then_some("SyncRunsUnpushed");
-    println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "runs": listed, "error": error }))?);
-    if !open.is_empty() {
-        eprintln!("SyncRunsUnpushed: run(s) {} opened on a disposable disk, and no committed push carried them; replacing that disk discards them", run_list(&open));
+            }));
+        }
+    }
+    let error = (open > 0).then_some("SyncRunsUnpushed");
+    println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "error": error, "open": open, "lost": lost, "runs": listed }))?);
+    if open > 0 {
+        let unpushed: Vec<RunRow> = rows.into_iter().filter(|r| r.unpushed.as_ref().is_some_and(|u| !u.lost)).take(STATUS_RUNS).collect();
+        let more = if open > unpushed.len() { format!(" and {} more", open - unpushed.len()) } else { String::new() };
+        eprintln!("SyncRunsUnpushed: run(s) {}{more} opened on a disposable disk, and no committed push carried them; replacing that disk discards them", run_list(&unpushed));
         std::process::exit(UNPUSHED_STATUS);
     }
     Ok(())
@@ -720,7 +764,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
             Ok(())
         }
-        SyncCmd::Status { args } => status(&args),
+        SyncCmd::Status { args, all } => status(&args, all),
         SyncCmd::Probe { args } => {
             let (s, _) = open(&args)?;
             let (c, why) = s.probe_with_reason()?;

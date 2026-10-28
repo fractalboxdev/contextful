@@ -299,3 +299,18 @@ fn a_bound_hit_names_its_bound_and_the_row_lists_every_hit() {
     plain.as_object_mut().unwrap().remove("bound_hits");
     assert!(serde_json::from_value::<RunRow>(plain).unwrap().bound_hits.is_empty());
 }
+
+/// A lost unpushed mark records the instant it turned lost, from which its retention runs; a
+/// mark not lost writes no instant, and a mark recorded without one decodes as `None`.
+#[test]
+fn a_lost_mark_records_the_instant_it_turned_lost() {
+    use contextful_core::run::record::Unpushed;
+    let lost = Unpushed { node: "site".into(), lost: true, lost_at: Some(at("2030-01-08T00:00:00Z")) };
+    let wire = serde_json::to_value(&lost).unwrap();
+    assert_eq!(wire["lost_at"], "2030-01-08T00:00:00Z");
+    assert_eq!(serde_json::from_value::<Unpushed>(wire).unwrap(), lost);
+    let open = Unpushed { node: "site".into(), lost: false, lost_at: None };
+    assert_eq!(serde_json::to_value(&open).unwrap(), serde_json::json!({ "node": "site" }));
+    let bare: Unpushed = serde_json::from_value(serde_json::json!({ "node": "site", "lost": true })).unwrap();
+    assert_eq!(bare.lost_at, None);
+}
