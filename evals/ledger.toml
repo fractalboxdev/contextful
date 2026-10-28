@@ -709,12 +709,13 @@ target = { op = "<=", value = 1.01 }
 seed   = 0x5eed_0643
 
 [entry.sync-cold-pull-objects-before-ready]
-clause = "store.pull.before-run"
+clause = "store.pull.lazy-ready"
 metric = "pull.cold.objects_before_ready"
 kind   = "test"
 tier   = "gate"
-method = { issue = 643 }
+method = { test = "contextful_sync::lazy::a_cold_lazy_pull_fetches_three_objects_per_folded_table_before_a_read_is_ready" }
 target = { op = "<=", value = 3 }
+seed   = 0x5eed_0643
 
 [entry.network-volume-refuses-cas]
 clause = "store.probe.unproven"

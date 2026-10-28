@@ -74,6 +74,7 @@ SyncStatusUnread             = { clause = "store.drain.status-unread", gloss = "
 SyncManifestFormatUnsupported = { clause = "store.push.format-unsupported", gloss = "A bucket or generation manifest carries a format newer than the reader parses." }
 SyncGenerationConflict       = { clause = "store.push.generation-conflict", gloss = "A generation manifest already holds another commit's bytes under the number a push committed." }
 SyncPartCollected            = { clause = "store.pull.part-collected", gloss = "A part a lazy store needs is gone from the bucket." }
+SyncFoldedRunsUnfetched      = { clause = "store.pull.folded-runs-unreachable", gloss = "A store whose lazy pull skipped folded run manifests reads its runs without a part source." }
 FoldInputsExceedCache        = { clause = "store.fold.cached-inputs", gloss = "A fold's input parts exceed the part cache bound." }
 SyncGenerationAbsent         = { clause = "store.pull.generation-absent", gloss = "A pull names a generation the bucket holds no generation manifest for." }
 SyncGenerationDiverged       = { clause = "store.pull.generation-diverged", gloss = "A generation pull meets a local file the generation does not list." }

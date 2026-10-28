@@ -47,7 +47,7 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
     match snapshot {
         Some(s) => scan_resolved(store, decl, bounds, Resolution { snapshot: Some(s), runs: Vec::new() }, true),
         None => {
-            let state = store.state(decl)?;
+            let state = store.state_at(decl, bounds.as_of)?;
             scan_resolved(store, decl, bounds, state.resolve(bounds.as_of)?, false)
         }
     }

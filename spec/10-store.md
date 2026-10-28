@@ -12,7 +12,6 @@ owns:
   - emit
   - push
   - pull
-  - probe
   - merge
   - lease
 ---
@@ -625,14 +624,26 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
 
 ### lazy parts
 
-A lazy store pulls metadata and fetches each data part when a read first needs it.
+A lazy store pulls metadata and fetches each data part and folded run manifest when a reader first needs it.
 
 - `lazy-parts` — With `[sync] lazy_parts = true`, pull skips table Parquet data parts, which the store fetches whole on first read or fold use and verifies under {{store.pull.digest-mismatch}}.
   *A-store#cold-store-boots*
 - `lazy-pointer` — Under {{store.pull.lazy-parts}}, {{store.pull.pointer-last}} waits for the named snapshot's `_manifest.json` alone; a part's digest comes from the bucket manifest when a read first fetches it.
   *A-store#cold-store-boots*
-- `lazy-ready` — Under {{store.pull.lazy-parts}}, {{store.pull.before-run}} waits for every in-scope object except data parts: each `schema.json`, snapshot and run manifest, run state and control object.
-  *because a read resolves each run, folded runs under `as_of` included, from its local `_manifest.json`*
+- `lazy-ready` — Under {{store.pull.lazy-parts}}, {{store.pull.before-run}} waits for every in-scope object except data parts and the manifests {{store.pull.lazy-folded-runs}} skips.
+  *A-store#folded-runs-on-demand*
+- `lazy-folded-runs` — Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.
+  *A-store#folded-runs-on-demand*
+- `skipped-record` — Each pull rewrites `.skipped-runs.json` to the listed manifests still absent locally, keeping entries of tables outside its scope; an empty record leaves no file.
+  *because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone*
+- `folded-runs-fetched` — Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.
+  *A-store#folded-runs-on-demand*
+- `folded-run-collected` — A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, naming the manifest.
+  *A-store#folded-runs-on-demand*
+- `folded-runs-unreachable` — A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.
+  *A-store#folded-runs-on-demand*
+- `folded-runs-source` — Every command opening a store whose `[sync]` declares `lazy_parts` registers the bucket's part source once per process, whether or not the command pulls.
+  *because a command reading runs without pulling otherwise meets {{store.pull.folded-runs-unreachable}}*
 - `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.
   *A-store#cold-store-boots*
 - `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.
@@ -669,18 +680,6 @@ sequenceDiagram
 #### Scenarios
 
 - `store.pull.control-head`: WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head.
-
-## probe
-
-Testing conditional writes with a sentinel object and selecting the backend's coordination mode.
-
-- `inconclusive` — An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.
-  *A-store#coordination-probed-compare*
-- `unproven` — Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.
-  *A-store#coordination-probed-compare*
-- `sentinel` — The probe creates a sentinel under `_contextful/cas-probe/`, demonstrates `cas` when a second create and a stale `If-Match` fail while a current `If-Match` replaces it, then deletes it.
-- `network-volume` — A filesystem bucket on a mount type outside apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs and overlay resolves `single-writer` without a sentinel, naming the mount type; a declared `cas` there meets {{store.probe.unproven}}.
-  *because a sentinel run from one client of a network share cannot observe another client*
 
 ## merge
 

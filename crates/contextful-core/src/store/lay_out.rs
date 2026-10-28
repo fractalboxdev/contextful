@@ -32,6 +32,25 @@ pub const RUNS_DIR: &str = "data/runs";
 pub const SNAPSHOTS_DIR: &str = "data/snapshots";
 pub const REQUESTS_DIR: &str = "requests";
 
+/// The store-root file naming each folded run manifest a lazy pull left in the bucket
+/// (`store.pull.lazy-folded-runs`). The leading `.` keeps it node-local: a push uploads no dot file.
+pub const SKIPPED_RUNS_FILE: &str = ".skipped-runs.json";
+
+/// The contents of [`SKIPPED_RUNS_FILE`]: each skipped `_manifest.json`, relative to the
+/// store root, sorted.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkippedRuns {
+    pub manifests: Vec<String>,
+}
+
+impl SkippedRuns {
+    /// The skipped manifests of `table`: those under its `data/runs/` directory.
+    pub fn of_table<'a>(&'a self, table: &str) -> impl Iterator<Item = &'a String> {
+        let prefix = format!("{TABLES_DIR}/{table}/{RUNS_DIR}/");
+        self.manifests.iter().filter(move |m| m.strip_prefix(&prefix).is_some_and(|rest| rest.split('/').count() == 3))
+    }
+}
+
 /// A project's store root, relative to the project directory (`store.lay-out.store-root`).
 pub fn store_root(project: &str) -> String {
     format!(".contextful/context/{project}")

@@ -1052,7 +1052,7 @@ impl Face {
         for t in tables.iter().cloned() {
             let decl = self.decl(&t);
             let state = match self.store.try_schema(&t)? {
-                Some(_) => Some(self.store.state(&decl)?),
+                Some(_) => Some(self.store.state_at(&decl, bounds.for_table(&decl).as_of)?),
                 None => None,
             };
             engine.register(&t, &self.source_over(&t, bounds.for_table(&decl), None, None, state.as_ref())?.base)?;

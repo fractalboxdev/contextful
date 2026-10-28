@@ -34,6 +34,7 @@ mod rows;
 mod run_commit;
 mod run_record;
 mod session;
+mod skipped_runs;
 mod subscribe;
 mod support;
 mod vintage_cost;
