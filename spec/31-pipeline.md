@@ -513,16 +513,22 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
   *because a reader's queries name the columns they were written against, and an evolution the exporter chooses changes them unannounced*
 - `table-shape` — An existing table at another format version than the block declares, or partitioned, refuses before any file is written; an export writes unpartitioned tables at its declared version.
   *because files written to the declared shape mislabel an existing table's version or partition values*
-- `audience` — Each Iceberg export publishes for exactly one admitted credential, which maps to exactly one namespace; the route derives the namespace from the caller's credential, and the caller never names one.
+- `audience` — Each Iceberg export publishes for exactly one admitted credential, which maps to exactly one namespace; the gateway derives a reader's namespace from its audience key, and the reader never names one.
   *A-run#iceberg-audience*
+- `audience-key` — The gateway maps the SHA-256 of a reader's bearer audience key to one namespace through `<BINDING>_BASIN_AUDIENCES`; a key reads until its digest leaves that secret, with no expiry or denylist check.
+  *because a gateway restating credential admission in part admits a revoked credential while appearing to check it*
 - `wake-audience` — A queue wake runs each Iceberg export of a woken table under its one admitted credential and skips, without failing, an export publishing for another credential.
   *because one table's exports serve one audience each, and a wake carries one credential*
 - `namespace-shared` — Two Iceberg exports naming one namespace under different credentials, one credential under two namespaces, or one table raise `ExportNamespaceShared` at preflight, naming both exports.
   *A-run#iceberg-audience*
-- `caller-sql` — Caller-written SQL reaches the catalog's query engine only when the warehouse holds one audience; otherwise the route runs fixed query templates against the mapped namespace.
+- `caller-sql` — Caller-written SQL reaches the catalog's query engine only from a store entry declaring `caller_sql` for a single-audience warehouse; otherwise the gateway runs the entry's `templates` against the mapped namespace.
   *A-run#iceberg-audience*
-- `route` — Where a deployment adds a catalog query engine, the gateway sends a caller whose credential maps to a namespace to that engine, and every other caller to the Container query face.
+- `route` — Where a deployment adds a catalog query engine, the gateway answers `POST /stores/<id>/query` from a reader whose audience key maps to a namespace through that engine, and sends every other caller to the Container.
   *A-topology#catalog-read-add-on*
+- `gateway-entry` — A gateway store entry's `basin` object names the query engine's `endpoint`, optional `templates` with `{namespace}` and `{table}` placeholders, and boolean `caller_sql`; its token and audience map are derived secret names.
+  *because the store's binding name already derives its other secret names, and an authored name lets one entry read another's token*
+- `query-refused` — A mapped reader's request naming a namespace, an undeclared template, a table outside `[a-z_][a-z0-9_]*`, or caller SQL on a shared warehouse raises `ExportQueryRefused` and reaches no engine.
+  *A-run#iceberg-audience*
 
 #### Scenarios
 
