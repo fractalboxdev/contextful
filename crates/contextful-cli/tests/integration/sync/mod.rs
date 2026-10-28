@@ -480,9 +480,9 @@ fn bucket_run_states(bucket: &Path) -> Vec<Value> {
     out
 }
 
-/// With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, a
-/// failed push failing the command.
-// spec: store.push.after-run@c7cce442
+/// With `[sync] push_after_run = true`, `run start`, `pipeline run` and `job fire` push the store once the fire's
+/// runs close, a failed push failing the command.
+// spec: store.push.after-run@ef7ef147
 /// The bucket push runs on the failure arm as on the success arm, for every failure past run open.
 // spec: run.record.failure-publishes@a9b84cbe
 #[test]

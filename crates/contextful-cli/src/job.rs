@@ -284,6 +284,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                     })
                 };
                 let swept = engine.sweep(&fire, &mut read_origin, &mut land_origin)?;
+                // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
+                crate::sync::settle_fire(&l, w.clock.now())?;
                 for row in &swept.origins {
                     let input = row.input.clone().unwrap_or_default();
                     println!(
@@ -324,6 +326,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                         })
                     },&mut complete)?
                 };
+                // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
+                crate::sync::settle_fire(&l, w.clock.now())?;
                 let (mut successful, mut failed, mut parked, mut deferred, mut waiting) = (0, 0, 0, 0, 0);
                 for item in &report.items {
                     use contextful_engine::drive::ItemStatus;
@@ -374,6 +378,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
 
             w.engine.drive(&drive, &mut read, &mut land)?
             };
+            // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
+            crate::sync::settle_fire(&l, w.clock.now())?;
             let input = row.input.clone().map(|i| i.rows).unwrap_or_default();
             if row.status == RunStatus::Success {
                 println!("{name}: {} success · {} rows landed from {input} input rows", row.run_id, row.rows);
@@ -410,6 +416,8 @@ fn fire_plan(
     let cwd = l.declaration.parent().filter(|d| !d.as_os_str().is_empty()).map(std::path::Path::to_path_buf).unwrap_or_else(|| ".".into());
     let fire = PlanFire { job: name.to_string(), plan: &plan, run_id, site_id, pid: std::process::id(), boot_id: boot_id(), poll: PARKED_POLL };
     let row = w.engine.run_plan(&fire, &CommandConnectors { cwd })?;
+    // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
+    crate::sync::settle_fire(l, w.clock.now())?;
     if row.status != RunStatus::Success {
         bail!("{name}: {} {} — {}", row.run_id, row.status, row.error_message.unwrap_or_default());
     }

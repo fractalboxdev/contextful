@@ -401,5 +401,7 @@ pub(crate) fn fire_synthesis(
 ) -> Result<()> {
     let (authority, revocation) = admit.admit(project.project.as_deref(), "a synthesize job")?;
     let now = crate::run::clock(&project.now)?.now();
-    synthesize(located, &authority, &revocation, &job.source, into, &job.endpoint, &job.model, now)
+    synthesize(located, &authority, &revocation, &job.source, into, &job.endpoint, &job.model, now)?;
+    // The fire's landings push as `pipeline run`'s do (`store.push.after-run`).
+    crate::sync::settle_fire(located, now)
 }

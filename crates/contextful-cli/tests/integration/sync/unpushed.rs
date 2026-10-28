@@ -488,3 +488,34 @@ fn a_received_run_committing_nothing_drops_its_mark() {
     assert_eq!(code, Some(0), "{stderr}");
     assert!(runs(&status).is_empty(), "{status}");
 }
+
+/// A job fire closes its runs as `pipeline run` does: a run closing without a run manifest, a build fire's among them,
+/// drops its mark, and the fire pushes once its runs close, so the bucket holds the build's output and `sync status`
+/// reports no unpushed run.
+// spec: store.drain.mark@d1491b97
+// spec: store.push.after-run@ef7ef147
+#[test]
+fn a_build_fire_drops_its_mark_and_pushes_its_output() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    let started = disk.start("load-1");
+    assert!(started.status.success(), "{}", String::from_utf8_lossy(&started.stderr));
+    std::fs::write(
+        disk.root().join("contextful.toml"),
+        "authoring_posture = 'per_request'\n[[pipeline.tables]]\nname = 'filings'\n\n\
+         [[model]]\nid = 'filing_count'\nsql = \"SELECT 'all' AS k, CAST(count(*) AS BIGINT) AS n FROM filings\"\nunique_key = ['k']\n\
+         [model.contract]\nversion = '1.0.0'\ncolumns = [{ name = 'k', type = 'utf8', nullable = false }, { name = 'n', type = 'int64', nullable = false }]\n\n\
+         [[job]]\nname = 'count-build'\nkind = 'build'\ntarget = 'filing_count'\n",
+    )
+    .unwrap();
+    let fired = disk.cf(&["job", "fire", "count-build", "--project", "research", "--site-id", "site"]);
+    assert!(fired.status.success(), "{}", String::from_utf8_lossy(&fired.stderr));
+    assert!(s3.keys().iter().any(|k| k.contains("tables/filing_count/")), "the fire pushes the build's output: {:?}", s3.keys());
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{status} {stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
+    // A later push finds no mark to call lost.
+    let pushed = disk.cf(&["sync", "push", "--project", "research"]);
+    assert!(pushed.status.success(), "{}", String::from_utf8_lossy(&pushed.stderr));
+    assert!(!String::from_utf8_lossy(&pushed.stderr).contains("marked lost"), "{}", String::from_utf8_lossy(&pushed.stderr));
+}
