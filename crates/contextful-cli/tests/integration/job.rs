@@ -172,6 +172,35 @@ fn a_successful_job_records_one_coordinated_output_frontier() {
     assert_eq!(source.input["rows"],3);
 }
 
+/// Each completion carries the greatest output `commit_seq` its run landed: a later job run
+/// orders above an earlier one, and an isolated fire whose items all hold receipts lands
+/// none, carries zero, and still replaces the latest.
+#[test]
+fn a_completion_carries_the_greatest_output_commit_its_run_landed() {
+    let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
+    let source = |p: &Path| contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap().source("scoring").unwrap().unwrap();
+    let (dir, public, token) = project(&format!("{}\n{group}",job("max_in_flight=1\n")));
+    let p = dir.path();
+    ok(&fire(p,&public,&token,"run-a","2030-01-01T00:01:00Z",&[]));
+    let a = source(p);
+    assert_eq!(a.run, "run-a");
+    assert!(a.commit_seq > 0, "{a:?}");
+    ok(&fire(p,&public,&token,"run-b","2030-01-01T00:02:00Z",&[]));
+    let b = source(p);
+    assert_eq!(b.run, "run-b");
+    assert!(b.commit_seq > a.commit_seq, "{a:?} {b:?}");
+
+    let isolated=job("max_in_flight=2\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=2\n");
+    let (dir,public,token)=project(&format!("{isolated}\n{group}"));
+    let p = dir.path();
+    ok(&fire(p,&public,&token,"first","2030-01-01T00:00:30Z",&[]));
+    let first = source(p);
+    assert!(first.commit_seq > 0, "{first:?}");
+    ok(&fire(p,&public,&token,"second","2030-01-01T00:00:40Z",&[]));
+    let second = source(p);
+    assert_eq!((second.run.as_str(), second.commit_seq), ("second", 0), "{second:?}");
+}
+
 #[test]
 fn isolated_aggregate_publication_records_only_successful_complete_frontiers() {
     let group="[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";

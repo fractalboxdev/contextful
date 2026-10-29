@@ -415,8 +415,8 @@ A coordinated `[[publication]]` delivers every member of one producer completion
   *A-run#coordinated-exports-activate*
 - `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.
   *A-run#coordinated-exports-activate*
-- `group-source-latest` — The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: the latest run recorded again with different bytes refuses, and a completion naming another run replaces it.
-  *because a run is re-recorded only by its own retry, and history kept past it grows with every build*
+- `group-source-latest` — The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: one with other bytes refuses when it names the latest run, or its landed outputs' greatest `commit_seq` is at most the latest's; any other replaces it.
+  *because an earlier run replayed after a later one otherwise names its older input in the group header, and history kept past the latest grows with every build*
 - `group-delivery` — `contextful export group <name>` reads every completed producer member through {{run.export.post-commit-read}}, rechecks every frontier, and stages one ordered outbox with explicit member-complete events followed by one group-complete event.
   *A-run#coordinated-exports-activate*
 - `group-identity` — A group's identity binds its store incarnation, destination, namespace, read identity, predecessor, publication order, input frontier, membership, delivered base and next state; each event identifier binds that group and its sequence.

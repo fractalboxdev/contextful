@@ -241,16 +241,21 @@ pub(crate) fn record_completion(
         supported()?;
     }
     for group in groups.iter().filter(|g| g.job == job) {
-        let frontiers = group
+        let tables: Vec<&str> = group
             .members
             .iter()
             .map(|name| {
-                let export = exports
+                exports
                     .iter()
                     .find(|e| &e.name == name)
-                    .expect("validated member");
-                Ok((export.table.clone(), source_frontier(store, &export.table)?))
+                    .expect("validated member")
+                    .table
+                    .as_str()
             })
+            .collect();
+        let frontiers = tables
+            .iter()
+            .map(|table| Ok((table.to_string(), source_frontier(store, table)?)))
             .collect::<Result<_>>()?;
         ledger(store, &group.name, false)?.record_source(
             &group.name,
@@ -258,10 +263,26 @@ pub(crate) fn record_completion(
                 run: run.into(),
                 input: input.clone(),
                 frontiers,
+                commit_seq: landed_commit_seq(store, &tables, run)?,
             },
         )?;
     }
     Ok(())
+}
+
+/// The greatest `commit_seq` run `run` landed across `tables`, zero when it landed none: a
+/// job lands each output as `<run>.<table>`, and an isolated item as `<run>.item-<id>.<table>`.
+fn landed_commit_seq(store: &contextful_context::Store, tables: &[&str], run: &str) -> Result<i64> {
+    let prefix = format!("{run}.");
+    let mut greatest = 0;
+    for table in tables {
+        for manifest in store.committed_runs(table)? {
+            if manifest.run_id == run || manifest.run_id.starts_with(&prefix) {
+                greatest = greatest.max(manifest.commit_seq.unwrap_or(0));
+            }
+        }
+    }
+    Ok(greatest)
 }
 
 pub(crate) fn validate_job(text: &str, job: &str, tables: &[String]) -> Result<bool> {

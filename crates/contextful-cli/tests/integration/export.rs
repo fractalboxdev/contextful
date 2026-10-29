@@ -167,7 +167,7 @@ fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
     use sha2::{Digest,Sha256};
     let frontier = format!("{:x}",Sha256::digest(serde_json::to_vec(&(pointer,runs)).unwrap()));
     let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();
-    ledger.record_source("projection",&contextful_sqlite::SourcePublication {run:"producer-run".into(),input:serde_json::json!({"snapshot":"one"}),frontiers:[("spans".into(),frontier)].into()}).unwrap();
+    ledger.record_source("projection",&contextful_sqlite::SourcePublication {run:"producer-run".into(),input:serde_json::json!({"snapshot":"one"}),frontiers:[("spans".into(),frontier)].into(),commit_seq:0}).unwrap();
     collector.answer(503);
     assert!(err(&invoke("group",&[])).contains("ExportDeliveryRefused"));
     collector.answer(200);
@@ -204,7 +204,7 @@ fn a_coordinated_export_sends_a_digest_of_a_large_producer_input() {
     let frontier = format!("{:x}",Sha256::digest(serde_json::to_vec(&(pointer,runs)).unwrap()));
     // A producer input of any size, here 5000 run keys, rides the header as its digest.
     let omitted: Vec<String> = (0..5000).map(|i| format!("run-{i:032}")).collect();
-    let source = contextful_sqlite::SourcePublication {run:"build-1".into(),input:serde_json::json!({"at":null,"inputs":{"events":{"snapshot_id":"snapshot-one","runs":omitted}}}),frontiers:[("spans".into(),frontier)].into()};
+    let source = contextful_sqlite::SourcePublication {run:"build-1".into(),input:serde_json::json!({"at":null,"inputs":{"events":{"snapshot_id":"snapshot-one","runs":omitted}}}),frontiers:[("spans".into(),frontier)].into(),commit_seq:0};
     let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();
     ledger.record_source("projection",&source).unwrap();
     ok(&cf(p,&["export","group","projection","--project","research","--public-key",&public,"--audience",AUD],&[("CONTEXTFUL_TOKEN",&token)]));
@@ -966,7 +966,7 @@ fn record_producer(dir: &Path, run: &str) {
     let pointer = store.pointer("spans").unwrap().map(|(p, _)| p.snapshot_id.to_string());
     let frontier = format!("{:x}", Sha256::digest(serde_json::to_vec(&(pointer, runs)).unwrap()));
     let ledger = contextful_sqlite::PublicationLedger::open(&dir.join(".contextful/context/research/machine.sqlite")).unwrap();
-    let source = contextful_sqlite::SourcePublication { run: run.into(), input: serde_json::json!({ "run": run }), frontiers: [("spans".into(), frontier)].into() };
+    let source = contextful_sqlite::SourcePublication { run: run.into(), input: serde_json::json!({ "run": run }), frontiers: [("spans".into(), frontier)].into(), commit_seq: 0 };
     ledger.record_source("projection", &source).unwrap();
 }
 

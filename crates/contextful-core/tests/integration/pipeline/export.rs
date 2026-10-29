@@ -208,6 +208,7 @@ fn a_group_header_carries_a_digest_of_any_producer_input() {
         run: "build-1".into(),
         input: json!({"at": null, "inputs": {"events": {"snapshot_id": "snapshot-one", "runs": runs}}}),
         frontiers: [("items".into(), "frontier-one".into())].into(),
+        commit_seq: 0,
     };
     assert!(serde_json::to_vec(&source).unwrap().len() > TYPED_REQUEST_BYTES);
     let digest = source.digest().unwrap();
@@ -222,6 +223,34 @@ fn a_group_header_carries_a_digest_of_any_producer_input() {
     assert_eq!(batch.events.len(), 3);
     assert_eq!(batch.group.plan.input, json!(digest));
     assert!(serde_json::to_vec(&batch).unwrap().len() < 1024);
+}
+
+/// Completions order by the greatest output `commit_seq` their run landed: an earlier run
+/// recorded over a later one refuses, a later one replaces it, and one landing no output
+/// is ordered by its run alone. A completion without the field digests as before it.
+// spec: run.export.group-source-latest@83bd0098
+#[test]
+fn a_completion_ordered_at_or_below_the_latest_refuses() {
+    use contextful_core::export::publication::SourcePublication;
+    let completion = |run: &str, commit_seq: i64| SourcePublication {
+        run: run.into(),
+        input: json!({"run": run}),
+        frontiers: [("items".into(), format!("frontier-{run}"))].into(),
+        commit_seq,
+    };
+    let (a, b) = (completion("run-a", 3), completion("run-b", 7));
+    b.check_history(Some(&a)).unwrap();
+    let refused = a.check_history(Some(&b)).unwrap_err();
+    assert!(refused.to_string().contains("PublicationIncompatible"), "{refused}");
+    assert!(completion("run-c", 7).check_history(Some(&b)).is_err());
+    b.check_history(Some(&b)).unwrap();
+    let rewritten = SourcePublication { frontiers: [("items".into(), "other".into())].into(), ..b.clone() };
+    assert!(rewritten.check_history(Some(&b)).is_err());
+    completion("run-quiet", 0).check_history(Some(&b)).unwrap();
+    completion("run-d", 1).check_history(Some(&completion("run-quiet", 0))).unwrap();
+    let legacy: SourcePublication = serde_json::from_value(json!({"run": "run-a", "input": {"run": "run-a"}, "frontiers": {"items": "frontier-run-a"}})).unwrap();
+    assert_eq!(legacy, completion("run-a", 0));
+    assert_eq!(serde_json::to_value(&legacy).unwrap().as_object().unwrap().len(), 3);
 }
 
 // spec: run.export.group-request-bound@44480894
