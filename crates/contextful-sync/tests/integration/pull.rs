@@ -570,6 +570,38 @@ fn a_replica_refresh_selects_tables_through_the_grant_pattern_matcher() {
     assert!(prefixed.root().join("tables/filings").exists());
 }
 
+/// A table-scoped pull also takes every node's run state and commit-log entry, so a run on the
+/// scoped store resumes from the bucket's cursors, and no other key outside `tables/`.
+// spec: store.pull.scope-shared@2944857b
+#[test]
+fn a_table_scoped_pull_takes_every_run_state_and_commit_log_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.land_into("memos", "run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    contextful_context::commit_log::open_fence(&a.syncer.store, "feed", "ingest-a", "filings", 1).unwrap();
+    std::fs::create_dir_all(a.root().join("records")).unwrap();
+    std::fs::write(a.root().join("records/run-1.json"), b"pull record").unwrap();
+    let state = json!({
+        "format": 1,
+        "node_id": "ingest-a",
+        "runs": {"feed": {"run_id": "run-1", "table": "filings", "status": "succeeded", "started_at": "2030-01-01T00:00:00Z"}},
+        "cursors": [{"pipeline_id": "feed", "table": "filings", "position": 41, "run_id": "run-1", "committed_at": "2030-01-01T00:00:00Z"}]
+    });
+    std::fs::create_dir_all(a.root().join("nodes/ingest-a")).unwrap();
+    std::fs::write(a.root().join("nodes/ingest-a/run-state.json"), state.to_string()).unwrap();
+    a.syncer.push(at(NOW)).unwrap();
+
+    let cold = node("ingest-b", b, "");
+    cold.syncer.pull(&PullScope { tables: vec![pattern("memos")], ..PullScope::default() }).unwrap();
+    assert!(cold.root().join("nodes/ingest-a/run-state.json").exists());
+    assert!(cold.root().join("cursors/feed/ingest-a/00000000000000000001.json").exists());
+    assert!(cold.root().join("tables/memos").exists());
+    assert!(!cold.root().join("tables/filings").exists());
+    assert!(!cold.root().join("records").exists());
+}
+
 fn pattern(s: &str) -> TablePattern {
     TablePattern::parse(s).unwrap()
 }

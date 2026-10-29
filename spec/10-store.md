@@ -628,7 +628,11 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because those rows otherwise live only in the replaced snapshot's parts, which collection deletes once no pointer names them*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
-- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before their first read, a failed pull stopping the command.
+- `table-scope` — `contextful sync pull --table <pattern>`, repeatable, pulls only the tables its patterns cover through {{authority.grant.one-matcher}}. Without the flag, a pull takes `[sync] pull_tables`, and without either, every table.
+  *because a disposable disk serving one table otherwise downloads every table the bucket holds*
+- `scope-shared` — A table-scoped pull also takes `store-id`, `control/`, every `nodes/<node-id>/run-state.json` and every `cursors/` entry, and no other key outside `tables/`.
+  *because run states and commit-log entries name no table, and a scoped store lacking them restarts each source*
+- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull the tables {{store.pull.table-scope}} selects before their first read, a failed pull stopping the command.
   *because a container on an empty disk otherwise serves without other nodes' runs*
 - `serve-refresh` — Under {{store.pull.before-run}}, `serve` pulls again every 30 s and maps the new generation for reads starting after that pull; a failed refresh keeps serving the held generation and logs the failure.
   *because a separate query face otherwise serves its starting generation until restart*

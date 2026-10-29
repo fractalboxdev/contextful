@@ -1450,11 +1450,13 @@ impl Syncer {
         }
         let identity_key = format!("{}/{}", self.project, contextful_core::store::lay_out::STORE_ID_FILE);
         let control_prefix = format!("{}/control/", self.project);
+        let run_state = |k: &str| run_state_node(k).is_some_and(|n| k == format!("{}/nodes/{n}/run-state.json", self.project));
         let reaches = |key: &str| -> bool {
             if key == identity_key { return true; }
             if key.starts_with(&control_prefix) { return true; }
             match table_of(key) {
-                None => scope.tables.is_empty(),
+                // Cursor state names no table, so every scope takes it (`store.pull.scope-shared`).
+                None => scope.tables.is_empty() || run_state(key) || is_commit_log(key),
                 Some(t) => (scope.tables.is_empty() || scope.tables.iter().any(|p| p.covers_name(&t))) && !(replica && scope.replicate_off.contains(&t)),
             }
         };
@@ -1465,7 +1467,6 @@ impl Syncer {
                 let listed = self.generation_manifest(n)?;
                 let local = self.local_entries()?;
                 // A run state is a summary, not rows: one the generation does not list stays (`store.pull.generation-run-state`).
-                let run_state = |k: &str| run_state_node(k).is_some_and(|n| k == format!("{}/nodes/{n}/run-state.json", self.project));
                 if let Some(extra) = local.keys().find(|k| in_project(k) && reaches(k) && !run_state(k) && !listed.entries.contains_key(*k)) {
                     return Err(StoreError::SyncGenerationDiverged(format!(
                         "`{extra}` is in this store and generation {n} does not list it; restore generation {n} into a store holding none of its files"

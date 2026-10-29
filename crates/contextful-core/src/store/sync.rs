@@ -92,6 +92,9 @@ pub struct SyncConfig {
     /// Pull the bucket before a run or the tool server first reads (`store.pull.before-run`).
     #[serde(default)]
     pub pull_before_run: Option<bool>,
+    /// The tables a pull without `--table` takes; absent, every table (`store.pull.table-scope`).
+    #[serde(default)]
+    pub pull_tables: Option<Vec<crate::grant::TablePattern>>,
     /// Push the store once a fire's runs close, success or failure (`store.push.after-run`).
     #[serde(default)]
     pub push_after_run: Option<bool>,

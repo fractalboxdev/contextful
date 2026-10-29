@@ -9,6 +9,7 @@ mod hydrate;
 mod lease;
 mod run_state;
 mod node_id;
+mod pull_tables;
 mod redistribute;
 pub(crate) mod s3;
 mod unpushed;
@@ -234,9 +235,9 @@ fn mcp_query(dir: &Path) -> Output {
     child.wait_with_output().unwrap()
 }
 
-/// With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before
-/// their first read, a failed pull stopping the command.
-// spec: store.pull.before-run@dc46032c
+/// With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull the tables
+/// {{store.pull.table-scope}} selects before their first read, a failed pull stopping the command.
+// spec: store.pull.before-run@ff2c5706
 #[test]
 fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     let bucket = tempfile::tempdir().unwrap();

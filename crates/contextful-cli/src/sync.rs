@@ -67,7 +67,7 @@ pub enum SyncCmd {
     Pull {
         #[command(flatten)]
         args: SyncArgs,
-        /// A table pattern — `*`, a prefix ending in `*`, or a name; repeatable; absent pulls every table.
+        /// A table pattern — `*`, a prefix ending in `*`, or a name; repeatable; absent pulls `[sync] pull_tables`, else every table.
         #[arg(long = "table", value_parser = parse_pattern)]
         tables: Vec<contextful_core::grant::TablePattern>,
         /// Restore this generation's manifest and pointers in place of the bucket's current state.
@@ -310,7 +310,7 @@ fn s3_bucket(config: &SyncConfig, _url: &str, _region: &str) -> Result<Arc<dyn O
     .into())
 }
 
-/// Pull every table of the bucket into the store when `[sync] pull_before_run = true`, so
+/// Pull the `[sync] pull_tables` tables, else every table, of the bucket into the store when `[sync] pull_before_run = true`, so
 /// a command starting on a cold disk reads what the other nodes pushed
 /// (`store.pull.before-run`). A store declaring no `[sync]` is left as it is.
 pub fn pull_before_run(l: &Located) -> Result<()> {
@@ -342,12 +342,13 @@ fn pending_pull_within(l: &Located, guard_wait: Option<u64>) -> Result<Option<Pe
         return Ok(None);
     }
     let config = capped(config, guard_wait);
+    let tables = config.pull_tables.clone().unwrap_or_default();
     let (syncer, decls) = open_with(l, config)?;
     if lazy {
         register_parts(&syncer);
     }
     let replicate_off = replicate_off(&decls)?;
-    Ok(Some(PendingPull { syncer, scope: PullScope { tables: Vec::new(), replicate_off, generation: None } }))
+    Ok(Some(PendingPull { syncer, scope: PullScope { tables, replicate_off, generation: None } }))
 }
 
 /// Every store this process opens at `syncer`'s root fetches each part it lacks through the
@@ -381,7 +382,7 @@ pub struct PendingPull {
 }
 
 impl PendingPull {
-    /// Transfer every table of the bucket into the store. The report line is best effort:
+    /// Transfer the scoped tables of the bucket into the store. The report line is best effort:
     /// a closed stderr fails no pull.
     pub fn run(&self) -> Result<()> {
         use std::io::Write;
@@ -393,7 +394,7 @@ impl PendingPull {
         self.push_unpushed()
     }
 
-    /// Pull every table of the bucket again into a store already serving
+    /// Pull the scoped tables of the bucket again into a store already serving
     /// (`store.pull.serve-refresh`). A pull that changes nothing reports nothing.
     pub fn refresh(&self) -> Result<()> {
         use std::io::Write;
@@ -809,6 +810,8 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         }
         SyncCmd::Pull { args, tables, generation } => {
             let (s, decls) = open(&args)?;
+            // Without `--table`, the pull takes `[sync] pull_tables` (`store.pull.table-scope`).
+            let tables = if tables.is_empty() { s.config.pull_tables.clone().unwrap_or_default() } else { tables };
             let r = s.pull(&PullScope { tables, replicate_off: replicate_off(&decls)?, generation })?;
             for refusal in r.unverified.iter().chain(&r.discarded) {
                 eprintln!("warning: {refusal}");
