@@ -2,7 +2,7 @@
 
 # Target ledger
 
-168 entries: 118 gated, 35 recorded, 7 scheduled, 8 open.
+168 entries: 119 gated, 35 recorded, 7 scheduled, 7 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -146,7 +146,7 @@
 | `status-latency-runs-record` | `run.publish.staleness` | `run.publish.status_p95_us` | trend | test `contextful_context::build::status_over_an_unfolded_run_record_at_two_thousand_runs` | — | recorded |
 | `store-write-deny-set` | `topology.package.store-write-engine-free` | `topology.store_write.forbidden_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `== 0` | gated |
 | `store-write-package-count` | `topology.package.store-write-engine-free` | `topology.store_write.unique_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `<= 219` | gated |
-| `sync-cold-pull-objects-before-ready` | `store.pull.before-run` | `pull.cold.objects_before_ready` | gate | issue 643 | `<= 3` | open (issue 643) |
+| `sync-cold-pull-objects-before-ready` | `store.pull.lazy-ready` | `pull.cold.objects_before_ready` | gate | test `contextful_sync::lazy::a_cold_lazy_pull_fetches_three_objects_per_folded_table_before_a_read_is_ready` | `<= 3` | gated |
 | `sync-cold-pull-overlap` | `store.pull.before-run` | `sync.cold_pull.max_inflight_gets` | trend | test `contextful_sync::pull::a_cold_pull_reports_its_peak_in_flight_object_gets` | — | recorded |
 | `sync-cold-pull-requests-per-object` | `store.pull.transfer-width` | `pull.cold.requests_per_object` | gate | test `contextful_sync::pull::a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once` | `<= 1.01` | gated |
 | `sync-cold-pull-wall-p50` | `store.pull.before-run` | `sync.cold_pull.wall_ms.p50` | trend | test `contextful_sync::pull::cold_pull_wall_over_a_fixed_latency_bucket` | — | recorded |
