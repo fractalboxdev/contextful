@@ -64,6 +64,8 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
   *A-disclosure#model-declares-spend*
 - `release-verb` — `contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.
   *A-disclosure#model-declares-spend*
+- `governed-build` — A build of a model declaring `[model.disclosure]` outside {{disclosure.release.release-verb}} raises `DisclosureReleaseRequired` and publishes nothing.
+  *because a plain build publishes the statement's per-contributor rows, contributor key included; only the release step replaces them with a derived table*
 - `budget-reservation` — Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.
   *A-disclosure#aggregate-disclosure-enforced*
 - `noise-mechanism` — A noised release draws exact two-sided geometric noise scaled to each statistic's sensitivity for distinct-contributor counts and fixed-point sums; the per-run epsilon is divided among released statistics.

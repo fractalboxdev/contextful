@@ -168,6 +168,11 @@ impl Store {
         &self.root
     }
 
+    /// The project this store belongs to.
+    pub fn project_name(&self) -> &str {
+        &self.project.name
+    }
+
     /// Additional writer declarations add authority to the canonical project set.
     pub fn open_declared(project_dir: &Path, project: &str, declaration: &Path) -> Result<Store> {
         let mut store = Self::open(project_dir, project)?;

@@ -86,7 +86,9 @@ their members ({{disclosure.explain.groups-not-members}}).
 A release computes statistics over contributors' rows. Before computing, it reserves
 each contributor's spend against a lifetime budget, and a failed reservation publishes
 nothing ({{disclosure.release.budget-reservation}}). A group key outside the permitted
-columns fails ({{disclosure.release.group-key}}).
+columns fails ({{disclosure.release.group-key}}). A model declaring a disclosure policy
+publishes only through a release: a plain build of it, or a build job naming it, fails
+before staging any row ({{disclosure.release.governed-build}}).
 
 The release suppresses a group whose distinct contributors fall under the declared
 minimum ({{disclosure.suppress.min-group-size}}). Every suppressed group together leaves one

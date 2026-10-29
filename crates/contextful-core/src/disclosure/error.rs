@@ -161,6 +161,9 @@ pub enum DisclosureError {
     /// A release requests an activation handle or lookalike segment. (`disclosure.release.lookalike-refusal`)
     #[error("DisclosureLookalikeUnsupported: {0}")]
     LookalikeUnsupported(String),
+    /// A model declaring a disclosure policy is built outside a release. (`disclosure.release.governed-build`)
+    #[error("DisclosureReleaseRequired: {0}")]
+    ReleaseRequired(String),
     /// A noised sum has no finite contributor bounds or positive quantum. (`disclosure.release.metric-bounds`)
     #[error("DisclosureMetricBoundsAbsent: {0}")]
     MetricBoundsAbsent(String),
@@ -199,6 +202,7 @@ impl DisclosureError {
             DisclosureError::UnitBudgetExhausted(_) => "DisclosureUnitBudgetExhausted",
             DisclosureError::SpendUndeclared(_) => "DisclosureSpendUndeclared",
             DisclosureError::LookalikeUnsupported(_) => "DisclosureLookalikeUnsupported",
+            DisclosureError::ReleaseRequired(_) => "DisclosureReleaseRequired",
             DisclosureError::MetricBoundsAbsent(_) => "DisclosureMetricBoundsAbsent",
             DisclosureError::DuplicateGrain(_) => "DisclosureDuplicateGrain",
             DisclosureError::GroupKeyNotPermitted(_) => "DisclosureGroupKeyNotPermitted",
