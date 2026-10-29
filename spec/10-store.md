@@ -13,7 +13,6 @@ owns:
   - push
   - pull
   - merge
-  - lease
 ---
 
 # The store and its sync
@@ -721,47 +720,6 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
   *because corruption establishes no ownership and a replacement discards other nodes' entries*
 - `ownership` — A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.
   *A-store#bucket-index-commits*
-
-## lease
-
-Exclusive pipeline and compaction writer leases, their commit fences, and cursor commits in the commit log.
-
-- `ttl` — A writer lease grants ownership for 10 min.
-- `renewal` — The process holding a compaction lease renews it every 200 s by `If-Match` replace on its ETag; `sync compact` renews while it pulls, folds and pushes.
-- `operator-renew` — `sync lease renew <table>` renews the compaction lease this node holds, for `sync compact --held`.
-- `clock-skew` — Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.
-  *because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing*
-- `held` — If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run. The engine retries the run at the next reconciliation tick.
-  *A-store#coordination-probed-compare*
-- `stale-fence` — If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
-  *A-store#coordination-probed-compare*
-- `not-held` — Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.
-  *A-store#coordination-probed-compare*
-- `cursor-kind` — A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.
-  *A-run#incremental-position-bound*
-- `local-node` — A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.
-  *P3*
-- `acquire` — Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired commit fence is one above the object's commit fence.
-  *A-store#coordination-probed-compare*
-- `pointer-fence` — Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.
-  *A-store#coordination-probed-compare*
-- `network-volume` — A compaction lease on a bucket resolving `single-writer` under {{store.probe.network-volume}} meets {{store.probe.unproven}}, naming the mount type. Acquisition writes no lease object or pointer fence.
-  *because a conditional put holding on one machine only lets two machines each take the lease*
-- `commit-log` — Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`. Acquisition creates an entry carrying its fence. A manifest marked `logged` becomes readable when that log records the manifest.
-  *A-store#coordination-probed-compare*
-
-```mermaid
-stateDiagram-v2
-    [*] --> Unheld
-    Unheld --> Held: If-None-Match create, fence 1
-    Released --> Held: If-Match, fence plus one, logged
-    Expired --> Held: If-Match past grant plus skew
-    Held --> Held: If-Match renew every 200 s
-    Held --> Released: holder null, fence kept
-    Held --> Expired: no renewal within the grant
-```
-
-unsettled: Which process carries out `renewal` for a pipeline lease? owner: store affects: store.lease
 
 ## Shapes
 
