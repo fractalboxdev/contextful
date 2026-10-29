@@ -115,6 +115,9 @@ pub(crate) struct Receiver {
     config: ReceiveConfig,
     now: Option<String>,
     applied_version: Option<u64>,
+    /// The span a served delivery's `traceparent` names, which its runs continue
+    /// (`disclosure.record.route-parent`); `None` continues the process's trace.
+    trace: Option<contextful_core::trace::TraceContext>,
 }
 
 /// Write `line` to standard error; a served process whose standard error has closed keeps
@@ -186,7 +189,7 @@ impl Receiver {
         let Checked::Receive(config) = check(&spec, &declaration, tasks)? else {
             bail!("pipeline `{}` reads source `{}`; `pipeline receive` lands the delivered batches of a `receive` source", spec.id, spec.source.name);
         };
-        Ok(Receiver { l, text, site_id, spec, config, now: project.now.clone(), applied_version })
+        Ok(Receiver { l, text, site_id, spec, config, now: project.now.clone(), applied_version, trace: None })
     }
 
     /// Every store table the pipeline lands in, in declaration order.
@@ -562,7 +565,11 @@ impl Receiver {
     #[allow(clippy::too_many_arguments)]
     fn land_table(&self, w: &Wired, dest: &mut StoreDestination, name: &str, table: &str, artifact: &str, run_id: &str, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>) -> Landing {
         let spec = &self.spec;
-        let trace = crate::telemetry::RunTrace::open();
+        let trace = match &self.trace {
+            Some(caller) => crate::telemetry::RunTrace::under(Some(caller)),
+            None => crate::telemetry::RunTrace::open(),
+        };
+        let engine = trace.engine(&w.engine);
         let outcome = (|| -> Result<RunRow> {
             let plan = plan(spec, name, built_in(spec))?;
             dest.store.validate_source_plan(&plan, dest.normalize)?;
@@ -571,8 +578,8 @@ impl Receiver {
             let shape = Chain { ops: spec.transforms.clone(), table: table.to_string() };
             let mut delivered = Delivered(rows);
             Ok(match &keys {
-                None => w.engine.run_receive(&run, key, &mut delivered, &shape, dest)?,
-                Some(keys) => w.engine.run_receive_group(&run, key, keys, &mut delivered, &shape, dest)?,
+                None => engine.run_receive(&run, key, &mut delivered, &shape, dest)?,
+                Some(keys) => engine.run_receive_group(&run, key, keys, &mut delivered, &shape, dest)?,
             })
         })();
         match outcome {
@@ -896,10 +903,11 @@ pub(crate) fn served(
     key: Option<&str>,
     pipeline: &str,
     answer: Answer<'_>,
+    trace: Option<contextful_core::trace::TraceContext>,
     read: &mut dyn FnMut(u64) -> std::result::Result<Option<Vec<u8>>, contextful_agent::http::HttpResponse>,
 ) -> std::result::Result<Served, contextful_agent::http::HttpResponse> {
     let receiver = match Receiver::open(project, Some(declaration.to_path_buf()), pipeline, None, None, tasks, true) {
-        Ok(r) => r,
+        Ok(r) => Receiver { trace, ..r },
         Err(e) => {
             return Ok(match e.downcast::<RunError>() {
                 Ok(unknown @ RunError::ReceivePipelineUnknown(_)) => served_error(404, unknown),

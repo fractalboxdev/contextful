@@ -614,6 +614,34 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     /// Resolve one step as [`Execution::step_keyed`] does, admitted under `parent`, its guard
     /// recording `window_secs`, the window the step's destination declares.
     pub(crate) fn step_keyed_with_parent(&self, key: &EntryKey, journal_it: &dyn Fn(&[u8]) -> bool, effect: &mut StepEffect<'_>, parent: Option<&crate::drive::BodyOwner>, window_secs: Option<u64>) -> Result<Resolved, Close> {
+        let Some(stages) = self.engine.stages.as_deref() else { return self.resolve_step(key, journal_it, effect, parent, window_secs) };
+        let started = std::time::Instant::now();
+        let resolved = self.resolve_step(key, journal_it, effect, parent, window_secs);
+        use crate::stages::{refusal_identifier, failure_identifier, FAILED, RECORDED, REPLAYED, UNRECORDED, WAITING};
+        let (outcome, error) = match &resolved {
+            Ok(Resolved::Replayed(_)) => (REPLAYED, None),
+            Ok(Resolved::Recorded(_)) => (RECORDED, None),
+            Ok(Resolved::Unrecorded(_)) => (UNRECORDED, None),
+            Err(Close::Waiting { .. }) => (WAITING, None),
+            Err(Close::Failed(failure)) => (FAILED, Some(failure_identifier(failure))),
+            Err(Close::Refused(error)) => (FAILED, Some(refusal_identifier(error))),
+        };
+        stages.stage(crate::stages::StageReport {
+            kind: crate::stages::StageKind::Step,
+            // A seeding or receiving scope names its table before the `#` its suffix opens.
+            table: self.scope.pipeline_table().map(|(_, table)| table.split('#').next().unwrap_or(table).to_string()),
+            step: Some(key.step_label.clone()),
+            outcome,
+            error,
+            rows: None,
+            bytes: resolved.as_ref().ok().map(|r| r.bytes().len() as u64),
+            elapsed: started.elapsed(),
+        });
+        resolved
+    }
+
+    /// Resolve one step as [`Execution::step_keyed_with_parent`] does, reporting no stage.
+    fn resolve_step(&self, key: &EntryKey, journal_it: &dyn Fn(&[u8]) -> bool, effect: &mut StepEffect<'_>, parent: Option<&crate::drive::BodyOwner>, window_secs: Option<u64>) -> Result<Resolved, Close> {
         let engine = self.engine;
         let holder_live = |run: &str| engine.holder_live(run);
         let token = &self.token;

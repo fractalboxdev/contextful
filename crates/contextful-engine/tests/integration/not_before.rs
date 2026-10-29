@@ -203,6 +203,7 @@ fn restarted(rig: &Rig) -> Engine {
         keeper: Keeper::new(KeeperCadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }),
         emitter: None,
         worlds: Vec::new(),
+        stages: None,
     }
 }
 

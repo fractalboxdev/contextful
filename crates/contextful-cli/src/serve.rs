@@ -446,7 +446,10 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
             true => crate::receive::Answer::Queued { credential: head.credential() },
             false => crate::receive::Answer::Committed,
         };
-        match crate::receive::served(&run_project, &located.declaration, tasks, author, key, pipeline, answer, read) {
+        // The face hands the handler a `traceparent` naming the route's span, or the caller's
+        // own with no exporter configured (`disclosure.record.route-parent`).
+        let trace = head.header(contextful_core::trace::TRACEPARENT).and_then(|p| contextful_core::trace::TraceContext::parse(p, head.header(contextful_core::trace::TRACESTATE)));
+        match crate::receive::served(&run_project, &located.declaration, tasks, author, key, pipeline, answer, trace, read) {
             Ok(served) => {
                 let answer = HttpResponse::json(served.status, &served.body);
                 if served.retry_after {

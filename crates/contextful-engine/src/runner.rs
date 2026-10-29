@@ -8,6 +8,7 @@ use crate::guard::{log_counts, Guarded};
 use crate::execution::{Close, Execution, Tally};
 use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
+use crate::stages::{failure_identifier, StageKind, StageReport, StageSink};
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
 use contextful_core::run::advance::{admits, advance, clock, compare, frontier, open_watermark, resolve_concurrent, rewind, watermark, CursorKind};
@@ -81,6 +82,9 @@ pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
     /// The component worlds a linked component host answers, beside the native one; empty
     /// on a build linking no host (`topology.package.component-host`).
     pub worlds: Vec<String>,
+    /// Where each run reports its pulls, landings, commits and journaled steps; `None`
+    /// times no stage (`disclosure.record.stage-unconfigured`).
+    pub stages: Option<Arc<dyn StageSink>>,
 }
 
 fn json_bytes(v: &Option<Value>) -> Vec<u8> {
@@ -156,6 +160,42 @@ fn pulled(source: &mut dyn Source, request: &PullRequest, cancel: &dyn Cancellat
     let bytes = bytes?;
     settled?;
     Ok(bytes)
+}
+
+/// [`pulled`], reporting the pull to `stages` with its step label and the bytes it handed
+/// over (`disclosure.record.stage-span`).
+fn pulled_reported(stages: Option<&dyn StageSink>, table: &str, source: &mut dyn Source, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+    let Some(stages) = stages else { return pulled(source, request, cancel) };
+    let started = std::time::Instant::now();
+    let result = pulled(source, request, cancel);
+    stages.stage(StageReport {
+        kind: StageKind::Pull,
+        table: Some(table.to_string()),
+        step: Some(request.step_label.clone()),
+        outcome: if result.is_ok() { crate::stages::OK } else { crate::stages::FAILED },
+        error: result.as_ref().err().map(failure_identifier),
+        rows: None,
+        bytes: result.as_ref().ok().map(|b| b.len() as u64),
+        elapsed: started.elapsed(),
+    });
+    result
+}
+
+/// Report a landing or a commit of `table` to `stages`: its row and byte counts, or the
+/// failure's identifier (`disclosure.record.stage-attributes`).
+fn report_landed<T>(stages: Option<&dyn StageSink>, kind: StageKind, table: &str, started: Option<std::time::Instant>, result: &Result<T, Failure>, counts: impl Fn(&T) -> (u64, u64)) {
+    let (Some(stages), Some(started)) = (stages, started) else { return };
+    let counted = result.as_ref().ok().map(&counts);
+    stages.stage(StageReport {
+        kind,
+        table: Some(table.to_string()),
+        step: None,
+        outcome: if result.is_ok() { crate::stages::OK } else { crate::stages::FAILED },
+        error: result.as_ref().err().map(failure_identifier),
+        rows: counted.map(|c| c.0),
+        bytes: counted.map(|c| c.1),
+        elapsed: started.elapsed(),
+    });
 }
 
 fn preparation_failure(error: RunError) -> Failure { Failure::deterministic(FailureTag::Permanent, error.to_string()) }
@@ -758,14 +798,15 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     types: types.clone(),
                 };
                 if let Some(owner) = parent { self.validate_body_owner(owner)?; }
+                let started = self.stages.is_some().then(std::time::Instant::now);
                 let staged = match (emission.zip(effect_scope), &prepared) { (Some((emission, scope)), _) => emission.stage(dest, stage, scope), (_, Some(prepared)) => dest.stage_recorded(stage, &prepared.prepared), _ => dest.stage_batch(stage) };
-                let part = staged.map_err(|failure| {
+                report_landed(self.stages.as_deref(), StageKind::Land, table, started, &staged, |part| (count, part.bytes));
+                let part = staged.inspect_err(|failure| {
                     // Replaying an incompatible source batch cannot repair it. Prepared body
                     // emissions retain their paid-work owner and recovery policy.
                     if emitted.is_none() && failure.tag == FailureTag::SchemaIncompatible && failure.deterministic {
                         execution.discard();
                     }
-                    failure
                 })?;
                 staged_rows += count;
                 staged_bytes = staged_bytes.saturating_add(part.bytes);
@@ -836,7 +877,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             };
             precommit()?;
             let _guard = execution.guard(parent, true)?;
-            dest.commit(
+            let started = self.stages.is_some().then(std::time::Instant::now);
+            let landed = dest.commit(
                 Commit {
                     pipeline_id: pipeline_id.to_string(),
                     table: table.to_string(),
@@ -850,7 +892,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     replace_frontier,
                 },
                 &precommit,
-            )?
+            );
+            report_landed(self.stages.as_deref(), StageKind::Commit, table, started, &landed, |l| (l.rows, l.bytes));
+            landed?
         } else {
             Landed::default()
         };
@@ -910,7 +954,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let committed_at = self.catalog.now()?;
         let landed = {
             let _guard = execution.guard(None, true)?;
-            dest.commit(
+            let started = self.stages.is_some().then(std::time::Instant::now);
+            let landed = dest.commit(
                 Commit {
                     pipeline_id: plan.spec.pipeline.clone(),
                     table: plan.spec.table.clone(),
@@ -924,7 +969,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     replace_frontier: false,
                 },
                 &precommit,
-            )?
+            );
+            report_landed(self.stages.as_deref(), StageKind::Commit, &plan.spec.table, started, &landed, |l| (l.rows, l.bytes));
+            landed?
         };
         // The commit has landed: its rows count on the run's row even when the cursor update
         // after it fails (`run.own.checkpoint-landed`).
@@ -963,7 +1010,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let journal_it = |bytes: &[u8]| recorded(bytes).is_ok_and(|pull| pull.rows > 0);
             let mut late = false;
             let result = execution.step_keyed_with_parent(key, &journal_it, &mut |token| {
-                let bytes = pulled(source, request, token)?;
+                let bytes = pulled_reported(self.stages.as_deref(), &spec.plan.spec.table, source, request, token)?;
                 let pull = Pull::decode(&bytes)?;
                 dest.validate_recorded_control(&spec.plan, &pull)?;
                 let types = shape.shape_types(pulled_types(&pull)?);
@@ -1000,7 +1047,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
         // An empty pull is never journaled.
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
-        execution.step_keyed_with_parent(key, &journal_it, &mut |token| pulled(source, request, token), parent, window)
+        execution.step_keyed_with_parent(key, &journal_it, &mut |token| pulled_reported(self.stages.as_deref(), &spec.plan.spec.table, source, request, token), parent, window)
     }
 
     /// Write a stop onto a run row, and under `pipeline` scope onto every in-flight run of

@@ -93,6 +93,7 @@ fn a_delete_the_catalog_commit_outran_repeats_at_the_next_open() {
         keeper: Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }),
         emitter: None,
         worlds: Vec::new(),
+        stages: None,
     };
 
     let mut x = engine.open_execution(&open("job-1")).unwrap();

@@ -530,7 +530,7 @@ The store records run status, owner leases and execution history. History reques
   *A-run#run-record-folds*
 - `columns` — A run row is a {{type:contextful_core::run::record::RunRow}}.
 - `trace-context` — A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.
-- `run-span` — With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.
+- `run-span` — With an exporter configured, a run exports one `contextful.run` span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.
 - `status-set` — A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
 - `row-at-open` — The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.

@@ -1127,7 +1127,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     // The closing row carries the names this fire hydrated and their adapters
                     // (`connector.record.provider-attribution`).
                     let mut source = Attributed { inner: source, resolver: resolver.clone() };
-                    Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
+                    Ok(trace.engine(&w.engine).run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
                 // The run's reports surrender every unspent permit (`connector.meter.report-delivery`).
                 for limiter in &limiters {

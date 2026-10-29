@@ -34,6 +34,7 @@ mod writers;
 mod runner;
 mod scheduler;
 mod seed;
+mod stages;
 mod stores;
 mod support;
 mod suspend;

@@ -1139,3 +1139,96 @@ fn the_outcome_route_admits_then_hands_its_handler_the_pipeline_and_decoded_key(
     assert_eq!(send(addr, &proven("POST", "/receive/otel/flush-1", Vec::new(), &token, &key)).0, 405);
     assert_eq!(send(addr, &proven("GET", "/receive/otel/a/b", Vec::new(), &token, &key)).0, 404, "a key spans one segment");
 }
+
+/// A sink keeping every span a served request records.
+#[derive(Default)]
+struct KeptSpans(Mutex<Vec<contextful_core::trace::Span>>);
+
+impl contextful_core::trace::SpanSink for KeptSpans {
+    fn record(&self, span: contextful_core::trace::Span) {
+        self.0.lock().unwrap().push(span);
+    }
+}
+
+impl KeptSpans {
+    fn taken(&self) -> Vec<contextful_core::trace::Span> {
+        std::mem::take(&mut self.0.lock().unwrap())
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A route doing read or run work beside `/mcp` takes its trace from the request's `traceparent` header, exports one
+/// server span under it naming the method and route template with the status and a refused answer's identifier, and
+/// hands its handler a `traceparent` naming that span; the span records no path segment's value.
+// spec: disclosure.record.route-carrier@6d61a8b7
+// spec: disclosure.record.route-span@bbc5bbe4
+// spec: disclosure.record.route-parent@feca35a5
+// spec: disclosure.record.route-content@5b103a3e
+#[test]
+fn a_non_tool_route_continues_the_callers_trace_through_one_server_span() {
+    use contextful_core::trace::{otlp_traces, Attr, TraceContext};
+    const TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const PARENT: &str = "00f067aa0ba902b7";
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let seen: &'static Mutex<Vec<Option<String>>> = Box::leak(Box::default());
+    let write = |request: &HttpRequest, _: &AdmittedAuthority, _: &dyn Fn() -> Result<(), AuthorityError>| {
+        seen.lock().unwrap().push(request.header("traceparent").map(str::to_string));
+        HttpResponse::json(200, &json!({}))
+    };
+    let write: &'static _ = Box::leak(Box::new(write));
+    let kept: &'static std::sync::Arc<KeptSpans> = Box::leak(Box::default());
+    let spans = contextful_agent::mcp::ReadSpans { sink: kept.clone(), fresh: || TraceContext::root([9; 16], [3; 8]), now: || 42 };
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_claim_write(write).with_spans(spans)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    let token = credential(&f.signer, "research/*", 900, None);
+    let parent = format!("00-{TRACE}-{PARENT}-01");
+    let mut request = HttpRequest {
+        method: "POST".into(),
+        target: "/memory/claims".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}")), ("traceparent".into(), parent.clone()), ("tracestate".into(), "vendor=1".into())],
+        body: b"{}".to_vec(),
+    };
+    let (status, _, _) = send(addr, &request);
+    assert_eq!(status, 200);
+
+    let recorded = kept.taken();
+    assert!(!recorded.is_empty(), "the routed request records a span");
+    assert_eq!(recorded.len(), 1, "{recorded:?}");
+    let span = &recorded[0];
+    assert_eq!((span.name.as_str(), hex(&span.trace_id), span.parent.map(|p| hex(&p))), ("POST /memory/claims", TRACE.to_string(), Some(PARENT.to_string())));
+    assert_eq!(span.span_id, [3; 8], "the route span is a fresh child of the caller's span");
+    assert_eq!(span.attribute("http.route"), Some(&Attr::from("/memory/claims")));
+    assert_eq!(span.attribute("http.request.method"), Some(&Attr::from("POST")));
+    assert_eq!(span.attribute("http.response.status_code"), Some(&Attr::Int(200)));
+    assert_eq!((span.attribute("error.type"), &span.error), (None, &None));
+    let handed = seen.lock().unwrap().clone();
+    assert_eq!(handed, [Some(format!("00-{TRACE}-{}-01", hex(&[3; 8])))], "the handler's work parents under the route span");
+
+    // A refused answer records its identifier.
+    request.headers.push(("Origin".into(), "https://console.example".into()));
+    assert_eq!(send(addr, &request).0, 403);
+    let recorded = kept.taken();
+    assert!(!recorded.is_empty(), "the refused request records a span");
+    assert_eq!(recorded[0].attribute("error.type"), Some(&Attr::from("MemoryClaimBrowserRefused")));
+
+    // A path segment's value stays out of the span; `/health` and `/mcp` record no route span.
+    let stop = HttpRequest { method: "POST".into(), target: "/runs/run-held-secret/stop?reason=held-query".into(), headers: vec![("traceparent".into(), parent.clone())], body: Vec::new() };
+    send(addr, &stop);
+    let recorded = kept.taken();
+    assert!(!recorded.is_empty(), "the stop route records a span");
+    assert_eq!(recorded[0].attribute("http.route"), Some(&Attr::from("/runs/:run_id/stop")));
+    let exported = otlp_traces("svc", &recorded).to_string();
+    for secret in ["run-held-secret", "held-query"] {
+        assert!(!exported.contains(secret), "the span discloses `{secret}`: {exported}");
+    }
+    send(addr, &HttpRequest { method: "GET".into(), target: "/health".into(), headers: vec![("traceparent".into(), parent.clone())], body: Vec::new() });
+    send(addr, &unproven(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), "Bearer", &token));
+    assert!(kept.taken().is_empty(), "`/health` and a message on `/mcp` record no route span");
+}

@@ -189,6 +189,7 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
         keeper: Keeper::default(),
         emitter: Some(hub.emitter()),
         worlds: Vec::new(),
+        stages: None,
     };
     rig_run(&engine, "run-seen", &mut Pages::new(three_pages()), &mut Sink::default());
     hub.pump(crate::support::at("2030-01-01T00:00:10Z"));
@@ -214,6 +215,7 @@ fn a_run_lands_the_same_whether_its_projection_drops_every_event_or_none() {
             keeper: Keeper::default(),
             emitter,
             worlds: Vec::new(),
+            stages: None,
         };
         let mut sink = Sink::default();
         let row = rig_run(&engine, "run-seen", &mut Pages::new(three_pages()), &mut sink);
@@ -263,6 +265,7 @@ fn a_received_batch_counts_its_catalog_calls_per_landing() {
         keeper: Keeper::new(Cadence { poll: Duration::from_secs(3600), renew: Duration::from_secs(3600) }),
         emitter: None,
         worlds: Vec::new(),
+        stages: None,
     };
     let p = plan("kind = \"opaque-token\"", "");
     let spec = |run_id: String| contextful_engine::RunSpec {

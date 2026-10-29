@@ -10,6 +10,8 @@
 
 use contextful_core::run::record::RunRow;
 use contextful_core::trace::{Span, SpanKind, SpanSink, TraceContext};
+#[cfg(feature = "data-plane")]
+use contextful_engine::stages::{StageReport, StageSink};
 use contextful_outbound::telemetry::{fresh_trace, span_id, SpanExporter};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -90,10 +92,30 @@ pub struct RunTrace {
 
 impl RunTrace {
     pub fn open() -> RunTrace {
-        match &telemetry().caller {
+        RunTrace::under(telemetry().caller.as_ref())
+    }
+
+    /// A run's span position under `caller`, the span a served request's `traceparent` names,
+    /// or in a fresh trace when none does (`disclosure.record.route-parent`).
+    pub fn under(caller: Option<&TraceContext>) -> RunTrace {
+        match caller {
             Some(caller) => RunTrace { context: caller.child(span_id()), parent: Some(caller.span_id) },
             None => RunTrace { context: fresh_trace(), parent: None },
         }
+    }
+
+    /// Where the run reports its stages: child spans of the run's span, when an exporter is
+    /// configured; `None` times no stage (`disclosure.record.stage-span`,
+    /// `disclosure.record.stage-unconfigured`).
+    #[cfg(feature = "data-plane")]
+    pub fn stages(&self) -> Option<Arc<dyn StageSink>> {
+        sink().map(|sink| Arc::new(StageSpans { run: self.context.clone(), sink }) as Arc<dyn StageSink>)
+    }
+
+    /// `engine` reporting this run's stages as child spans of its span.
+    #[cfg(feature = "data-plane")]
+    pub fn engine<J: Clone, B: Clone>(&self, engine: &contextful_engine::Engine<J, B>) -> contextful_engine::Engine<J, B> {
+        contextful_engine::Engine { stages: self.stages(), ..engine.clone() }
     }
 
     /// The trace id both run rows carry.
@@ -118,6 +140,44 @@ impl RunTrace {
         span.start_unix_nanos = row.started_at.unix_nanos();
         span.end_unix_nanos = row.ended_at.map_or_else(contextful_outbound::telemetry::now_unix_nanos, |e| e.unix_nanos());
         sink.record(span);
+    }
+}
+
+/// A run's stage reports as child spans of its run span. Each carries names, counts and an
+/// error identifier, never a row value or a statement (`disclosure.record.stage-content`).
+#[cfg(feature = "data-plane")]
+struct StageSpans {
+    run: TraceContext,
+    sink: Arc<dyn SpanSink>,
+}
+
+#[cfg(feature = "data-plane")]
+impl StageSink for StageSpans {
+    fn stage(&self, report: StageReport) {
+        let stage = report.kind.name();
+        let mut span = Span::at(&self.run.child(span_id()), Some(self.run.span_id), &format!("contextful.{stage}"), SpanKind::Internal)
+            .with("contextful.stage", stage)
+            .with("contextful.outcome", report.outcome);
+        if let Some(table) = report.table {
+            span = span.with("contextful.table", table);
+        }
+        if let Some(step) = report.step {
+            span = span.with("contextful.step", step);
+        }
+        if let Some(rows) = report.rows {
+            span = span.with("contextful.rows", rows);
+        }
+        if let Some(bytes) = report.bytes {
+            span = span.with("contextful.bytes", bytes);
+        }
+        if let Some(error) = report.error {
+            span = span.with("error.type", error.as_str());
+            span.error = Some(error);
+        }
+        let end = contextful_outbound::telemetry::now_unix_nanos();
+        span.end_unix_nanos = end;
+        span.start_unix_nanos = end - i128::try_from(report.elapsed.as_nanos()).unwrap_or(0);
+        self.sink.record(span);
     }
 }
 

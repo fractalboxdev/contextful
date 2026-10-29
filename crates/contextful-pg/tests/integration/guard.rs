@@ -129,6 +129,7 @@ fn takeover_after_the_last_cooperative_read_refuses_provider_dispatch() {
         keeper: Keeper::default(),
         emitter: None,
         worlds: Vec::new(),
+        stages: None,
     };
     let scope = OwnerScope::host("dispatch-race");
     let mut x = engine
@@ -184,6 +185,7 @@ fn durable_guard_serializes_takeover_and_keeps_run_metadata_reentrant() {
         keeper: Keeper::default(),
         emitter: None,
         worlds: Vec::new(),
+        stages: None,
     };
     let scope = OwnerScope::host("guarded");
     let _x = engine
@@ -377,6 +379,7 @@ fn actual_destination_commit_retains_admission_after_precommit() {
         keeper: Keeper::new(contextful_engine::cancel::Cadence { poll:Duration::from_millis(5),renew:Duration::from_millis(5) }),
         emitter: None,
         worlds: Vec::new(),
+        stages: None,
     };
     let plan=Plan::compile(b"pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n[cursor]\nkind = \"opaque-token\"\n").unwrap();
     let spec = contextful_engine::RunSpec {
