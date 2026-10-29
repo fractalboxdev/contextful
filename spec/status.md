@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 6 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 15 | 292 | 0 | 0 | 292 |
-| `run` | 3 | 31 | 620 | 137 | 52 | 20 | 614 | 4 | 0 | 614 |
+| `run` | 3 | 31 | 622 | 137 | 52 | 20 | 616 | 4 | 0 | 616 |
 | `store` | 7 | 21 | 341 | 70 | 26 | 12 | 341 | 13 | 0 | 341 |
 | `surface` | 2 | 22 | 197 | 70 | 24 | 2 | 194 | 0 | 0 | 194 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 28 | 182 | 2860 | 713 | 242 | 84 | 2799 | 24 | 0 | |
+| **total** | 28 | 182 | 2862 | 713 | 242 | 84 | 2801 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 93 | 93 | passing | closed |
 | 9 — Visibility | 6 | 49 | 49 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 121 | 121 | passing | closed |
-| 11 — The derive tier | 7 | 96 | 96 | passing | closed |
+| 11 — The derive tier | 7 | 98 | 98 | passing | closed |
 | 12 — The operator console | 12 | 64 | 64 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 175 | 175 | passing | closed |
