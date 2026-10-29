@@ -20,7 +20,7 @@ Artifact compatibility: source-independent execution, required capabilities, sce
   *P7*
 - `verdict-exit` — `contextful-conformance` exits 1 after writing a failing verdict and 2 without a report; release packaging records a failed `suite-exit` scenario for any other exit, or for exit 1 over a passing report.
   *because the suite's own failing verdict is evidence, not a crashed process*
-- `scenarios` — The suite exercises pagination and checkpoints, applied scheduling and dependencies, graceful restart, hard-crash replay, empty and replacement captures, public identifiers, credential masking, typed export acknowledgement and receiver visibility.
+- `scenarios` — The suite exercises pagination and checkpoints, applied scheduling and dependencies, graceful restart, hard-crash replay, empty and replacement captures, public identifiers, credential masking, typed export acknowledgement, receiver visibility and a delegated item fenced by a newer owner.
 - `mutation-controls` — Planted cursor skips, duplicate public identities, repeated in-window scheduling and acknowledgement before receiver commit each fail their owning scenario.
   *because a scenario that accepts its motivating defect proves no compatibility*
 - `report` — Evidence records the suite revision and version, supplied binary SHA-256 digest, reported version, feature profile, storage profile and every scenario outcome, requirement and diagnostic.
@@ -51,3 +51,5 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 - `assurance.consumer.verdict-exit`: WHEN the suite exits 1 over a report whose required scenarios are `unsupported`, THEN the release report holds those scenarios and no `suite-exit` failure.
 - `assurance.consumer.command-diagnostic`: WHEN a command fails with a credential in its stderr, THEN the diagnostic names the verb and error identifier, and the report omits the credential.
 - `assurance.consumer.mutation-controls`: WHEN a native source advances past an unserved page, THEN the pagination scenario fails.
+- `assurance.consumer.scenarios`: WHEN a newer job version takes an entity's lease while a delegated call is in flight, THEN the earlier item lands nothing, and its job's next fire lands the recorded answer without a second request.
+- `assurance.consumer.d1-profile`: WHEN a newer job version fires while a delegated call holds its D1 guard, THEN that fire refuses, and its next fire after the callback returns lands.

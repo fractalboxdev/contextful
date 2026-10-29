@@ -418,7 +418,7 @@ fn artifact(dir: &Path) -> std::path::PathBuf {
 }
 
 // spec: assurance.consumer.report@c364398f
-// spec: assurance.consumer.scenarios@098c4544
+// spec: assurance.consumer.scenarios@3e00e85f
 // spec: assurance.consumer.suite@0773ff45
 #[test]
 #[cfg(unix)]
@@ -448,7 +448,9 @@ fn the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution(
         report.artifact_digest,
         conformance::digest(&binary).unwrap()
     );
-    assert_eq!(report.scenarios.len(), 8);
+    assert_eq!(report.scenarios.len(), 9);
+    let fenced = report.scenarios.iter().find(|scenario| scenario.id == "delegated-item-fence").expect("the suite carries the fenced delegated item");
+    assert_eq!(fenced.requirement.as_deref(), Some("job,token"));
     assert!(report
         .scenarios
         .iter()

@@ -3,10 +3,10 @@
 //! Reach: a store-driven item runs its paid call on a loopback delegate, its answer lands as
 //! the item's rows, and a resume after a restart sends no second request.
 
+use contextful_acceptance::delegate::{request_signed, signed_answer};
 use contextful_acceptance::http::{Request, Response, Server};
 use contextful_acceptance::{bin, GitRepo};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::process::Output;
 
 const AUD: &str = "contextful://acme-research";
@@ -16,20 +16,6 @@ const STORE: &str = ".contextful/context/research";
 fn ok(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).trim().to_string()
-}
-
-/// HMAC-SHA256 over `message` under `key`, as lowercase hex: the signature every delegate
-/// request and answer carries.
-fn hmac_hex(key: &[u8], message: &[u8]) -> String {
-    let mut k = [0u8; 64];
-    if key.len() > 64 {
-        k[..32].copy_from_slice(&Sha256::digest(key));
-    } else {
-        k[..key.len()].copy_from_slice(key);
-    }
-    let inner: Vec<u8> = k.iter().map(|b| b ^ 0x36).chain(message.iter().copied()).collect();
-    let outer: Vec<u8> = k.iter().map(|b| b ^ 0x5c).chain(Sha256::digest(&inner).iter().copied()).collect();
-    Sha256::digest(&outer).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// The delegate's answer: `ok` rows for the job's one output table, signed under the
@@ -42,13 +28,7 @@ fn answer(request: &Request) -> Response {
         "rows": { "screen_result": [{ "entity_id": row["entity_id"], "pass_id": row["pass_id"], "proceed": true }] }
     })
     .to_string();
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs().to_string();
-    let key = envelope["idempotency_key"].as_str().unwrap_or_default();
-    let signature = hmac_hex(KEY, format!("answer\n{key}\n{timestamp}\n{body}").as_bytes());
-    let mut response = Response::json(200, &body);
-    response.headers.push(("x-contextful-timestamp".into(), timestamp));
-    response.headers.push(("x-contextful-signature".into(), signature));
-    response
+    signed_answer(KEY, envelope["idempotency_key"].as_str().unwrap_or_default(), &body)
 }
 
 fn config(delegate: &str) -> String {
@@ -91,9 +71,7 @@ fn m17_delegated() {
     let requests = delegate.received("/stage/screen");
     assert_eq!(requests.len(), 2, "one request per item");
     for request in &requests {
-        let timestamp = request.header("x-contextful-timestamp").expect("timestamp header");
-        let expected = hmac_hex(KEY, &[format!("call\n{timestamp}\n").as_bytes(), &request.body].concat());
-        assert_eq!(request.header("x-contextful-signature"), Some(expected.as_str()), "signed under the deployment key");
+        assert!(request_signed(KEY, request), "signed under the deployment key");
         let envelope: Value = serde_json::from_slice(&request.body).unwrap();
         assert_eq!(envelope["job"], "stage-screen");
         assert_eq!(envelope["tables"], json!(["screen_result"]));

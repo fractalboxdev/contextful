@@ -1,6 +1,7 @@
 //! The acceptance harness: builds a workspace binary once and runs it the way a caller
 //! does, against scratch state it owns.
 
+pub mod delegate;
 pub mod http;
 pub mod iceberg;
 pub mod container_recovery;

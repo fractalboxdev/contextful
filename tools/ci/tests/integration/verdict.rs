@@ -67,7 +67,7 @@ impl Cell {
         let dist = tempfile::tempdir().unwrap();
         let invocations = bin.path().join("invocations");
         let report = serde_json::json!({
-            "schema_version":1, "suite_revision":"consumer-v2", "artifact_digest":format!("{:x}", Sha256::digest(ARTIFACT)),
+            "schema_version":1, "suite_revision":"consumer-v3", "artifact_digest":format!("{:x}", Sha256::digest(ARTIFACT)),
             "feature_profile":profile, "scenarios":scenarios,
         });
         let suite = bin.path().join("suite");
