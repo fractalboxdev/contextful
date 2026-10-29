@@ -394,13 +394,11 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     })))
 }
 
-/// `manifest` with the folded-runs index a pass writes beside it, declaring `2.1` when it carries
-/// one (`store.fold.folded-index`, `store.lay-out.format-version`).
+/// `manifest` with the folded-runs index a pass writes beside it, declaring minor `1` when it
+/// carries one (`store.fold.folded-index`, `store.lay-out.format-version`).
 fn with_folded_index(store: &Store, state: &contextful_core::store::resolve::TableState, unfolded: &[&RunManifest], staging: &std::path::Path, mut manifest: SnapshotManifest) -> Result<SnapshotManifest> {
     manifest.folded_runs = folded::write(store, state, &manifest.snapshot_id, unfolded, staging)?;
-    if manifest.folded_runs.is_some() {
-        manifest.format_version = manifest.format_version.max(contextful_core::store::lay_out::FormatVersion::FOLDED_INDEX);
-    }
+    manifest.format_version = contextful_core::store::lay_out::FormatVersion::of_snapshot(&manifest);
     Ok(manifest)
 }
 

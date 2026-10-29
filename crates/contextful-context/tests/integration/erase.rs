@@ -87,6 +87,13 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
         let mut expected = if all_erased { json!([]) } else { json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]) };
         if extended { expected.as_array_mut().unwrap().push(json!({ "id":"extra", "subject":"other", "text":"extra words" })); }
         assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), expected);
+        // An erased snapshot carrying its folded-runs index still declares the index's minor.
+        let (erased, _) = result.store.chain("notes").unwrap();
+        assert!(!erased.is_empty());
+        for m in &erased {
+            assert!(m.folded_runs.is_some(), "the rewrite keeps the index");
+            assert_eq!(m.format_version.to_string(), "1.1", "a self-contained snapshot carrying an index declares 1.1");
+        }
         if extended {
             // A carried part written before a column arrived conforms to the merged schema,
             // so the column survives the rewrite.

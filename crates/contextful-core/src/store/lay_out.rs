@@ -205,13 +205,12 @@ pub struct FormatVersion {
 }
 
 impl FormatVersion {
-    /// The newest layout this build reads: `2.0`, a snapshot manifest carrying a part by
-    /// reference (`store.lay-out.format-version`).
-    pub const CURRENT: FormatVersion = FormatVersion { major: 2, minor: 0 };
+    /// The newest layout this build writes: `2.1`, a snapshot manifest carrying a part by
+    /// reference and a folded-runs index (`store.lay-out.format-version`).
+    pub const CURRENT: FormatVersion = FormatVersion { major: 2, minor: 1 };
 
-    /// The layout of a snapshot manifest carrying a folded-runs index: `2.1`. A build reading
-    /// `2.0` parses it as its own and ignores the field (`store.lay-out.format-version`).
-    pub const FOLDED_INDEX: FormatVersion = FormatVersion { major: 2, minor: 1 };
+    /// The layout of a snapshot manifest carrying a part or a sidecar segment by reference.
+    pub const BY_REFERENCE: FormatVersion = FormatVersion { major: 2, minor: 0 };
 
     /// The layout of a run manifest, and of a snapshot manifest holding every part in its
     /// own directory: `1.0`, which a build of either major reads.
@@ -222,9 +221,20 @@ impl FormatVersion {
     /// (`store.lay-out.format-version`).
     pub fn of_manifest(parts: &[PartEntry], indexes: &[super::index::IndexEntry]) -> FormatVersion {
         if parts.iter().any(|p| p.origin.is_some()) || indexes.iter().any(|i| !i.segments().is_empty() || i.extensions() > 0) {
-            Self::CURRENT
+            Self::BY_REFERENCE
         } else {
             Self::SELF_CONTAINED
+        }
+    }
+
+    /// The version snapshot manifest `m` declares: the major [`FormatVersion::of_manifest`]
+    /// gives its parts and sidecars, and minor `1` where it carries a folded-runs index, which
+    /// a reader of an older minor ignores (`store.lay-out.format-version`).
+    pub fn of_snapshot(m: &SnapshotManifest) -> FormatVersion {
+        let base = Self::of_manifest(&m.parts, &m.indexes);
+        match m.folded_runs {
+            Some(_) => FormatVersion { major: base.major, minor: 1 },
+            None => base,
         }
     }
 
@@ -429,9 +439,16 @@ pub struct SnapshotManifest {
     pub publish: Option<crate::pipeline::model::PublishSection>,
 
     /// Every run the snapshot's chain folds, in segments (`store.lay-out.folded-index`). A
-    /// reader trusts it only where `through` names this snapshot.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// reader trusts it only where `through` names this snapshot; a field it cannot decode
+    /// reads as absent, and the reader walks.
+    #[serde(default, deserialize_with = "lenient_folded", skip_serializing_if = "Option::is_none")]
     pub folded_runs: Option<FoldedIndex>,
+}
+
+/// `folded_runs` as decoded, `None` where its value does not decode (`store.lay-out.folded-index-valid`).
+fn lenient_folded<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<FoldedIndex>, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(value).ok())
 }
 
 /// A snapshot's folded-runs index: the segments listing every run its chain folds, and the

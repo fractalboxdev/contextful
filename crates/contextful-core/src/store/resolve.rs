@@ -34,6 +34,19 @@ pub struct TableState {
 pub struct FoldedSet {
     pub at: usize,
     pub rows: BTreeMap<String, SnapshotId>,
+    /// The same rows by folding snapshot.
+    by_snapshot: BTreeMap<SnapshotId, Vec<String>>,
+}
+
+impl FoldedSet {
+    /// The index's `rows`, read at `chain[at]`.
+    pub fn new(at: usize, rows: BTreeMap<String, SnapshotId>) -> Self {
+        let mut by_snapshot: BTreeMap<SnapshotId, Vec<String>> = BTreeMap::new();
+        for (run, snapshot) in &rows {
+            by_snapshot.entry(snapshot.clone()).or_default().push(run.clone());
+        }
+        FoldedSet { at, rows, by_snapshot }
+    }
 }
 
 /// The snapshot and runs one read covers.
@@ -78,7 +91,7 @@ impl TableState {
     /// The runs `chain[i]` itself folds.
     fn own(&self, i: usize) -> Vec<&str> {
         match &self.index {
-            Some(ix) if i >= ix.at => ix.rows.iter().filter(|(_, s)| **s == self.chain[i].snapshot_id).map(|(k, _)| k.as_str()).collect(),
+            Some(ix) if i >= ix.at => ix.by_snapshot.get(&self.chain[i].snapshot_id).map_or_else(Vec::new, |runs| runs.iter().map(String::as_str).collect()),
             _ => self.chain[i].includes_runs.iter().map(String::as_str).collect(),
         }
     }

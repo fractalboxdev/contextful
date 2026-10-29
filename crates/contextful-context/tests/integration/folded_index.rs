@@ -123,7 +123,7 @@ fn a_pass_carries_its_parents_index() {
     let d = table();
     fold_run(&f, &d, 0);
     let first = head(&f);
-    assert_eq!(first.format_version, FormatVersion::FOLDED_INDEX);
+    assert_eq!(first.format_version.to_string(), "1.1", "a self-contained snapshot carrying an index declares 1.1");
     let index = first.folded_runs.clone().unwrap();
     assert_eq!(index.through, first.snapshot_id);
     assert!(index.segments.is_empty() && index.inline.len() == RUNS_PER_PASS as usize, "a few runs stay inline");
@@ -134,7 +134,10 @@ fn a_pass_carries_its_parents_index() {
     assert_eq!(flushed.segments.len(), 1, "the inline rows flush into a segment");
     assert!(flushed.segments[0].origin.is_none() && flushed.segments[0].rows == 13 * RUNS_PER_PASS && flushed.inline.is_empty());
     fold_run(&f, &d, 13);
-    let next = head(&f).folded_runs.unwrap();
+    let carrying = head(&f);
+    assert_eq!(carrying.format_version, FormatVersion::of_snapshot(&carrying));
+    assert_eq!(carrying.format_version.to_string(), "2.1", "a snapshot carrying parts by reference declares 2.1");
+    let next = carrying.folded_runs.unwrap();
     assert!(next.segments.len() == 1 && next.segments[0].origin.is_some(), "the parent's segment is carried");
     assert_eq!(next.inline.len(), RUNS_PER_PASS as usize);
 }
@@ -165,7 +168,7 @@ fn an_unbounded_read_reads_the_head_alone() {
 
 /// An index whose `through` names another snapshot, whose segment's bytes moved, or whose segment is gone is not
 /// trusted: the read walks, and answers as the walk does.
-// spec: store.lay-out.folded-index-valid@f9db4094
+// spec: store.lay-out.folded-index-valid@ca09d1fa
 #[test]
 fn an_invalid_index_falls_back_to_the_walk() {
     for damage in ["through", "bytes", "gone"] {
@@ -187,6 +190,30 @@ fn an_invalid_index_falls_back_to_the_walk() {
         }
         let state = f.store.state(&d).unwrap();
         assert!(state.index.as_ref().is_none_or(|ix| ix.at > 0), "{damage}: the head's index is not trusted");
+        assert_same_as_walk(&f, &d);
+    }
+}
+
+/// A `folded_runs` field this build cannot decode, a corrupt row id or a future shape, reads as absent: the read walks
+/// and answers as the walk does, refusing nothing.
+#[test]
+fn a_malformed_index_field_walks() {
+    for shape in ["row", "future"] {
+        let f = Fixture::synced();
+        let d = table();
+        for i in 0..4 {
+            fold_run(&f, &d, i);
+        }
+        let top = head(&f);
+        let path = f.store.snapshot_dir(TABLE, &top.snapshot_id).unwrap().join("_manifest.json");
+        let mut doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        match shape {
+            "row" => doc["folded_runs"]["inline"][0]["snapshot"] = json!("not-a-snapshot-id"),
+            _ => doc["folded_runs"] = json!({"through": top.snapshot_id.to_string(), "layout": "a later shape"}),
+        }
+        std::fs::write(&path, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+        let state = f.store.state(&d).unwrap();
+        assert!(state.index.as_ref().is_none_or(|ix| ix.at > 0), "{shape}: the head's field reads as absent");
         assert_same_as_walk(&f, &d);
     }
 }

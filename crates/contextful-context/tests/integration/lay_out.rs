@@ -239,9 +239,10 @@ fn format_of(path: &std::path::Path) -> serde_json::Value {
     serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["format_version"].clone()
 }
 
-/// Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.0` for snapshots referencing parts or
-/// segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
-// spec: store.lay-out.format-version@27a89fb7
+/// Run and snapshot manifests carry `format_version` as `<major>.<minor>`: major `2` for snapshots referencing parts
+/// or segments, else `1`, and minor `1` for snapshots carrying `folded_runs`, else `0`. An absent version reads as
+/// `1.0`, and readers parse a newer minor as their own.
+// spec: store.lay-out.format-version@8e0b77be
 #[test]
 fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     let f = Fixture::new();
@@ -252,7 +253,7 @@ fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     let (chain, _) = f.store.chain("filings").unwrap();
     let snap_manifest = f.store.snapshot_dir("filings", &chain[0].snapshot_id).unwrap().join("_manifest.json");
-    assert_eq!(format_of(&snap_manifest), json!("2.1"), "a snapshot carrying its folded-runs index declares 2.1");
+    assert_eq!(format_of(&snap_manifest), json!("1.1"), "a self-contained snapshot carrying its folded-runs index declares 1.1");
 
     // The next pass carries the first snapshot's part by reference, and its index, under 2.1.
     f.land(&d, "run-2", json!([{"id": "b"}]), "2030-01-01T02:00:00Z").unwrap();
@@ -292,7 +293,7 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
     for err in [f.scan(&d, Bounds::default()).unwrap_err(), fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap_err()] {
         match store_err(err) {
             StoreError::StoreManifestFormatNewer(m) => {
-                assert!(m.contains("run-1/ingest-a/_manifest.json") && m.contains("3.0") && m.contains("2.0"), "{m}")
+                assert!(m.contains("run-1/ingest-a/_manifest.json") && m.contains("3.0") && m.contains("2.1"), "{m}")
             }
             other => panic!("expected StoreManifestFormatNewer, got {other:?}"),
         }
@@ -310,7 +311,7 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
 }
 
 /// A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the
-/// next pass references those parts under `2.0`, rewriting no manifest in place.
+/// next pass references those parts under major `2`, rewriting no manifest in place.
 // spec: store.lay-out.format-migrate@6e6fb26d
 #[test]
 fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {

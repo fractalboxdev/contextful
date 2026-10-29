@@ -396,7 +396,7 @@ Revisit: a chain walk dominates a cold read, or kept manifests a bucket's bytes.
 
 ## folded-index — A snapshot carries every run its chain folds
 
-Kept manifests make a chain whole, and a read walking it grows with history. Each pass writes the set of folded runs as Parquet segments beside its snapshot, carrying its parent's by reference and merging 4 segments of one tier into one, so a pass writes few rows and a reader reads one snapshot. A reader trusts the set only where it names its own snapshot and every segment matches its digest, and otherwise walks, so a stale or damaged set costs time, never rows. A pass whose parent's chain holds no valid set and ends at a missing manifest writes none. A `2.0` reader ignores the field and walks the kept manifests.
+Kept manifests make a chain whole, and a read walking it grows with history. Each pass writes the set of folded runs as Parquet segments beside its snapshot, carrying its parent's by reference and merging 4 segments of one tier into one, so a pass writes few rows and a reader reads one snapshot. A reader trusts the set only where it names its own snapshot and every segment matches its digest, and otherwise walks, so a stale or damaged set costs time, never rows. A pass whose parent's chain holds no valid set and ends at a missing manifest writes none. The set raises only the minor, `1.1` on a self-contained snapshot and `2.1` on one carrying parts by reference, so an older reader of the same major ignores it and walks the kept manifests. A collect by such a reader deletes the segments, and reads walk until the next pass writes the set again.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

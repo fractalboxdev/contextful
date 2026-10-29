@@ -611,7 +611,7 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
             rows: Some(manifest.row_count),
             ..contextful_core::store::lay_out::PartEntry::new(name, store.sealing().key_version())
         }];
-        manifest.format_version = contextful_core::store::lay_out::FormatVersion::of_manifest(&manifest.parts, &manifest.indexes);
+        manifest.format_version = contextful_core::store::lay_out::FormatVersion::of_snapshot(&manifest);
         store.metadata().write(&path, &serde_json::to_vec(&manifest).map_err(|_| incomplete("the rewritten snapshot manifest does not encode"))?)?;
     }
     Ok(())

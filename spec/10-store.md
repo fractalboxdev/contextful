@@ -81,7 +81,7 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
   *because retention collects superseded snapshots, and a push decides descent from the snapshot's own manifest*
 - `folded-index` — A snapshot manifest's `folded_runs` names Parquet segments whose rows list each run its chain folds, by run key and folding snapshot with commit instant and `_commit_seq`, and `through`, the snapshot they describe.
   *A-store#folded-index*
-- `folded-index-valid` — A reader trusts `folded_runs` only where `through` names its snapshot and every segment reads at its recorded digest and row count, and otherwise walks the chain, so the index never names fewer runs than the walk.
+- `folded-index-valid` — A reader trusts `folded_runs` only where it decodes, `through` names its snapshot and every segment reads at its recorded digest and row count, and otherwise walks, so the index never names fewer runs than the walk.
   *A-store#folded-index*
 - `folded-index-walk` — An unbounded read reads the pointer's snapshot and its parents down to the first valid index; a bounded read reads on to the first snapshot created at or before its bound.
   *A-store#folded-index*
@@ -123,7 +123,7 @@ A run commits through its manifest, and a repeated landing replays or refuses.
 Each manifest names its layout version.
 
 - `manifest-default` — A field added to a manifest carries a default value.
-- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.1` for snapshots carrying `folded_runs`, `2.0` for others referencing parts or segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
+- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`: major `2` for snapshots referencing parts or segments, else `1`; minor `1` for snapshots carrying `folded_runs`, else `0`. An absent version reads as `1.0`; readers parse a newer minor as their own.
   *A-store#manifest-carries-format*
 - `format-newer` — A run or snapshot manifest of a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file and both versions, and the table refuses reads until a newer build reads it.
   *A-store#manifest-carries-format*

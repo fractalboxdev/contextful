@@ -2515,7 +2515,7 @@
       "operation": "lay-out",
       "subject": "folded-index-valid",
       "kind": "behavior",
-      "statement": "A reader trusts `folded_runs` only where `through` names its snapshot and every segment reads at its recorded digest and row count, and otherwise walks the chain, so the index never names fewer runs than the walk.",
+      "statement": "A reader trusts `folded_runs` only where it decodes, `through` names its snapshot and every segment reads at its recorded digest and row count, and otherwise walks, so the index never names fewer runs than the walk.",
       "why": "A-store#folded-index",
       "file": "spec/10-store.md",
       "line": 84
@@ -2720,7 +2720,7 @@
       "operation": "lay-out",
       "subject": "format-version",
       "kind": "behavior",
-      "statement": "Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.1` for snapshots carrying `folded_runs`, `2.0` for others referencing parts or segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.",
+      "statement": "Run and snapshot manifests carry `format_version` as `<major>.<minor>`: major `2` for snapshots referencing parts or segments, else `1`; minor `1` for snapshots carrying `folded_runs`, else `0`. An absent version reads as `1.0`; readers parse a newer minor as their own.",
       "why": "A-store#manifest-carries-format",
       "file": "spec/10-store.md",
       "line": 126,
