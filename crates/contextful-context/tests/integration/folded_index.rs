@@ -221,7 +221,7 @@ fn a_malformed_index_field_walks() {
 /// A collected snapshot manifest the record names as skipped ends a walk below a valid index, as a collected parent
 /// does; a walk meeting no valid index fetches it, and a store without a part source refuses naming it. The chain's
 /// folded keys from the head are the index's.
-// spec: store.pull.husks-fetched@2bad778e
+// spec: store.pull.husks-fetched@6ea68a8e
 #[test]
 fn a_skipped_husk_ends_a_walk_below_a_valid_index_and_a_walk_without_one_fetches_it() {
     use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};

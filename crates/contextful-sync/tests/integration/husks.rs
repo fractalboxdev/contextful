@@ -128,7 +128,7 @@ fn unskip(n: &Node, b: &dyn ObjectStore) -> usize {
 
 /// A cold node pulled with the husk skip answers every unbounded read, every `as_of` and every receive dedup as one
 /// whose collected snapshot manifests are home, and as the folding node does unbounded.
-// spec: store.pull.husks-skipped@8df41067
+// spec: store.pull.husks-skipped@8c4f0de2
 #[test]
 fn a_husk_skipping_pull_answers_as_a_whole_one() {
     let h = history(25);
@@ -148,7 +148,7 @@ fn a_husk_skipping_pull_answers_as_a_whole_one() {
 }
 
 /// A cold lazy pull downloads the manifests of the retained snapshots alone: it grows with them, not with history.
-// spec: store.pull.husks-skipped@8df41067
+// spec: store.pull.husks-skipped@8c4f0de2
 #[test]
 fn a_cold_pull_grows_with_retained_snapshots() {
     for passes in [10, 30] {
@@ -165,7 +165,7 @@ fn a_cold_pull_grows_with_retained_snapshots() {
 
 /// Where no retained snapshot's index reads valid any more, the walk fetches the husks the pull skipped through the
 /// part source, and answers as a node whose husks are home and whose indexes broke alike.
-// spec: store.pull.husks-fetched@2bad778e
+// spec: store.pull.husks-fetched@6ea68a8e
 #[test]
 fn a_walk_without_a_valid_index_fetches_the_skipped_husks() {
     let h = history(25);
@@ -193,7 +193,7 @@ fn a_walk_without_a_valid_index_fetches_the_skipped_husks() {
 
 /// Collect reads the pointer's index and the retained snapshots' manifests, not every husk, and reclaims what the whole
 /// walk reclaims; a table whose bucket index does not read valid walks the whole chain.
-// spec: store.collect.index-walk@dc3175aa
+// spec: store.collect.index-walk@8c44f948
 #[test]
 fn a_collect_reads_the_index_instead_of_every_husk() {
     let h = history(25);
@@ -224,4 +224,136 @@ fn a_collect_reads_the_index_instead_of_every_husk() {
     assert_eq!(walked.superseded, indexed.superseded);
     assert_eq!(walked.folded_runs, indexed.folded_runs);
     collect(false);
+}
+
+/// The `filings` table under a `retain_runs` window of `window`.
+fn retained(window: &str) -> TableDecl {
+    TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"id\"]\nretain_runs = \"{window}\"\n")).unwrap().remove(0)
+}
+
+/// Land one run and fold it on `n`, `pass` minutes past midnight.
+fn pass(n: &Node, d: &TableDecl, pass: u64) {
+    let instant = at("2030-01-01T00:00:00Z").plus_secs(pass * 60).to_rfc3339_nanos();
+    n.land(&format!("run-{pass:04}"), json!([{"id": 1, "v": pass}, {"id": 1000 + pass}]), &instant);
+    contextful_context::fold::fold(&n.syncer.store, d, at(&instant)).unwrap();
+}
+
+/// A lazy node that pulled at pass 3 pulls again after the bucket's chain moved past the head's recorded ancestry and
+/// a collect turned the snapshots between into husks: the pull brings those husks home and adopts the head.
+// spec: store.pull.husks-skipped@8c4f0de2
+#[test]
+fn a_warm_lazy_pull_after_a_gap_adopts_the_head() {
+    for (passes, strip) in [(270u64, false), (8, true)] {
+        let dir = tempfile::tempdir().unwrap();
+        let b = bucket(dir.path());
+        let mut folder = node("ingest-a", b.clone(), "");
+        folder.syncer.config.retain_generations = NonZeroU64::new(1);
+        // The folding node keeps its snapshots a month; the bucket collect reclaims under a one-hour window.
+        let (d, hourly) = (retained("30d"), retained("1h"));
+        for i in 0..=3 {
+            pass(&folder, &d, i);
+        }
+        if strip {
+            // A head written before `ancestors` existed: each child of it records none.
+            let head = folder.syncer.store.chain("filings").unwrap().0[0].snapshot_id.clone();
+            let path = folder.syncer.store.snapshot_dir("filings", &head).unwrap().join("_manifest.json");
+            let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            m.as_object_mut().unwrap().remove("ancestors");
+            std::fs::write(&path, serde_json::to_vec_pretty(&m).unwrap()).unwrap();
+        }
+        folder.syncer.push(at("2030-01-01T06:00:00Z")).unwrap();
+        let mut reader = node("reader", b.clone(), "");
+        reader.syncer.config.lazy_parts = Some(true);
+        reader.syncer.pull(&PullScope::default()).unwrap();
+        for i in 4..passes {
+            pass(&folder, &d, i);
+        }
+        folder.syncer.push(at("2030-01-02T00:00:00Z")).unwrap();
+        folder.syncer.collect_declared(at("2030-01-03T00:00:00Z"), false, std::slice::from_ref(&hourly)).unwrap();
+        let (husks, kept) = snapshot_dirs(&manifest(b.as_ref()));
+        assert!(husks.len() as u64 >= passes - 3, "{passes}: {} husks, {} kept, chain {}", husks.len(), kept.len(), folder.syncer.store.chain("filings").unwrap().0.len());
+        let report = reader.syncer.pull(&PullScope::default()).unwrap();
+        assert!(report.pointers.iter().any(|p| p.ends_with("filings/_pointer.json")), "{passes}: {report:?}");
+        let head = folder.syncer.store.chain("filings").unwrap().0[0].snapshot_id.clone();
+        assert_eq!(reader.syncer.store.pointer("filings").unwrap().map(|(p, _)| p.snapshot_id), Some(head), "{passes}");
+        // The next pull, its local pointer now the head, leaves the husks behind again and succeeds.
+        reader.syncer.pull(&PullScope::default()).unwrap();
+    }
+}
+
+/// A full chain walk on a store that skipped husks and reads through no part source refuses naming one, rather than
+/// answering a short chain.
+// spec: store.pull.husks-fetched@6ea68a8e
+#[test]
+fn a_full_walk_without_a_part_source_refuses_rather_than_answering_short() {
+    let h = history(25);
+    let (n, _) = cold(&h, "reader-a");
+    let e = contextful_context::catalog::derive(&n.syncer.store).unwrap_err().to_string();
+    assert!(e.starts_with("SyncFoldedRunsUnfetched") && e.contains("/data/snapshots/"), "{e}");
+}
+
+/// A retention-only snapshot folds no run; once nothing references the part it wrote, collect reclaims it from the
+/// husk's directory, though the walk stops above it under the pointer's index.
+// spec: store.collect.index-walk@8c44f948
+#[test]
+fn a_retention_only_husk_has_its_unreferenced_part_reclaimed() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = node("ingest-a", b.clone(), "");
+    a.syncer.config.retain_generations = NonZeroU64::new(1);
+    let d = TableDecl::parse_pipeline(
+        "[[pipeline.tables]]\nname = \"filings\"\nretain_runs = \"1d\"\nretain_rows = { column = \"_ingested_at\", age = \"4d\" }\n",
+    )
+    .unwrap()
+    .remove(0);
+    let fold = |now: &str| contextful_context::fold::fold(&a.syncer.store, &d, at(now)).unwrap();
+    let cycle = |now: &str| {
+        a.syncer.push(at(now)).unwrap();
+        a.syncer.collect_declared(at(now), false, std::slice::from_ref(&d)).unwrap();
+    };
+    // One part holds a day-0 row and a day-3 row.
+    a.land("run-a", json!([{"id": 1}]), &day(0, 0));
+    a.land("run-b", json!([{"id": 2}]), &day(3, 0));
+    fold(&day(3, 1));
+    cycle(&day(3, 2));
+    // Day 4 folds no run: retention rewrites the part, keeping the day-3 row, in the new snapshot's directory. That
+    // part outlives the day the snapshot is the parent the collect walk stops at.
+    let contextful_core::store::fold::FoldOutcome::Folded { snapshot_id: r, runs, .. } = fold(&day(4, 1)) else { panic!("no retention pass") };
+    assert_eq!(runs, 0);
+    let (chain, _) = a.syncer.store.chain("filings").unwrap();
+    let own: Vec<String> = chain[0].parts.iter().filter(|p| p.origin.is_none()).map(|p| format!("research/tables/filings/data/snapshots/{r}/{}", p.name)).collect();
+    assert!(!own.is_empty(), "the retention pass wrote a part of its own");
+    cycle(&day(4, 2));
+    for i in 5..14 {
+        a.land(&format!("run-{i}"), json!([{"id": 100 + i}]), &day(i, 0));
+        fold(&day(i, 1));
+        cycle(&day(i, 2));
+    }
+    let m = manifest(b.as_ref());
+    assert!(m.entries.contains_key(&format!("{PREFIX}{r}/_collected.json")), "the retention snapshot is a husk");
+    for part in &own {
+        assert!(!m.entries.contains_key(part), "`{part}` stays listed");
+    }
+}
+
+/// A fold on a lazy node, and the local retention it runs, leave the husks the pull skipped in the bucket.
+// spec: store.pull.husks-fetched@6ea68a8e
+#[test]
+fn a_fold_on_a_lazy_node_leaves_the_skipped_husks_in_the_bucket() {
+    let h = history(25);
+    // A store declaring `[sync]` keeps each snapshot manifest its local retention passes.
+    let mut n = node("reader-a", h.b.clone(), "[sync]\nendpoint = \"file://bucket\"\nbucket = \"context-team\"\n");
+    n.syncer.config.lazy_parts = Some(true);
+    n.syncer.pull(&PullScope::default()).unwrap();
+    let store = n.syncer.store.clone().with_part_source(n.syncer.part_source());
+    assert!(store.synced());
+    let record: SkippedRuns = serde_json::from_slice(&std::fs::read(n.root().join(SKIPPED_RUNS_FILE)).unwrap()).unwrap();
+    let husks: Vec<String> = record.manifests.into_iter().filter(|rel| rel.contains("/data/snapshots/")).collect();
+    assert!(!husks.is_empty());
+    n.land("run-local", json!([{"id": 9000}]), &day(30, 0));
+    let outcome = contextful_context::fold::fold(&store, &table(), at(&day(30, 1))).unwrap();
+    assert!(matches!(outcome, contextful_core::store::fold::FoldOutcome::Folded { collection: None, .. }), "{outcome:?}");
+    for rel in &husks {
+        assert!(!n.root().join(rel).exists(), "`{rel}` came home");
+    }
 }

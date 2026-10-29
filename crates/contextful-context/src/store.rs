@@ -952,11 +952,41 @@ impl Store {
     /// The snapshot `start` and its `parent` chain, newest first, read as [`Store::chain`]
     /// reads the pointer's.
     /// A collected snapshot's manifest a lazy pull skipped comes home through the part source
-    /// first; without a source the walk ends there as at a collected parent
-    /// (`store.pull.husks-fetched`).
+    /// first; without a source the walk refuses (`store.pull.husks-fetched`).
     pub fn chain_from(&self, table: &str, start: SnapshotId) -> Result<(Vec<SnapshotManifest>, bool)> {
+        self.chain_walk(table, start, true)
+    }
+
+    /// The pointer's chain as far as its manifests are on disk, fetching none a lazy pull
+    /// skipped: the flag says it ends at an absent parent. Local retention reads it, since a
+    /// skipped snapshot holds nothing on this disk (`store.pull.husks-fetched`).
+    pub fn chain_on_disk(&self, table: &str) -> Result<(Vec<SnapshotManifest>, bool)> {
+        let Some((ptr, _)) = self.pointer(table)? else { return Ok((Vec::new(), false)) };
+        self.chain_walk(table, ptr.snapshot_id, false)
+    }
+
+    /// The ids of `table`'s collected snapshots whose manifests a lazy pull skipped
+    /// (`store.pull.husks-skipped`).
+    pub(crate) fn skipped_snapshots(&self, table: &str) -> Result<BTreeSet<String>> {
+        let record = self.root.join(SKIPPED_RUNS_FILE);
+        let skipped: SkippedRuns = match fs::read(&record) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", record.display())))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+            Err(e) => return Err(ContextError::Io { path: record, source: e }),
+        };
+        let prefix = format!("tables/{table}/{}/", contextful_core::store::lay_out::SNAPSHOTS_DIR);
+        Ok(skipped
+            .manifests
+            .iter()
+            .filter_map(|rel| rel.strip_prefix(&prefix)?.strip_suffix(&format!("/{MANIFEST_FILE}")).map(str::to_string))
+            .filter(|id| !id.contains('/'))
+            .collect())
+    }
+
+    fn chain_walk(&self, table: &str, start: SnapshotId, fetch: bool) -> Result<(Vec<SnapshotManifest>, bool)> {
         let mut chain = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
+        let mut fetched = None;
         let mut next = Some(start);
         while let Some(id) = next {
             if !seen.insert(id.to_string()) {
@@ -966,8 +996,8 @@ impl Store {
                 .into());
             }
             let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
-            if self.part_source.is_some() {
-                self.fetch_skipped_snapshot(table, &path)?;
+            if fetch {
+                self.fetch_skipped_snapshot(table, &path, &mut fetched)?;
             }
             let bytes = match self.metadata().read_optional(&path)? {
                 Some(b) => b,
@@ -1018,21 +1048,22 @@ impl Store {
     }
 
     /// Bring the collected snapshot manifest at `path` home through the part source when a lazy
-    /// pull skipped it (`store.pull.husks-fetched`); a store without a source refuses
-    /// (`store.pull.folded-runs-unreachable`). A manifest the record does not name fetches nothing.
-    fn fetch_skipped_snapshot(&self, table: &str, path: &Path) -> Result<()> {
-        let Ok(rel) = path.strip_prefix(&self.root) else { return Ok(()) };
-        let rel = rel.to_string_lossy().replace('\\', "/");
+    /// pull skipped it, with every other the table's record names, in one fetch
+    /// (`store.pull.husks-fetched`); a store without a source refuses
+    /// (`store.pull.folded-runs-unreachable`). A manifest the record does not name fetches
+    /// nothing. `fetched` holds the walk's one read of the record.
+    fn fetch_skipped_snapshot(&self, table: &str, path: &Path, fetched: &mut Option<BTreeSet<String>>) -> Result<()> {
         if path.exists() {
             return Ok(());
         }
-        let record = self.root.join(SKIPPED_RUNS_FILE);
-        let skipped: SkippedRuns = match fs::read(&record) {
-            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", record.display())))?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(ContextError::Io { path: record, source: e }),
+        let Ok(rel) = path.strip_prefix(&self.root) else { return Ok(()) };
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        let first = fetched.is_none();
+        let skipped = match fetched {
+            Some(s) => s,
+            None => fetched.insert(self.skipped_snapshots(table)?.into_iter().map(|id| format!("tables/{table}/{}/{id}/{MANIFEST_FILE}", contextful_core::store::lay_out::SNAPSHOTS_DIR)).collect()),
         };
-        if !skipped.skips_snapshot(&rel) {
+        if !skipped.contains(&rel) {
             return Ok(());
         }
         let Some(source) = &self.part_source else {
@@ -1041,7 +1072,11 @@ impl Store {
             ))
             .into());
         };
-        let _hold = source.hold(std::slice::from_ref(&rel))?;
+        let absent: Vec<String> = match first {
+            true => skipped.iter().filter(|r| !self.root.join(r.as_str()).exists()).cloned().collect(),
+            false => vec![rel],
+        };
+        let _hold = source.hold(&absent)?;
         Ok(())
     }
 
@@ -1056,6 +1091,7 @@ impl Store {
         start: Option<SnapshotId>,
     ) -> Result<(Vec<SnapshotManifest>, bool, Option<contextful_core::store::resolve::FoldedSet>)> {
         let mut seen: std::collections::BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+        let mut fetched = None;
         let mut next = match (chain.last(), start) {
             (Some(last), _) => last.parent.clone(),
             (None, Some(start)) => Some(start),
@@ -1072,7 +1108,7 @@ impl Store {
             // A collected snapshot a lazy pull skipped answers nothing a valid index above it does
             // not; a walk without one fetches it (`store.pull.husks-fetched`).
             if index.is_none() {
-                self.fetch_skipped_snapshot(table, &path)?;
+                self.fetch_skipped_snapshot(table, &path, &mut fetched)?;
             }
             let bytes = match self.metadata().read_optional(&path)? {
                 Some(b) => b,

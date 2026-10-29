@@ -548,7 +548,9 @@ fn collect_unreachable(
 ) -> Result<Vec<String>> {
     let Some(current) = chain.first() else { return Ok(Vec::new()) };
     let mut removed = Vec::new();
-    let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+    // A collected snapshot whose manifest a lazy pull skipped stays on the chain the bucket holds.
+    let mut reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+    reachable.extend(store.skipped_snapshots(table)?);
     let snapshots = store.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR);
     for dir in crate::store::sorted_dirs(&snapshots)? {
         let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -646,7 +648,8 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<Stri
     let held = &crate::build::held(store, table, now)?;
     let window = decl.retain_runs_secs().map_err(|e| ContextError::Invalid(e.to_string()))?;
     let cutoff = now.minus_secs(window);
-    let (chain, _) = store.chain(table)?;
+    // A collected snapshot a lazy pull skipped holds nothing here, so retention leaves it in the bucket.
+    let (chain, _) = store.chain_on_disk(table)?;
     let expired = |pair: &[SnapshotManifest]| pair[0].created_at <= cutoff && !held.contains(&pair[1].snapshot_id.to_string());
     // What the snapshots left after this collection name in other directories stays, so a
     // part or segment outlives every snapshot that carries it (`store.fold.reference-retention`).

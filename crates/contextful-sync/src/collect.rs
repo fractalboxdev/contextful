@@ -560,10 +560,16 @@ impl Syncer {
                 folded_out.extend(s.includes_runs.iter().cloned());
                 folded_out.extend(rows.values().filter(|r| r.snapshot_id < s.snapshot_id && Some(&r.snapshot_id) != root).map(|r| r.run_key.clone()));
                 let prefix = format!("{table_key}/{SNAPSHOTS_DIR}/");
-                // The chain past the stop: its parent, and each snapshot an index row names as folding.
-                let chain: BTreeSet<String> = rows.values().map(|r| r.snapshot_id.to_string()).chain(at.clone()).collect();
-                let walked: BTreeSet<String> = snapshots.iter().chain(std::iter::once(&s)).map(|w| w.snapshot_id.to_string()).collect();
-                husks = chain.iter().filter(|id| !walked.contains(*id) && husk(id)).map(|id| format!("{prefix}{id}/")).collect();
+                // Every collected snapshot older than the stop, folding runs or not, from one scan of the listing.
+                let older = |dir: &str| SnapshotId::try_from(dir[prefix.len()..dir.len() - 1].to_string()).is_ok_and(|id| id < s.snapshot_id);
+                husks = m.entries
+                    .range(prefix.clone()..)
+                    .map(|(k, _)| k)
+                    .take_while(|k| k.starts_with(&prefix))
+                    .filter_map(|k| k.strip_suffix(COLLECTED_FILE).filter(|dir| dir[prefix.len()..].matches('/').count() == 1))
+                    .filter(|dir| older(dir))
+                    .map(str::to_string)
+                    .collect();
                 snapshots.push(s);
                 break;
             }

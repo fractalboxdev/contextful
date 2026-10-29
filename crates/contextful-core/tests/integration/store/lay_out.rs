@@ -236,7 +236,7 @@ fn the_skipped_runs_record_is_node_local_and_scoped_by_table() {
 
 /// The record lists a collected snapshot manifest a lazy pull skipped beside the run manifests, and a table's run
 /// view leaves it out.
-// spec: store.pull.husks-skipped@8df41067
+// spec: store.pull.husks-skipped@8c4f0de2
 #[test]
 fn the_skipped_runs_record_names_skipped_husks_apart_from_runs() {
     use contextful_core::store::lay_out::SkippedRuns;

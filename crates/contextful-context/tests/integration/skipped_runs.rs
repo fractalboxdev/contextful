@@ -134,7 +134,7 @@ fn an_as_of_read_fetches_the_folded_runs_it_resolves_and_an_unbounded_read_none(
 
 /// Without a part source, a store holding skipped manifests refuses to list its runs or
 /// resolve an earlier `as_of`, and still answers an unbounded read.
-// spec: store.pull.folded-runs-unreachable@c445f763
+// spec: store.pull.folded-runs-unreachable@d8f1e9ef
 #[test]
 fn without_a_part_source_skipped_runs_refuse_rather_than_drop_rows() {
     let (f, d) = folded_store();

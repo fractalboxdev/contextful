@@ -5184,7 +5184,7 @@
       "operation": "pull",
       "subject": "husks-skipped",
       "kind": "behavior",
-      "statement": "Under {{store.pull.lazy-parts}}, pull skips each `_manifest.json` beside a listed `_collected.json` once the pointer's snapshot is home with a valid folded-runs index, listing it in `.skipped-runs.json`; another table's comes home.",
+      "statement": "Under {{store.pull.lazy-parts}}, pull skips each `_manifest.json` beside a listed `_collected.json` where the pointer's snapshot, once home, holds a valid folded-runs index and an ancestry reaching the local pointer, listing it in `.skipped-runs.json`.",
       "why": "A-store#index-walk",
       "file": "spec/10-store.md",
       "line": 688,
@@ -5196,7 +5196,7 @@
       "operation": "pull",
       "subject": "husks-fetched",
       "kind": "behavior",
-      "statement": "A full chain walk, or one meeting no valid index, fetches each skipped collected snapshot manifest it reaches through the part source; a walk past a valid index ends there, as at a collected parent.",
+      "statement": "A full chain walk, or one meeting no valid index, fetches the table's skipped collected snapshot manifests through the part source at the first it reaches; local retention and a walk past a valid index end there.",
       "why": "A-store#index-walk",
       "file": "spec/10-store.md",
       "line": 690,
@@ -5208,7 +5208,7 @@
       "operation": "pull",
       "subject": "skipped-record",
       "kind": "behavior",
-      "statement": "Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.",
+      "statement": "Each pull clearing its refusals rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
       "line": 692,
@@ -5244,7 +5244,7 @@
       "operation": "pull",
       "subject": "folded-runs-unreachable",
       "kind": "refusal",
-      "statement": "A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.",
+      "statement": "A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} or {{store.pull.husks-fetched}} fetches, naming the table and a manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
       "line": 698,
@@ -6271,7 +6271,7 @@
       "operation": "collect",
       "subject": "index-walk",
       "kind": "behavior",
-      "statement": "Under the pointer's valid bucket index, collect stops its walk at a child within the cutoff, by clock and id, whose parent is collected, and takes older folded runs from the index; a hold record walks whole.",
+      "statement": "Under the pointer's valid bucket index, collect's walk stops at a child within the cutoff, by clock and id, whose parent is collected; older folded runs come from the index, older collected snapshots from the listing.",
       "why": "A-store#index-walk",
       "file": "spec/16-collect.md",
       "line": 28
@@ -35404,6 +35404,10 @@
     [
       "store.pull.folded-runs-unreachable",
       "store.pull.folded-runs-fetched"
+    ],
+    [
+      "store.pull.folded-runs-unreachable",
+      "store.pull.husks-fetched"
     ],
     [
       "store.pull.part-accounting",
@@ -67620,6 +67624,13 @@
         "name": "a_collect_reads_the_index_instead_of_every_husk",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_retention_only_husk_has_its_unreferenced_part_reclaimed",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.collect.lease-renewed": [
@@ -70114,6 +70125,20 @@
         "name": "a_walk_without_a_valid_index_fetches_the_skipped_husks",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_full_walk_without_a_part_source_refuses_rather_than_answering_short",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_fold_on_a_lazy_node_leaves_the_skipped_husks_in_the_bucket",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.pull.husks-skipped": [
@@ -70135,6 +70160,13 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/husks.rs",
         "name": "a_cold_pull_grows_with_retained_snapshots",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_warm_lazy_pull_after_a_gap_adopts_the_head",
         "verdict": "performed",
         "proved": false
       }

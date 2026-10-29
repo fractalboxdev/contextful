@@ -1639,9 +1639,17 @@ impl Syncer {
             let fetched = each(width, &rest, &fetch).and_then(|mut first| {
                 // A table whose pointer's snapshot reads a valid index leaves its husks behind; any
                 // other table's come home.
+                // A local pointer the head's recorded ancestry does not reach through the manifests
+                // now home needs the husks: its adoption walks them (`store.pull.pointer-adopt`).
                 let covered: BTreeSet<String> = heads
                     .iter()
                     .filter(|(table, id)| SnapshotId::try_from((*id).clone()).ok().is_some_and(|id| self.store.folded_index_valid(table, &id).unwrap_or(false)))
+                    .filter(|(table, id)| {
+                        let Ok(Some((local, _))) = self.store.pointer(table) else { return true };
+                        let local = local.snapshot_id.to_string();
+                        let Ok(table_dir) = self.store.table_dir(table) else { return false };
+                        local == **id || matches!(ancestry(&self.store, &table_dir, id, &local), Ancestry::Descends)
+                    })
                     .map(|(table, _)| table.clone())
                     .collect();
                 let leaves = |k: &str| husk_of(k).is_some_and(|t| covered.contains(&t)) && self.local_path(k).is_some_and(|p| !p.exists());
@@ -1692,7 +1700,6 @@ impl Syncer {
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
         }
-        self.record_skipped(&manifest, &skipped, &reaches, generation.is_some())?;
         let staged_head = self.store.root().join("control/head.json");
         if let Some(head) = manifest.control_heads.get(&self.project) {
             let bytes = serde_json::to_vec_pretty(head).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
@@ -1833,6 +1840,8 @@ impl Syncer {
                 }
             }
         }
+        // The record follows every refusal, so a refused pull leaves the one before it standing.
+        self.record_skipped(&manifest, &skipped, &reaches, generation.is_some())?;
         for (rel_key, path, pointer) in advancing {
             let bytes = serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             write(&path, &self.store.seal_metadata_bytes(&path, &bytes)?)?;
