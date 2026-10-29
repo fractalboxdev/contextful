@@ -272,6 +272,32 @@ fn a_probe_binary_records_a_gate_figure() {
     assert!(stderr(&o).contains("demo-doubles = 4"), "{}", stderr(&o));
 }
 
+/// A bench method runs its package's bench target under `cargo bench` and reads its record; a
+/// target the package does not declare refuses before any measure runs.
+#[test]
+fn a_bench_target_records_a_figure() {
+    let r = repo(&entry("demo-doubles", "run.journal.entry-key", "{ bench = \"demo::doubling\" }", "target = { op = \"==\", value = 4 }"));
+    r.write("crates/demo/Cargo.toml", &format!("{}\n[[bench]]\nname = \"doubling\"\npath = \"benches/doubling.rs\"\nharness = false\n", crate::manifest("demo", "")));
+    r.write(
+        "crates/demo/benches/doubling.rs",
+        r##"fn main() {
+    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").unwrap());
+    std::fs::write(dir.join("demo-doubles.json"),
+        r#"{"id":"demo-doubles","value":4,"n":1,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#).unwrap();
+}
+"##,
+    );
+    r.lock();
+    let o = measure(&r, &[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("demo-doubles = 4"), "{}", stderr(&o));
+
+    r.write("evals/ledger.toml", &entry("demo-doubles", "run.journal.entry-key", "{ bench = \"demo::halving\" }", "target = { op = \"==\", value = 4 }"));
+    let o = measure(&r, &[]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("`demo` declares no bench target `halving`"), "{}", stderr(&o));
+}
+
 // spec: assurance.measure.trend-baseline@e59a4889
 #[test]
 fn a_trend_report_uses_the_latest_successful_matching_history_without_failing_the_run() {
