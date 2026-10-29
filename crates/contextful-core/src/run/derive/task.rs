@@ -10,6 +10,7 @@ use crate::run::RunError;
 use crate::run::journal::sha256_hex;
 use crate::run::ports::Row;
 use crate::store::declare::TableDecl;
+use crate::time::Instant;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -164,9 +165,21 @@ pub struct HostSelection {
     pub counts: super::emit::Counts,
 }
 
-/// The outstanding host units of one tick: every parent row holding no settled marker under
-/// its current key in the marker table, truncated to the run's row budget after the anti-join
-/// (`run.select.anti-join`).
+/// The landing column a host task's `since` compares (`run.select.since`).
+pub const INGESTED_AT: &str = "_ingested_at";
+
+/// Whether `row` landed at or after `since`; a row with no readable `_ingested_at` did not
+/// (`run.select.since`).
+pub fn ingested_since(row: &Row, since: Instant) -> bool {
+    row.get(INGESTED_AT)
+        .and_then(Value::as_str)
+        .and_then(|s| Instant::parse(s).ok())
+        .is_some_and(|at| at >= since)
+}
+
+/// The outstanding host units of one tick: every parent row the task's `sample_rate` keeps
+/// and holding no settled marker under its current key in the marker table, truncated to the
+/// run's row budget after the anti-join (`run.select.sample`, `run.select.anti-join`).
 pub fn select_host(
     parents: &[Row],
     markers: &[Row],
@@ -186,6 +199,12 @@ pub fn select_host(
             continue;
         };
         if !seen.insert(key.clone()) {
+            continue;
+        }
+        if config
+            .sample_rate
+            .is_some_and(|rate| !rate.keeps(&key, config.task.name()))
+        {
             continue;
         }
         sel.counts.eligible += 1;

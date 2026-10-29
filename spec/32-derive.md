@@ -56,6 +56,10 @@ The derive source selects eligible parent rows each tick and limits each run's w
 - `foreign-output-table` — The anti-join's pipeline id comes from the build alone; a config key naming another pipeline's output raises `DeriveForeignOutputTable`.
   *A-run#derivation-key-decides*
 - `rows-per-run` — `max_rows_per_run` truncates the outstanding list after the anti-join, at 25 rows by default; zero or below resolves to that default.
+- `sample` — `sample_rate` r keeps a host unit before the anti-join when the first eight bytes of SHA-256 over its key then task name, read big-endian and divided by 2^64, fall below r; r outside `(0, 1]` refuses as {{run.declare.spec-invalid}}.
+  *because a hash of the unit and the task decides membership without stored state, so every pass and every resumed pass selects one set*
+- `since` — `since`, an RFC 3339 instant, keeps a host task's parent rows whose `_ingested_at` falls at or after it, before the anti-join; a row without a readable `_ingested_at` is dropped, and another `since` refuses as {{run.declare.spec-invalid}}.
+  *because a bound on landing time limits a pass to recent parents, and an unstamped row has no landing time to compare*
 - `attempts-per-unit` — `max_attempts` defaults to 3 attempts per unit. A non-positive value selects that default.
 - `seconds-per-run` — `max_seconds_per_run` bounds the serial unit loop at 300 s by default for `link_preview` and carries no default for `transcribe`.
 - `incomplete-unit` — If a parent row's key or media column is null, empty or whitespace, the derive source raises `DeriveUnitIncomplete`. The derive source skips the row and counts the row on the run record.
