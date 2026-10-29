@@ -31383,10 +31383,13 @@
       "operation": "consumer",
       "subject": "scenarios",
       "kind": "behavior",
-      "statement": "The suite exercises pagination and checkpoints, applied scheduling and dependencies, graceful restart, hard-crash replay, empty and replacement captures, public identifiers, credential masking, typed export acknowledgement and receiver visibility.",
+      "statement": "The suite exercises pagination and checkpoints, applied scheduling and dependencies, graceful restart, hard-crash replay, empty and replacement captures, public identifiers, credential masking, typed export acknowledgement, receiver visibility and a delegated item fenced by a newer owner.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 23
+      "line": 23,
+      "scenarios": [
+        "WHEN a newer job version takes an entity's lease while a delegated call is in flight, THEN the earlier item lands nothing, and its job's next fire lands the recorded answer without a second request."
+      ]
     },
     {
       "id": "assurance.consumer.mutation-controls",
@@ -31502,7 +31505,10 @@
       "statement": "A `cloudflare-d1` verdict runs the supplied `contextful-full` artifact against D1 and R2 bindings, replaces its local disk, and records every required outcome independently of the local and PostgreSQL profiles.",
       "why": "A-assurance#consumer-compatibility-binds",
       "file": "spec/82-consumer.md",
-      "line": 39
+      "line": 39,
+      "scenarios": [
+        "WHEN a newer job version fires while a delegated call holds its D1 guard, THEN that fire refuses, and its next fire after the callback returns lands."
+      ]
     },
     {
       "id": "assurance.consumer.d1-admission",

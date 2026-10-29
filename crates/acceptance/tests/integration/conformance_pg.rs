@@ -27,7 +27,8 @@ fn the_postgres_profile_executes_every_required_scenario_on_remote_state() {
         serde_json::to_string_pretty(&report).unwrap()
     );
     assert_eq!(report.storage_profile, "postgres");
-    assert_eq!(report.scenarios.len(), 7);
+    assert_eq!(report.scenarios.len(), 9);
+    assert!(report.scenarios.iter().any(|scenario| scenario.id == "delegated-item-fence" && scenario.outcome == conformance::Outcome::Passed));
 }
 
 // spec: assurance.consumer.storage-profile@dc4e2706

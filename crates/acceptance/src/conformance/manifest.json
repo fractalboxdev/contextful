@@ -1,5 +1,5 @@
 {
-  "suite_revision": "consumer-v2",
+  "suite_revision": "consumer-v3",
   "scenarios": [
     {"id":"pagination-checkpoint","requirement":"run,query"},
     {"id":"hard-crash-replay","requirement":"run,query,exec"},
@@ -8,6 +8,7 @@
     {"id":"applied-scheduling","requirement":"pipeline,build,query,token"},
     {"id":"public-identity-masking","requirement":"pipeline,query"},
     {"id":"typed-export-acknowledgement","requirement":"export,query,token"},
-    {"id":"coordinated-group-publication","requirement":"build,export,token"}
+    {"id":"coordinated-group-publication","requirement":"build,export,token"},
+    {"id":"delegated-item-fence","requirement":"job,token"}
   ]
 }

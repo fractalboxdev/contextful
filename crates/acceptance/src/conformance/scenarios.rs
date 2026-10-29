@@ -1,11 +1,12 @@
 //! Synthetic source and receiver fixtures exercise native contracts through the CLI.
 
 use super::{failed, Fixture, Result, Running};
-use crate::http::{Response, Server};
+use crate::delegate::{request_signed, signed_answer};
+use crate::http::{Request, Response, Server};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 const PROJECT: &str = "research";
@@ -21,6 +22,7 @@ pub(super) fn run(id: &str, fixture: &Fixture) -> Result<()> {
         "public-identity-masking" => masking(fixture),
         "typed-export-acknowledgement" => export(fixture),
         "coordinated-group-publication" => group(fixture),
+        "delegated-item-fence" => fenced(fixture),
         _ => Err("ConformanceScenarioUnknown".into()),
     }
 }
@@ -31,6 +33,13 @@ fn require(condition: bool, diagnostic: &str) -> Result<()> {
     } else {
         Err(diagnostic.into())
     }
+}
+
+/// Whether the fixture's state lives behind the `cloudflare-d1` profile's bindings.
+fn on_d1(f: &Fixture) -> bool {
+    f.remote.as_ref().is_some_and(|remote| {
+        remote.environment.iter().any(|(key, value)| key == "CONTEXTFUL_STORAGE_PROFILE" && value == "cloudflare-d1")
+    })
 }
 
 fn rows(value: &Value) -> Result<&Vec<Value>> {
@@ -163,7 +172,7 @@ fn paged(f: &Fixture, crash: bool) -> Result<()> {
             "ConformanceCrashRecordMissing",
         )?;
         f.replace_local_state()?;
-        if f.remote.as_ref().is_some_and(|remote| remote.environment.iter().any(|(key, value)| key == "CONTEXTFUL_STORAGE_PROFILE" && value == "cloudflare-d1")) {
+        if on_d1(f) {
             let attempts = std::fs::read_to_string(f.dir.path().join("effects.log"))
                 .map_err(|_| "ConformanceEffectsMissing")?;
             let key = attempts.lines().find_map(|line| line.strip_prefix("page=\"p2\" key="))
@@ -715,4 +724,189 @@ fn group(f: &Fixture) -> Result<()> {
         events.iter().filter(|e| e["kind"] == "upsert").count() == 1,
         "ConformanceGroupChangesMissing",
     )
+}
+
+const WORKER_KEY: &str = "conformance-worker-key";
+
+/// One request a delegate received: its path, whether its signature verified, and its envelope.
+type Received = (String, bool, Value);
+
+/// A loopback delegate behind two bindings: `/screen` holds each request open until the
+/// scenario releases it, `/screen-next` answers at once. It logs each request on arrival,
+/// before answering, and signs every answer over its request's idempotency key.
+struct Delegate {
+    server: Server,
+    log: Arc<Mutex<Vec<Received>>>,
+    gate: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl Delegate {
+    fn start(hold: Duration) -> Self {
+        let log: Arc<Mutex<Vec<Received>>> = Arc::default();
+        let gate: Arc<(Mutex<bool>, Condvar)> = Arc::default();
+        let (seen, held) = (log.clone(), gate.clone());
+        let server = Server::start(move |request: &Request| {
+            let signed = request_signed(WORKER_KEY.as_bytes(), request);
+            let envelope = serde_json::from_slice::<Value>(&request.body).unwrap_or(Value::Null);
+            seen.lock().unwrap().push((request.path().into(), signed, envelope.clone()));
+            if !signed {
+                return Response::json(401, "{}");
+            }
+            if request.path() == "/screen" {
+                let (open, wake) = &*held;
+                let released = open.lock().unwrap();
+                drop(wake.wait_timeout_while(released, hold, |open| !*open).unwrap());
+            }
+            let row = &envelope["row"];
+            let body = json!({
+                "outcome": "ok",
+                "rows": { "screen_result": [{ "entity_id": row["entity_id"], "pass_id": row["pass_id"], "job": envelope["job"] }] }
+            });
+            signed_answer(WORKER_KEY.as_bytes(), envelope["idempotency_key"].as_str().unwrap_or_default(), &body.to_string())
+        });
+        Self { server, log, gate }
+    }
+
+    fn release(&self) {
+        let (open, wake) = &*self.gate;
+        *open.lock().unwrap() = true;
+        wake.notify_all();
+    }
+
+    fn requests(&self) -> Vec<Received> {
+        self.log.lock().unwrap().clone()
+    }
+}
+
+impl Drop for Delegate {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+/// Two store-driven jobs isolate one entity namespace; the second binds a newer delegate
+/// version. Each item is one call on its job's binding.
+fn delegated(screen: &str, next: &str, timeout: u64) -> String {
+    let job = |name: &str, delegate: &str| format!("[[job]]\nname = \"{name}\"\nkind = \"store-driven\"\nbody = {{ delegate = \"{delegate}\" }}\nstatement = \"SELECT entity_id, pass_id FROM due_items ORDER BY pass_id\"\nas_of = \"2030-01-01T00:00:10Z\"\nmax_in_flight = 1\ntables = [\"screen_result\"]\nisolated_items = {{ logical_key = \"pass_id\", entity_key = \"entity_id\", entity_namespace = \"entity\", max_attempts = 3 }}\n");
+    format!("authoring_posture = \"per_request\"\n[control.delegates.screen]\nurl = \"{screen}\"\nmode = \"call\"\ntimeout = \"{timeout}s\"\nversion = \"screen-v1\"\n[control.delegates.screen-next]\nurl = \"{next}\"\nmode = \"call\"\ntimeout = \"{timeout}s\"\nversion = \"screen-v2\"\n{}{}", job("screen", "screen"), job("rescreen", "screen-next"))
+}
+
+/// The guards `contextful storage guard` lists under the `cloudflare-d1` profile.
+fn guards(f: &Fixture) -> Result<Vec<Value>> {
+    let state: Value = serde_json::from_str(&f.ok(&["storage", "guard", "--project", PROJECT], &[])?)
+        .map_err(|_| "ConformanceGuardReportMalformed")?;
+    state["guards"].as_array().cloned().ok_or_else(|| "ConformanceGuardReportMalformed".into())
+}
+
+/// Wait for `running` to exit before `deadline`.
+fn exited(running: &mut Running, deadline: Instant) -> Result<std::process::ExitStatus> {
+    loop {
+        if let Some(status) = running.child.try_wait().map_err(|_| "ConformanceProcessUnavailable")? {
+            return Ok(status);
+        }
+        require(Instant::now() < deadline, "ConformanceProcessTimeout:job")?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// A newer job version fires while an earlier item's delegate call is in flight. On local
+/// state it takes the entity lease and the superseded item lands nothing; a remote profile's
+/// execution guard holds the takeover until the callback returns. Either way the delegate
+/// receives one request per execution across every fire, and each item lands once.
+fn fenced(f: &Fixture) -> Result<()> {
+    let delegate = Delegate::start(f.timeout);
+    f.write("contextful.toml", &delegated(&delegate.server.url("/screen"), &delegate.server.url("/screen-next"), f.timeout.as_secs()))?;
+    f.write("due.jsonl", "{\"entity_id\":\"e-1\",\"pass_id\":\"p-1\"}\n")?;
+    f.ok(&["context", "land", "due_items", "--project", PROJECT, "--rows", "due.jsonl", "--run-id", "due", "--site-id", "conformance", "--now", "2030-01-01T00:00:00Z"], &[])?;
+    let public = f.ok(&["token", "keygen", "--out", ".contextful/issuer.seed"], &[])?;
+    let token = f.ok(&["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://conformance", "--zone", "on-prem:hq", "--table", "due_items", "--ttl", "3600"], &[])?;
+    let env = [("CONTEXTFUL_TOKEN", token.as_str()), ("CONTEXTFUL_WORKER_KEY", WORKER_KEY)];
+    let args = |job: &'static str, run: &'static str, now: &'static str| {
+        ["job", "fire", job, "--project", PROJECT, "--run-id", run, "--site-id", "conformance", "--now", now, "--public-key", public.as_str(), "--audience", AUDIENCE]
+    };
+
+    // The first fire admits the item under the entity's lease and holds its call open.
+    let mut first = Running::spawn(f.command(&args("screen", "fence-1", "2030-01-01T00:01:00Z"), &env))?;
+    let deadline = Instant::now() + f.timeout;
+    while delegate.requests().is_empty() {
+        require(first.child.try_wait().map_err(|_| "ConformanceProcessUnavailable")?.is_none(), "ConformanceDelegateNotCalled")?;
+        require(Instant::now() < deadline, "ConformanceDelegateNotCalled")?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let held = delegate.requests()[0].2["idempotency_key"].clone();
+
+    // A newer job version fires past the lease's time-to-live.
+    let mut second = Running::spawn(f.command(&args("rescreen", "fence-2", "2030-01-01T00:02:00Z"), &env))?;
+    let guarded = f.remote.is_some();
+    let refused = if guarded {
+        // The in-flight call's guard holds the entity lease: PostgreSQL waits on its row
+        // lock, D1 refuses the transfer and lists the guard under the held request's key.
+        let settle = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < settle && second.child.try_wait().map_err(|_| "ConformanceProcessUnavailable")?.is_none() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let early = second.child.try_wait().map_err(|_| "ConformanceProcessUnavailable")?;
+        require(!early.is_some_and(|status| status.success()), "ConformanceGuardTransferAdmitted")?;
+        if on_d1(f) {
+            require(guards(f)?.iter().any(|guard| guard["idempotency_key"] == held), "ConformanceGuardMissing")?;
+        }
+        early.is_some()
+    } else {
+        // Without a guard the newer owner takes the lease and lands while the call is held.
+        let status = exited(&mut second, Instant::now() + f.timeout)?;
+        if !status.success() {
+            return Err(failed("ConformanceNewerOwnerRefused", &["job"], &second.stderr()?));
+        }
+        require(
+            f.query("SELECT job FROM screen_result ORDER BY job")?["rows"] == json!([["rescreen"]]),
+            "ConformanceNewerOwnerLost",
+        )?;
+        false
+    };
+
+    // The held call answers.
+    delegate.release();
+    let landed = exited(&mut first, Instant::now() + f.timeout)?.success();
+    require(guarded || !landed, "ConformanceSupersededItemLanded")?;
+    if guarded {
+        if on_d1(f) {
+            // The returned callback deleted its own guard, so the newer owner proceeds.
+            require(guards(f)?.is_empty(), "ConformanceGuardRetained")?;
+        }
+        if refused {
+            f.ok(&args("rescreen", "fence-2-retry", "2030-01-01T00:03:00Z"), &env)?;
+        } else if !exited(&mut second, Instant::now() + f.timeout)?.success() {
+            return Err(failed("ConformanceNewerOwnerRefused", &["job"], &second.stderr()?));
+        }
+    }
+
+    // A later fire of the first job sends nothing: a superseded item replays its recorded
+    // answer under a fresh lease, and a landed one holds its receipt.
+    f.ok(&args("screen", "fence-3", "2030-01-01T00:04:00Z"), &env)?;
+    let requests = delegate.requests();
+    require(requests.len() == 2, "ConformanceDelegateRequestRepeated")?;
+    require(requests.iter().all(|(_, signed, _)| *signed), "ConformanceDelegateRequestUnsigned")?;
+    let (screen, next) = (&requests[0].2, &requests[1].2);
+    require(requests[0].0 == "/screen" && requests[1].0 == "/screen-next", "ConformanceDelegateBindingMismatch")?;
+    require(screen["execution_id"] != next["execution_id"] && screen["idempotency_key"] != next["idempotency_key"], "ConformanceExecutionIdentityShared")?;
+    require(
+        screen["entity"]["fence"].as_u64().zip(next["entity"]["fence"].as_u64()).is_some_and(|(old, new)| new > old),
+        "ConformanceEntityFenceNotAdvanced",
+    )?;
+    require(
+        f.query("SELECT job FROM screen_result ORDER BY job")?["rows"] == json!([["rescreen"], ["screen"]]),
+        "ConformanceRecordedAnswerLost",
+    )?;
+    let items = f.query("SELECT job, outcome, run_id FROM _items ORDER BY job")?;
+    let items = rows(&items)?;
+    require(items.len() == 2 && items.iter().all(|item| item[1] == "succeeded"), "ConformanceItemOutcomeMissing")?;
+    // The first item lands under its own attempt only when that attempt succeeded.
+    require(
+        items[1][0] == "screen" && items[1][2].as_str().is_some_and(|run| run.starts_with(if landed { "fence-1:" } else { "fence-3:" })),
+        "ConformanceSupersededItemLanded",
+    )?;
+    if on_d1(f) {
+        require(guards(f)?.is_empty(), "ConformanceGuardRetained")?;
+    }
+    Ok(())
 }

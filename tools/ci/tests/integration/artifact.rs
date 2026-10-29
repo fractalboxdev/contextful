@@ -149,7 +149,7 @@ fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evid
     let binary = extract("contextful");
     let digest = format!("{:x}", Sha256::digest(&binary.stdout));
     assert_eq!(report["artifact_digest"], digest);
-    assert_eq!(report["suite_revision"], "consumer-v2");
+    assert_eq!(report["suite_revision"], "consumer-v3");
     let source = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(repo_root()).output().unwrap();
     assert!(source.status.success());
     assert_eq!(report["source_commit"], String::from_utf8_lossy(&source.stdout).trim());
@@ -190,7 +190,7 @@ fn a_failed_native_suite_retains_cases_and_cannot_publish_a_passing_report() {
     };
     let digest = format!("{:x}", Sha256::digest(b"synthetic release artifact\n"));
     let claimed = serde_json::json!({
-        "schema_version":1, "suite_revision":"consumer-v2", "artifact_digest":digest,
+        "schema_version":1, "suite_revision":"consumer-v3", "artifact_digest":digest,
         "scenarios":[{"id":"pagination-checkpoint", "required":true, "outcome":"passed", "diagnostic":null}],
     });
     let suite = bin.path().join("suite");
