@@ -622,9 +622,9 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because only a key the store held and lost is its own deletion; one it never held carries rows nothing local replaces*
 - `pointer-read` — Pull and push read the pointer of each table the bucket manifest lists by its key, `tables/<t>/_pointer.json`, and list no table objects, so the read grows with the tables and not with their objects.
   *because a bucket gathers parts with every landing, and a pointer read listing them grows with the store's history*
-- `pointer-advance` — Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
+- `pointer-advance` — Pull advances a local pointer whose snapshot the bucket pointer's chain names, keeping one on the same snapshot at a higher fence, and replaces any other only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
   *A-store#replica-read-whole*
-- `pointer-adopt` — Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot, whatever its fence, and warns, once {{store.pull.local-fold-unrecoverable}} admits its branch, so the branch's runs fold again against the bucket's head.
+- `pointer-adopt` — Pull replaces a local pointer the bucket pointer's chain does not name, whatever its fence, save one ahead whose ancestry names the bucket pointer's snapshot, and warns once {{store.pull.local-fold-unrecoverable}} admits its branch.
   *because a fold outside a lease writes no fence, and a local snapshot off the bucket's chain misses every run the bucket's head folded*
 - `local-fold-unrecoverable` — A branch back to the bucket's chain or a root that folds a run neither on disk, listed in the bucket nor folded on that chain, or meets an absent manifest, raises `SyncLocalFoldUnrecoverable` naming the runs, and the pointer stays.
   *because those rows otherwise live only in the replaced snapshot's parts, which collection deletes once no pointer names them*
