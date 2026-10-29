@@ -233,3 +233,17 @@ fn the_skipped_runs_record_is_node_local_and_scoped_by_table() {
     let round: SkippedRuns = serde_json::from_slice(&serde_json::to_vec(&skipped).unwrap()).unwrap();
     assert_eq!(round, skipped);
 }
+
+/// The record lists a collected snapshot manifest a lazy pull skipped beside the run manifests, and a table's run
+/// view leaves it out.
+// spec: store.pull.husks-skipped@8df41067
+#[test]
+fn the_skipped_runs_record_names_skipped_husks_apart_from_runs() {
+    use contextful_core::store::lay_out::SkippedRuns;
+    let husk = "tables/filings/data/snapshots/snapshot-00000000000000000001/_manifest.json";
+    let skipped = SkippedRuns { manifests: vec![husk.into(), "tables/filings/data/runs/run-1/ingest-a/_manifest.json".into()] };
+    assert!(skipped.skips_snapshot(husk));
+    assert!(!skipped.skips_snapshot("tables/filings/data/runs/run-1/ingest-a/_manifest.json"));
+    assert!(!skipped.skips_snapshot("tables/filings/data/snapshots/snapshot-00000000000000000002/_manifest.json"));
+    assert_eq!(skipped.of_table("filings").count(), 1);
+}

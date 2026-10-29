@@ -738,7 +738,7 @@ impl Store {
         // whose run a kept snapshot folds, and the resolution refuses a bound that needs it
         // (`store.pull.folded-run-collected`, `store.bound-time.as-of-unretained`).
         let folded: BTreeSet<String> = match leave {
-            Leave::Folded => self.chain(table)?.0.into_iter().flat_map(|s| s.includes_runs).collect(),
+            Leave::Folded => self.folded_runs(table, |_| true)?.into_iter().map(|(k, _)| k).collect(),
             _ => BTreeSet::new(),
         };
         let leaves = |rel: &str| match leave {
@@ -812,9 +812,11 @@ impl Store {
         for node_dir in sorted_dirs(&run_dir)? {
             let Some(m) = self.committed_at(table, &run_dir, &node_dir, &mut logs, &mut held)? else { continue };
             let mut total = rows.unwrap_or(0);
-            for part in &m.parts {
-                let path = self.logical_path(&format!("tables/{table}/{}/{}/{}/{}", contextful_core::store::lay_out::RUNS_DIR, m.run_id, m.node_id, part.name))?;
-                total = total.saturating_add(self.parquet_row_count(&path)?);
+            // A lazy store brings the parts home before reading their footers.
+            let rels: Vec<String> = m.parts.iter().map(|part| format!("tables/{table}/{}/{}/{}/{}", contextful_core::store::lay_out::RUNS_DIR, m.run_id, m.node_id, part.name)).collect();
+            let _hold = self.hold_parts(&rels)?;
+            for rel in &rels {
+                total = total.saturating_add(self.parquet_row_count(&self.logical_path(rel)?)?);
             }
             rows = Some(total);
         }
@@ -933,8 +935,25 @@ impl Store {
         self.chain_from(table, ptr.snapshot_id)
     }
 
+    /// The snapshot the pointer names, reading none of its ancestors.
+    pub fn current_snapshot(&self, table: &str) -> Result<Option<SnapshotManifest>> {
+        let Some((ptr, _)) = self.pointer(table)? else { return Ok(None) };
+        let path = self.snapshot_dir(table, &ptr.snapshot_id)?.join(MANIFEST_FILE);
+        let Some(bytes) = self.metadata().read_optional(&path)? else {
+            return Err(ContextError::Invalid(format!("{}: missing snapshot manifest", path.display())));
+        };
+        if let Some(v) = FormatVersion::declared(&bytes) {
+            v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+        }
+        let m = serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display())))?;
+        Ok(Some(m))
+    }
+
     /// The snapshot `start` and its `parent` chain, newest first, read as [`Store::chain`]
     /// reads the pointer's.
+    /// A collected snapshot's manifest a lazy pull skipped comes home through the part source
+    /// first; without a source the walk ends there as at a collected parent
+    /// (`store.pull.husks-fetched`).
     pub fn chain_from(&self, table: &str, start: SnapshotId) -> Result<(Vec<SnapshotManifest>, bool)> {
         let mut chain = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
@@ -947,6 +966,9 @@ impl Store {
                 .into());
             }
             let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
+            if self.part_source.is_some() {
+                self.fetch_skipped_snapshot(table, &path)?;
+            }
             let bytes = match self.metadata().read_optional(&path)? {
                 Some(b) => b,
                 None if !chain.is_empty() => return Ok((chain, true)),
@@ -970,7 +992,57 @@ impl Store {
     /// Without a valid index the walk reads the whole chain. The flag says the chain ends at a
     /// parent no longer on disk.
     fn chain_for(&self, table: &str, bound: Option<contextful_core::store::bound_time::Bound>) -> Result<(Vec<SnapshotManifest>, bool, Option<contextful_core::store::resolve::FoldedSet>)> {
-        self.walk_chain(table, Vec::new(), None, bound)
+        self.walk_chain(table, Vec::new(), None, bound, None)
+    }
+
+    /// Each run the chain from snapshot `start` folds, by [`RunManifest::key`]: the
+    /// `includes_runs` walked down to the first valid index, then the index's rows
+    /// (`store.lay-out.folded-index-walk`).
+    pub fn folded_keys_from(&self, table: &str, start: SnapshotId) -> Result<BTreeSet<String>> {
+        let (chain, _, index) = self.walk_chain(table, Vec::new(), None, None, Some(start))?;
+        let walked = index.as_ref().map_or(chain.len(), |ix| ix.at);
+        let mut out: BTreeSet<String> = chain[..walked].iter().flat_map(|s| s.includes_runs.iter().cloned()).collect();
+        if let Some(ix) = index {
+            out.extend(ix.rows.keys().cloned());
+        }
+        Ok(out)
+    }
+
+    /// Whether snapshot `id`'s manifest is on disk and carries a valid folded-runs index
+    /// (`store.lay-out.folded-index-valid`).
+    pub fn folded_index_valid(&self, table: &str, id: &SnapshotId) -> Result<bool> {
+        let path = self.snapshot_dir(table, id)?.join(MANIFEST_FILE);
+        let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(false) };
+        let Ok(m) = serde_json::from_slice::<SnapshotManifest>(&bytes) else { return Ok(false) };
+        Ok(self.folded_index(table, &m).is_some())
+    }
+
+    /// Bring the collected snapshot manifest at `path` home through the part source when a lazy
+    /// pull skipped it (`store.pull.husks-fetched`); a store without a source refuses
+    /// (`store.pull.folded-runs-unreachable`). A manifest the record does not name fetches nothing.
+    fn fetch_skipped_snapshot(&self, table: &str, path: &Path) -> Result<()> {
+        let Ok(rel) = path.strip_prefix(&self.root) else { return Ok(()) };
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        if path.exists() {
+            return Ok(());
+        }
+        let record = self.root.join(SKIPPED_RUNS_FILE);
+        let skipped: SkippedRuns = match fs::read(&record) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", record.display())))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(ContextError::Io { path: record, source: e }),
+        };
+        if !skipped.skips_snapshot(&rel) {
+            return Ok(());
+        }
+        let Some(source) = &self.part_source else {
+            return Err(StoreError::SyncFoldedRunsUnfetched(format!(
+                "table `{table}`: collected snapshot manifest `{rel}` stays in the bucket, and this store reads through no part source; open it where `[sync] lazy_parts` registers one"
+            ))
+            .into());
+        };
+        let _hold = source.hold(std::slice::from_ref(&rel))?;
+        Ok(())
     }
 
     /// [`Store::chain_for`] continued past `chain`'s last snapshot, or from the pointer when
@@ -981,11 +1053,13 @@ impl Store {
         mut chain: Vec<SnapshotManifest>,
         mut index: Option<contextful_core::store::resolve::FoldedSet>,
         bound: Option<contextful_core::store::bound_time::Bound>,
+        start: Option<SnapshotId>,
     ) -> Result<(Vec<SnapshotManifest>, bool, Option<contextful_core::store::resolve::FoldedSet>)> {
         let mut seen: std::collections::BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
-        let mut next = match chain.last() {
-            Some(last) => last.parent.clone(),
-            None => self.pointer(table)?.map(|(ptr, _)| ptr.snapshot_id),
+        let mut next = match (chain.last(), start) {
+            (Some(last), _) => last.parent.clone(),
+            (None, Some(start)) => Some(start),
+            (None, None) => self.pointer(table)?.map(|(ptr, _)| ptr.snapshot_id),
         };
         while let Some(id) = next {
             if !seen.insert(id.to_string()) {
@@ -995,6 +1069,11 @@ impl Store {
                 .into());
             }
             let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
+            // A collected snapshot a lazy pull skipped answers nothing a valid index above it does
+            // not; a walk without one fetches it (`store.pull.husks-fetched`).
+            if index.is_none() {
+                self.fetch_skipped_snapshot(table, &path)?;
+            }
             let bytes = match self.metadata().read_optional(&path)? {
                 Some(b) => b,
                 None if !chain.is_empty() => return Ok((chain, true, index)),
@@ -1083,7 +1162,7 @@ impl Store {
         self.fetch_skipped(table, None, Leave::Folded)?;
         // The unbounded walk stops at the head's valid index; the bound may need snapshots past it.
         if index.is_some() && !parent_collected && chain.last().is_some_and(|s| !b.admits(s.created_at)) {
-            (chain, parent_collected, index) = self.walk_chain(table, chain, index, as_of)?;
+            (chain, parent_collected, index) = self.walk_chain(table, chain, index, as_of, None)?;
         }
         let mut state = self.table_state(decl, chain, parent_collected, index)?;
         // Collected snapshots sit behind every retained one: from the first, the rest are.

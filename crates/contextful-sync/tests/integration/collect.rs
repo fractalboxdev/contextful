@@ -323,7 +323,7 @@ fn a_shared_prefix_keeps_what_a_kept_generation_lists() {
 }
 
 /// A syncer of `n`'s store over `bucket`.
-fn rebucketed(n: &Node, bucket: Arc<dyn ObjectStore>) -> contextful_sync::Syncer {
+pub(crate) fn rebucketed(n: &Node, bucket: Arc<dyn ObjectStore>) -> contextful_sync::Syncer {
     let s = &n.syncer;
     contextful_sync::Syncer {
         store: s.store.clone(),
@@ -1006,11 +1006,12 @@ fn a_collect_whose_lease_another_took_deletes_nothing() {
     assert!(parts.iter().all(|k| h.b.get(&format!("team/{k}")).unwrap().is_some()), "nothing was deleted");
 }
 
-/// A push holding a run a collect folded out reads its table's chain only back to the first snapshot created before
-/// that run committed.
+/// A push holding a run a collect folded out reads the pointer's snapshot, its folded-runs index and the snapshot
+/// folding the run, and no other snapshot manifest of the chain.
+// spec: store.merge.collected-index@98ee0bcb
 // spec: store.merge.collected-directory@d7221403
 #[test]
-fn a_push_walks_the_chain_only_back_to_its_oldest_candidate_run() {
+fn a_push_reads_the_index_instead_of_walking_the_chain() {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
     let mut a = node("ingest-a", b.clone(), "");
@@ -1037,8 +1038,8 @@ fn a_push_walks_the_chain_only_back_to_its_oldest_candidate_run() {
     pushing.push(at("2030-02-21T00:00:00Z")).unwrap();
     let fetched = watched.script.gets.lock().unwrap().clone();
     let manifest_of = |id: &str| format!("team/research/tables/filings/data/snapshots/{id}/_manifest.json");
-    assert!(fetched.contains(&manifest_of(&snapshots[3])) && fetched.contains(&manifest_of(&snapshots[2])), "{fetched:?}");
-    assert!(!fetched.contains(&manifest_of(&snapshots[1])) && !fetched.contains(&manifest_of(&snapshots[0])), "{fetched:?}");
+    assert!(fetched.contains(&manifest_of(&snapshots[3])), "{fetched:?}");
+    assert!(snapshots[..3].iter().all(|s| !fetched.contains(&manifest_of(s))), "{fetched:?}");
     assert!(listed(&manifest(b.as_ref()), "research/tables/filings/data/runs/run-4/").is_empty(), "run-4 stays out");
 }
 

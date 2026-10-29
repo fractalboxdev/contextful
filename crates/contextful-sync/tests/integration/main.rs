@@ -5,6 +5,7 @@ mod collect;
 mod converge;
 mod edge;
 mod generation;
+mod husks;
 mod lazy;
 mod lease;
 mod pull;

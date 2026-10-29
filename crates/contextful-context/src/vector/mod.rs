@@ -427,8 +427,8 @@ struct GraphSegment {
 /// The snapshot directory and manifest entry of `table`'s current sidecar over `column`
 /// at `dim`, or why there is none.
 pub fn current_entry(store: &crate::Store, table: &str, column: &str, dim: usize) -> std::result::Result<(std::path::PathBuf, IndexEntry), Fallback> {
-    let (chain, _) = store.chain(table).map_err(|_| Fallback::Unreadable)?;
-    let snapshot = chain.first().ok_or(Fallback::NoSnapshot)?;
+    let snapshot = store.current_snapshot(table).map_err(|_| Fallback::Unreadable)?.ok_or(Fallback::NoSnapshot)?;
+    let snapshot = &snapshot;
     let dir = store.snapshot_dir(table, &snapshot.snapshot_id).map_err(|_| Fallback::Unreadable)?;
     let entries: Vec<&IndexEntry> = snapshot
         .indexes

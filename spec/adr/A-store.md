@@ -418,6 +418,18 @@ A collection removes a folded run's manifest and parts, so a retry after a lost 
 
 Revisit: the per-landing index read dominates a high-rate one-shot landing path.
 
+## index-walk — Collect, push and a lazy pull read the head's index instead of the husks
+
+Every collected snapshot keeps its manifest, so a walk from the pointer reads one manifest per snapshot the table ever held, and a cold pull downloads them all. The head's folded-runs index already names every run the chain folds, and the snapshot folding it. A lazy pull leaves each husk's manifest in the bucket once the head's index reads valid at home, and a walk fetches one only where no valid index answers. Collect walks the retained snapshots down to the first collected parent and takes older runs from the index, the oldest folding snapshot reading as the root. A push reads the manifest of the snapshot folding each candidate. A table holding a hold record walks whole, since a hold keeps a snapshot past any parent.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Read the head's index, fetch a husk on a fallback walk *(chosen)* | — | A full walk on a lazy store fetches each husk once; a snapshot folding no run is never reclaimed past the stop. |
+| Keep pulling every husk | Cold start | A cold pull grows with history. |
+| A list of chain ids on the pointer | Pointer size | The pointer grows with history, and every commit rewrites it. |
+
+Revisit: a full walk on a lazy store runs often enough that fetching husks dominates its cost.
+
 ## unpushed-run-marked — An unpushed run is marked in the execution database
 
 On a disposable disk a run commits locally before its push, so a failed push leaves the run on a disk the next release discards. The execution database is already durable.

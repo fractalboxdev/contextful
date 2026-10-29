@@ -152,6 +152,18 @@ fn class(key: &str, me: &str) -> KeyClass {
     }
 }
 
+/// The table of `key` when it is a collected snapshot's `_manifest.json` the bucket `m` lists
+/// beside its `_collected.json`, other than the snapshot `heads` names as the table's pointer's
+/// (`store.pull.husks-skipped`).
+fn husk_table(project: &str, m: &BucketManifest, heads: &BTreeMap<String, String>, key: &str) -> Option<String> {
+    use contextful_core::store::lay_out::{COLLECTED_FILE, SNAPSHOTS_DIR};
+    let dir = key.strip_suffix(MANIFEST_FILE)?;
+    let id = dir.strip_suffix('/')?.rsplit('/').next()?;
+    let table = project_table(project, key)?;
+    let under = format!("{project}/tables/{table}/{SNAPSHOTS_DIR}/{id}/");
+    (dir == under && m.entries.contains_key(&format!("{dir}{COLLECTED_FILE}")) && heads.get(&table).is_some_and(|h| h != id)).then_some(table)
+}
+
 /// Whether `key` is a hold record, `.../tables/<table>/holds/<build-id>.json` (`run.publish.hold`).
 pub(crate) fn is_hold_record(key: &str) -> bool {
     let segs: Vec<&str> = key.split('/').collect();
@@ -1560,7 +1572,16 @@ impl Syncer {
             // A read resolves every run whose `_manifest.json` exists, so each run manifest
             // transfers after every other object has landed (`store.pull.run-manifest-last`).
             let (rest, run_manifests): (Vec<_>, Vec<_>) = wanted.into_iter().partition(|(k, _)| !is_run_manifest(k));
-            let wanted: Vec<(&String, &Entry)> = rest.iter().chain(&run_manifests).copied().collect();
+            // A lazy pull holds back each collected snapshot's manifest until the pointer's
+            // snapshot is home, and leaves it in the bucket where that snapshot's folded-runs
+            // index reads valid (`store.pull.husks-skipped`).
+            let heads: BTreeMap<String, String> = lazy_pointers
+                .iter()
+                .filter_map(|(k, p)| Some((project_table(&self.project, k)?, p.snapshot_id.clone()?)))
+                .collect();
+            let husk_of = |k: &str| -> Option<String> { if lazy { husk_table(&self.project, &manifest, &heads, k) } else { None } };
+            let (husks, rest): (Vec<_>, Vec<_>) = rest.into_iter().partition(|(k, _)| husk_of(k).is_some());
+            let wanted: Vec<(&String, &Entry)> = rest.iter().chain(&husks).chain(&run_manifests).copied().collect();
             let (read, hashed) = (AtomicU64::new(0), AtomicU64::new(0));
             let fetch = |(key, entry): &(&String, &Entry)| -> Result<Fetched> {
                 let Some(path) = self.local_path(key) else { return Ok(Fetched::Kept) };
@@ -1614,7 +1635,22 @@ impl Syncer {
             };
             let width = self.config.transfers();
             let mut folded: BTreeSet<String> = BTreeSet::new();
+            let mut husks_left: BTreeSet<String> = BTreeSet::new();
             let fetched = each(width, &rest, &fetch).and_then(|mut first| {
+                // A table whose pointer's snapshot reads a valid index leaves its husks behind; any
+                // other table's come home.
+                let covered: BTreeSet<String> = heads
+                    .iter()
+                    .filter(|(table, id)| SnapshotId::try_from((*id).clone()).ok().is_some_and(|id| self.store.folded_index_valid(table, &id).unwrap_or(false)))
+                    .map(|(table, _)| table.clone())
+                    .collect();
+                let leaves = |k: &str| husk_of(k).is_some_and(|t| covered.contains(&t)) && self.local_path(k).is_some_and(|p| !p.exists());
+                let needed: Vec<(&String, &Entry)> = husks.iter().filter(|(k, _)| !leaves(k)).copied().collect();
+                husks_left = husks.iter().filter(|(k, _)| leaves(k)).map(|(k, _)| (*k).clone()).collect();
+                let mut came = each(width, &needed, &fetch)?.into_iter();
+                for (k, _) in &husks {
+                    first.push(if husks_left.contains(*k) { Fetched::Kept } else { came.next().unwrap_or(Fetched::Kept) });
+                }
                 // A run with an object short holds its manifest back for the retry.
                 let short: Vec<&str> = rest.iter().zip(&first)
                     .filter(|(_, f)| matches!(f, Fetched::Missing))
@@ -1634,7 +1670,7 @@ impl Syncer {
                 }
                 Ok(first)
             });
-            skipped = folded.into_iter().filter(|k| manifest.entries.contains_key(k)).collect();
+            skipped = folded.into_iter().chain(husks_left).filter(|k| manifest.entries.contains_key(k)).collect();
             report.bytes_read += read.into_inner();
             report.bytes_hashed += hashed.into_inner();
             for ((key, _), outcome) in wanted.iter().zip(fetched?) {
@@ -1858,8 +1894,9 @@ impl Syncer {
         for (key, pointer) in pointers {
             let (Some(table), Some(snapshot)) = (project_table(&self.project, key), pointer.snapshot_id.as_ref()) else { continue };
             let Ok(id) = serde_json::from_value::<SnapshotId>(serde_json::Value::String(snapshot.clone())) else { continue };
-            let Ok((chain, _)) = self.store.chain_from(&table, id) else { continue };
-            for run in chain.iter().flat_map(|s| s.includes_runs.iter()) {
+            // The index the walk stops at names the runs its skipped husks fold.
+            let Ok(runs) = self.store.folded_keys_from(&table, id) else { continue };
+            for run in runs {
                 out.insert(format!("{}/tables/{table}/{}/{run}/{MANIFEST_FILE}", self.project, contextful_core::store::lay_out::RUNS_DIR));
             }
         }

@@ -685,6 +685,10 @@ A lazy store pulls metadata and fetches each data part and folded run manifest w
   *A-store#folded-runs-on-demand*
 - `lazy-folded-runs` — Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.
   *A-store#folded-runs-on-demand*
+- `husks-skipped` — Under {{store.pull.lazy-parts}}, pull skips each `_manifest.json` beside a listed `_collected.json` once the pointer's snapshot is home with a valid folded-runs index, listing it in `.skipped-runs.json`; another table's comes home.
+  *A-store#index-walk*
+- `husks-fetched` — A full chain walk, or one meeting no valid index, fetches each skipped collected snapshot manifest it reaches through the part source; a walk past a valid index ends there, as at a collected parent.
+  *A-store#index-walk*
 - `skipped-record` — Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.
   *because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone*
 - `folded-runs-fetched` — Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.

@@ -165,17 +165,38 @@ fn read_segment(store: &Store, path: &Path) -> Result<Vec<FoldedRow>> {
 /// segment reads at its recorded digest. `None` otherwise, and the reader walks the chain
 /// (`store.lay-out.folded-index-valid`).
 pub(crate) fn read(store: &Store, table: &str, m: &SnapshotManifest) -> Option<BTreeMap<String, FoldedRow>> {
-    let index = m.folded_runs.as_ref().filter(|f| f.through == m.snapshot_id)?;
     let table_dir = store.table_dir(table).ok()?;
+    validated(m, |location| {
+        let path = table_dir.join(location);
+        let bytes = fs::read(&path).ok()?;
+        Some((sha256_hex(&bytes), read_segment(store, &path).ok()?))
+    })
+}
+
+/// [`read`] over segments another copy of the store holds: `bytes_of` answers each segment's
+/// bytes by its location relative to the table directory, and each decodes through a file
+/// under `scratch`, removed after.
+pub(crate) fn read_from(store: &Store, m: &SnapshotManifest, bytes_of: &dyn Fn(&str) -> Option<Vec<u8>>, scratch: &Path) -> Option<BTreeMap<String, FoldedRow>> {
+    fs::create_dir_all(scratch).ok()?;
+    validated(m, |location| {
+        let bytes = bytes_of(location)?;
+        let digest = sha256_hex(&bytes);
+        let path = scratch.join(format!("{digest}.runs"));
+        fs::write(&path, &bytes).ok()?;
+        let rows = read_segment(store, &path).ok();
+        let _ = fs::remove_file(&path);
+        Some((digest, rows?))
+    })
+}
+
+/// The index rows of `m` where `through` names `m` and every segment `segment` answers carries
+/// its recorded digest and row count.
+fn validated(m: &SnapshotManifest, segment: impl Fn(&str) -> Option<(String, Vec<FoldedRow>)>) -> Option<BTreeMap<String, FoldedRow>> {
+    let index = m.folded_runs.as_ref().filter(|f| f.through == m.snapshot_id)?;
     let mut rows = BTreeMap::new();
     for seg in &index.segments {
-        let path = table_dir.join(seg.location(&m.snapshot_id));
-        let bytes = fs::read(&path).ok()?;
-        if sha256_hex(&bytes) != seg.sha256 {
-            return None;
-        }
-        let read = read_segment(store, &path).ok()?;
-        if read.len() as u64 != seg.rows {
+        let (digest, read) = segment(&seg.location(&m.snapshot_id))?;
+        if digest != seg.sha256 || read.len() as u64 != seg.rows {
             return None;
         }
         rows.extend(read.into_iter().map(|r| (r.run_key.clone(), r)));

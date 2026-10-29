@@ -155,6 +155,19 @@ pub(crate) fn sort_order(decl: &TableDecl) -> Vec<String> {
 /// Whether a pass over `decl`'s table carries untouched parts by reference
 /// (`store.fold.carry-by-reference`): an append table whose rows no derived supersession
 /// rewrites. A `replace` table and a derive output table stage their whole row set.
+/// The rows of snapshot manifest `m`'s folded-runs index when it reads valid
+/// (`store.lay-out.folded-index-valid`), its segments' bytes answered by `bytes_of` from their
+/// locations relative to the table directory and decoded under `scratch`: the index as a
+/// bucket holds it.
+pub fn folded_index_from(
+    store: &Store,
+    m: &SnapshotManifest,
+    bytes_of: &dyn Fn(&str) -> Option<Vec<u8>>,
+    scratch: &std::path::Path,
+) -> Option<BTreeMap<String, contextful_core::store::lay_out::FoldedRow>> {
+    folded::read_from(store, m, bytes_of, scratch)
+}
+
 pub fn carries_by_reference(decl: &TableDecl) -> bool {
     decl.write_mode() == WriteMode::Append && !is_derive_key(decl.primary_key())
 }

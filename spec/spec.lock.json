@@ -5179,6 +5179,30 @@
       "group": "lazy parts"
     },
     {
+      "id": "store.pull.husks-skipped",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "husks-skipped",
+      "kind": "behavior",
+      "statement": "Under {{store.pull.lazy-parts}}, pull skips each `_manifest.json` beside a listed `_collected.json` once the pointer's snapshot is home with a valid folded-runs index, listing it in `.skipped-runs.json`; another table's comes home.",
+      "why": "A-store#index-walk",
+      "file": "spec/10-store.md",
+      "line": 688,
+      "group": "lazy parts"
+    },
+    {
+      "id": "store.pull.husks-fetched",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "husks-fetched",
+      "kind": "behavior",
+      "statement": "A full chain walk, or one meeting no valid index, fetches each skipped collected snapshot manifest it reaches through the part source; a walk past a valid index ends there, as at a collected parent.",
+      "why": "A-store#index-walk",
+      "file": "spec/10-store.md",
+      "line": 690,
+      "group": "lazy parts"
+    },
+    {
       "id": "store.pull.skipped-record",
       "contract": "store",
       "operation": "pull",
@@ -5187,7 +5211,7 @@
       "statement": "Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
-      "line": 688,
+      "line": 692,
       "group": "lazy parts"
     },
     {
@@ -5199,7 +5223,7 @@
       "statement": "Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 690,
+      "line": 694,
       "group": "lazy parts"
     },
     {
@@ -5211,7 +5235,7 @@
       "statement": "A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, save where the source answers it collected: an unbounded listing leaves it out, and a bounded read does when a kept snapshot folds its run.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 692,
+      "line": 696,
       "group": "lazy parts"
     },
     {
@@ -5223,7 +5247,7 @@
       "statement": "A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 694,
+      "line": 698,
       "group": "lazy parts"
     },
     {
@@ -5235,7 +5259,7 @@
       "statement": "Every command opening a store whose `[sync]` declares `lazy_parts` registers the bucket's part source once per process, whether or not the command pulls.",
       "why": "because a command reading runs without pulling otherwise meets {{store.pull.folded-runs-unreachable}}",
       "file": "spec/10-store.md",
-      "line": 696,
+      "line": 700,
       "group": "lazy parts"
     },
     {
@@ -5247,7 +5271,7 @@
       "statement": "`[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 698,
+      "line": 702,
       "group": "lazy parts"
     },
     {
@@ -5259,7 +5283,7 @@
       "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.",
       "why": "because a partial acquisition and a lost index leave completed downloads subject to eviction",
       "file": "spec/10-store.md",
-      "line": 700,
+      "line": 704,
       "group": "lazy parts"
     },
     {
@@ -5271,7 +5295,7 @@
       "statement": "A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.",
       "why": "because `sync collect` deletes a tombstoned run's parts while a container whose pointer predates the tombstone reads them",
       "file": "spec/10-store.md",
-      "line": 702,
+      "line": 706,
       "group": "lazy parts"
     },
     {
@@ -6242,6 +6266,17 @@
       ]
     },
     {
+      "id": "store.collect.index-walk",
+      "contract": "store",
+      "operation": "collect",
+      "subject": "index-walk",
+      "kind": "behavior",
+      "statement": "Under the pointer's valid bucket index, collect stops its walk at a child within the cutoff, by clock and id, whose parent is collected, and takes older folded runs from the index; a hold record walks whole.",
+      "why": "A-store#index-walk",
+      "file": "spec/16-collect.md",
+      "line": 28
+    },
+    {
       "id": "store.collect.chain-only",
       "contract": "store",
       "operation": "collect",
@@ -6250,7 +6285,7 @@
       "statement": "Collect reclaims only snapshots the bucket pointer reaches through `parent` links; another snapshot's `includes_runs` collects no run.",
       "why": "because a snapshot that lost its pointer commit folded nothing a bucket reader sees",
       "file": "spec/16-collect.md",
-      "line": 28
+      "line": 30
     },
     {
       "id": "store.collect.declared-window",
@@ -6261,7 +6296,7 @@
       "statement": "Collect takes each table's `retain_runs` from the collecting store's declarations, a declared model defaulting as its builds' retention does, and reclaims no snapshot or run of a table it declares none for, naming it under `undeclared`.",
       "why": "because the window is a table declaration, not bucket state",
       "file": "spec/16-collect.md",
-      "line": 30
+      "line": 32
     },
     {
       "id": "store.collect.two-phase",
@@ -6272,7 +6307,7 @@
       "statement": "Collect records a key as collected whether or not a retained generation lists it, and deletes the object at the first collect after {{store.collect.generation-listed}} stops holding it.",
       "why": "because a restore of a retained generation reads the object, while the record already keeps it out of every merge",
       "file": "spec/16-collect.md",
-      "line": 32
+      "line": 34
     },
     {
       "id": "store.collect.record-stands",
@@ -6283,7 +6318,7 @@
       "statement": "While the bucket holds a recorded object, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets; past its object, a record lapses and {{store.merge.collected-directory}} keeps the key out.",
       "why": "because a record lapsing before its object goes lets a merge list the key again",
       "file": "spec/16-collect.md",
-      "line": 34
+      "line": 36
     },
     {
       "id": "store.collect.retained-kept",
@@ -6294,7 +6329,7 @@
       "statement": "Collect deletes no recorded object a retained snapshot names, reporting its key under `referenced`, and the key stays recorded.",
       "why": "because a hold reaching the bucket outside {{run.model.hold-bucket-first}} then leaves a refusal rather than a loss",
       "file": "spec/16-collect.md",
-      "line": 36
+      "line": 38
     },
     {
       "id": "store.collect.serialized",
@@ -6305,7 +6340,7 @@
       "statement": "Collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.",
       "why": "because a hold or a record a concurrent collect commits otherwise reaches the deletes of a collect that never read it",
       "file": "spec/16-collect.md",
-      "line": 38
+      "line": 40
     },
     {
       "id": "store.collect.lease-renewed",
@@ -6316,7 +6351,7 @@
       "statement": "Collect renews its lease at a fresh clock reading before its deletes and at {{store.lease.renewal}}'s interval through them, and deletes nothing more once {{store.lease.stale-fence}} answers a renewal.",
       "why": "because a collect outliving its lease otherwise deletes beside a successor that read newer holds",
       "file": "spec/16-collect.md",
-      "line": 40
+      "line": 42
     },
     {
       "id": "store.collect.metadata-kept",
@@ -6327,7 +6362,7 @@
       "statement": "Collect records no snapshot `_manifest.json` or `_collected.json`, pointer, `schema.json`, hold or run state, and no key a retained snapshot names, a tombstoned one included.",
       "why": "because those keys hold the chain and the coordination state every reader walks",
       "file": "spec/16-collect.md",
-      "line": 42
+      "line": 44
     },
     {
       "id": "store.collect.marker-first-writer",
@@ -6338,7 +6373,7 @@
       "statement": "A collect uploads `_collected.json` only where no object holds its key, and lists the bytes the bucket then holds.",
       "why": "because a losing concurrent collect overwriting a listed marker fails every pull's digest check",
       "file": "spec/16-collect.md",
-      "line": 44
+      "line": 46
     },
     {
       "id": "store.collect.generation-listed",
@@ -6349,7 +6384,7 @@
       "statement": "Collect deletes no object whose key a retained generation lists, and leaves it for a later collect.",
       "why": "because `sync pull --generation` restores a retained generation's keys at their listed digests",
       "file": "spec/16-collect.md",
-      "line": 46,
+      "line": 48,
       "scenarios": [
         "WHEN a tombstoned run is unlisted while 64 retained generations list it, THEN the collect deletes none of its objects."
       ]
@@ -6363,7 +6398,7 @@
       "statement": "`[sync] retain_generations`, default 64 generations, sets how many newest generation manifests a collect keeps, the current one included; a value of 0 fails the configuration's parse.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
-      "line": 48
+      "line": 50
     },
     {
       "id": "store.collect.generations",
@@ -6374,7 +6409,7 @@
       "statement": "Collect heals an absent copy of the read generation, then deletes every `manifests/gen-<N>.json` older than the newest {{store.collect.retain-generations}}, so a restore of one meets {{store.pull.generation-absent}}.",
       "why": "because each generation manifest lists the whole store, and a push after every run writes one per run",
       "file": "spec/16-collect.md",
-      "line": 50
+      "line": 52
     },
     {
       "id": "store.collect.shared-prefix",
@@ -6385,7 +6420,7 @@
       "statement": "While the bucket manifest names another project's key, record or control head, collect records no key as collected, deletes no generation manifest, treats every generation as retained, and reports `shared_prefix`.",
       "why": "because generation manifests belong to the prefix, and one project's `retain_generations` binds no other project's restores",
       "file": "spec/16-collect.md",
-      "line": 52
+      "line": 54
     },
     {
       "id": "store.collect.drop-first",
@@ -6396,7 +6431,7 @@
       "statement": "Collect commits a bucket manifest recording each key it unlists as collected, by the conditional replace of {{store.push.manifest-commit}}, before deleting any object, so no push lists a deleted object and a lazy read meets {{store.pull.part-collected}}.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
-      "line": 54,
+      "line": 56,
       "scenarios": [
         "WHEN an owner restoring a tombstoned run reads the manifest, a collect then commits and deletes the run's objects, and the owner's push commits, THEN the push loses its condition, re-merges, and lists no deleted object."
       ]
@@ -6545,6 +6580,17 @@
       "line": 38
     },
     {
+      "id": "store.merge.collected-index",
+      "contract": "store",
+      "operation": "merge",
+      "subject": "collected-index",
+      "kind": "behavior",
+      "statement": "A push finds the snapshot folding each candidate run of {{store.merge.collected-directory}} in the pointer's valid bucket index, reading that snapshot's manifest for its parent; without a valid index it walks the chain.",
+      "why": "A-store#index-walk",
+      "file": "spec/17-merge.md",
+      "line": 40
+    },
+    {
       "id": "store.merge.collected",
       "contract": "store",
       "operation": "merge",
@@ -6553,7 +6599,7 @@
       "statement": "A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.",
       "why": "A-store#bucket-collect",
       "file": "spec/17-merge.md",
-      "line": 40
+      "line": 42
     },
     {
       "id": "store.merge.ownership",
@@ -6564,7 +6610,7 @@
       "statement": "A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/17-merge.md",
-      "line": 42
+      "line": 44
     },
     {
       "id": "read.register.connection-views",
@@ -34602,6 +34648,12 @@
       "store.pull.folded-run-collected",
       "store.pull.folded-runs-unreachable"
     ],
+    "A-store#index-walk": [
+      "store.pull.husks-skipped",
+      "store.pull.husks-fetched",
+      "store.collect.index-walk",
+      "store.merge.collected-index"
+    ],
     "A-store#keyed-table-covered": [
       "run.seed.compaction-cadence"
     ],
@@ -35338,6 +35390,10 @@
       "store.pull.lazy-parts"
     ],
     [
+      "store.pull.husks-skipped",
+      "store.pull.lazy-parts"
+    ],
+    [
       "store.pull.folded-runs-fetched",
       "read.cache.miss-wait"
     ],
@@ -35532,6 +35588,10 @@
     [
       "store.merge.collected-directory",
       "store.collect.folded-runs"
+    ],
+    [
+      "store.merge.collected-index",
+      "store.merge.collected-directory"
     ],
     [
       "store.merge.collected",
@@ -67553,6 +67613,15 @@
         "proved": false
       }
     ],
+    "store.collect.index-walk": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_collect_reads_the_index_instead_of_every_husk",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "store.collect.lease-renewed": [
       {
         "kind": "test",
@@ -69587,7 +69656,16 @@
       {
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
-        "name": "a_push_walks_the_chain_only_back_to_its_oldest_candidate_run",
+        "name": "a_push_reads_the_index_instead_of_walking_the_chain",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.merge.collected-index": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_push_reads_the_index_instead_of_walking_the_chain",
         "verdict": "performed",
         "proved": false
       }
@@ -70018,6 +70096,45 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/generation.rs",
         "name": "a_generation_pull_takes_the_current_schema",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.pull.husks-fetched": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/folded_index.rs",
+        "name": "a_skipped_husk_ends_a_walk_below_a_valid_index_and_a_walk_without_one_fetches_it",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_walk_without_a_valid_index_fetches_the_skipped_husks",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.pull.husks-skipped": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/store/lay_out.rs",
+        "name": "the_skipped_runs_record_names_skipped_husks_apart_from_runs",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_husk_skipping_pull_answers_as_a_whole_one",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/husks.rs",
+        "name": "a_cold_pull_grows_with_retained_snapshots",
         "verdict": "performed",
         "proved": false
       }
