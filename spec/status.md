@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 4 | 19 | 358 | 80 | 25 | 4 | 358 | 1 | 0 | 358 |
 | `authority` | 2 | 16 | 291 | 79 | 28 | 8 | 291 | 4 | 0 | 291 |
-| `connector` | 3 | 19 | 347 | 83 | 23 | 14 | 318 | 2 | 0 | 318 |
+| `connector` | 3 | 19 | 348 | 83 | 23 | 14 | 319 | 2 | 0 | 319 |
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 6 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 15 | 292 | 0 | 0 | 292 |
-| `run` | 3 | 31 | 619 | 137 | 52 | 22 | 613 | 4 | 0 | 613 |
+| `run` | 3 | 31 | 619 | 137 | 52 | 21 | 613 | 4 | 0 | 613 |
 | `store` | 7 | 21 | 336 | 68 | 26 | 12 | 336 | 13 | 0 | 336 |
-| `surface` | 2 | 22 | 196 | 70 | 24 | 2 | 193 | 0 | 0 | 193 |
+| `surface` | 2 | 22 | 197 | 70 | 24 | 2 | 194 | 0 | 0 | 194 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 28 | 182 | 2852 | 711 | 242 | 86 | 2791 | 24 | 0 | |
+| **total** | 28 | 182 | 2854 | 711 | 242 | 85 | 2793 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 260 | 260 | passing | closed |
 | 2 — The store | 9 | 180 | 180 | passing | closed |
 | 3 — The run path | 12 | 293 | 293 | passing | closed |
-| 4 — Ingest | 25 | 561 | 561 | passing | closed |
+| 4 — Ingest | 25 | 562 | 562 | passing | closed |
 | 5 — The read face under enforcement | 17 | 303 | 303 | passing | closed |
 | 6 — Sync and replicas | 10 | 142 | 142 | passing | closed |
 | 7 — Memory | 6 | 86 | 86 | passing | closed |
@@ -44,7 +44,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 14 — Assurance | 7 | 175 | 175 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 67 | 67 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
-| 17 — Delegated bodies | 1 | 13 | 13 | passing | closed |
+| 17 — Delegated bodies | 1 | 14 | 14 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 | 19 — Drive connections | 2 | 22 | 13 | open | open |
 | 20 — Drive permission custody | 2 | 11 | 0 | absent | open |

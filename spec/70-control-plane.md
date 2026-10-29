@@ -255,6 +255,8 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
   *because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity*
 - `version` — A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.
   *because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics*
+- `dedup-window` — A binding's optional `dedup_window_secs` declares the whole seconds the delegate deduplicates a repeated `idempotency_key`; each `call` request's guard records it under {{run.callback-guard.identity}}, `none` when absent.
+  *because a paid call deduplicates only while the delegate's response cache holds its key*
 - `clocks` — Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.
   *because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires*
 

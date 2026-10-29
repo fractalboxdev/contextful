@@ -957,6 +957,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     fn step(&self, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, dest: &mut dyn Destination, step: PullStep<'_>) -> Result<Resolved, Close> {
         let PullStep { parent, spec, key, request, shape, authority, at, floor, types:held, undeclared, ordinal } = step;
         let journaled = spec.plan.spec.journal;
+        // Each pull's guard records the window its connector declares (`connector.declare-capability.dedup-window`).
+        let window = spec.plan.spec.connector.dedup_window_secs;
         if let Some(authority) = authority {
             let journal_it = |bytes: &[u8]| recorded(bytes).is_ok_and(|pull| pull.rows > 0);
             let mut late = false;
@@ -992,13 +994,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
                 let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit, walk, strict, dead_letters:pull.dead_letters };
                 serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
-            }, parent);
+            }, parent, window);
             if late { execution.discard(); }
             return result;
         }
         // An empty pull is never journaled.
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
-        execution.step_keyed_with_parent(key, &journal_it, &mut |token| pulled(source, request, token), parent)
+        execution.step_keyed_with_parent(key, &journal_it, &mut |token| pulled(source, request, token), parent, window)
     }
 
     /// Write a stop onto a run row, and under `pipeline` scope onto every in-flight run of

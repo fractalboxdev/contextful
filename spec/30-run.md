@@ -214,8 +214,6 @@ A D1 callback guard under {{run.journal.d1-guard}}: the rows it protects, the ef
 - `run.callback-guard.evidence`: WHEN an operator supplies an idempotency key other than the guard's recorded key, THEN reconciliation raises `ExecutionGuardEvidenceMismatch` and the guard stays.
 - `run.callback-guard.evidence`: WHEN a guard's window is `none`, THEN its recorded key as `idempotency:` evidence raises `ExecutionGuardEvidenceMismatch`, and a receipt carrying that key releases it.
 
-unsettled: Which declaration carries a destination's deduplication window for {{run.callback-guard.identity}}: the connector manifest, the delegate binding or the export target? owner: run-path affects: run.callback-guard
-
 unsettled: What records a holder identity's exit when its whole container stops before any serve process reaps it? owner: run-path affects: run.callback-guard
 
 ## items

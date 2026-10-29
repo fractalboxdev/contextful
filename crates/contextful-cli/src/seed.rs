@@ -105,6 +105,7 @@ fn seed_plan(spec: &PipelineSpec, seed: &SeedBlock, t: &TableEntry) -> Result<Pl
         version: env!("CARGO_PKG_VERSION").to_string(),
         world: NATIVE_WORLD.to_string(),
         command: vec![format!("builtin:{}", seed.source.name)],
+        dedup_window_secs: None,
     };
     let mut plan = plan(spec, t.name(), connector)?;
     plan.cursor_kind = CursorKind::OpaqueToken;

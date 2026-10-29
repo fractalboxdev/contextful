@@ -318,7 +318,13 @@ pub type CallEffect<'a> = dyn FnMut(&str) -> Result<Vec<u8>, Failure> + 'a;
 pub trait RowCalls {
     /// Record one paid call under `label` and `input`: a recorded entry answers without the
     /// effect, and every entry of the effect carries the entry's idempotency key.
-    fn call(&self, label: &str, input: &[u8], effect: &mut CallEffect<'_>) -> Result<Vec<u8>, RowStop>;
+    fn call(&self, label: &str, input: &[u8], effect: &mut CallEffect<'_>) -> Result<Vec<u8>, RowStop> {
+        self.call_within(label, input, None, effect)
+    }
+    /// Record one paid call as [`RowCalls::call`] does, its callback guard recording the
+    /// seconds `window_secs` its destination deduplicates a repeated key, `None` recording
+    /// `none` (`run.callback-guard.identity`).
+    fn call_within(&self, label: &str, input: &[u8], window_secs: Option<u64>, effect: &mut CallEffect<'_>) -> Result<Vec<u8>, RowStop>;
     /// Mint this row's awakeable under `label` with a time-to-live of `ttl_secs`, once: the
     /// token is a recorded step, so every re-entry answers the same one.
     fn suspend(&self, label: &str, ttl_secs: u64) -> Result<String, RowStop>;

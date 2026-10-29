@@ -94,6 +94,18 @@ fn a_call_timeout_above_the_ceiling_raises_delegate_timeout_refused() {
     }
 }
 
+/// A binding's optional `dedup_window_secs` declares the seconds the delegate deduplicates a repeated
+/// `idempotency_key`; a binding declaring none carries no window.
+// spec: surface.delegate.dedup-window@10ae0bc6
+#[test]
+fn a_binding_declares_its_deduplication_window_in_whole_seconds_and_defaults_to_none() {
+    assert_eq!(binding("url = \"http://127.0.0.1:1\"\ndedup_window_secs = 900\n").unwrap().dedup_window_secs, Some(900));
+    assert_eq!(binding("url = \"http://127.0.0.1:1\"\n").unwrap().dedup_window_secs, None);
+    for off in ["\"15m\"", "-1"] {
+        assert!(matches!(binding(&format!("url = \"http://127.0.0.1:1\"\ndedup_window_secs = {off}\n")), Err(BindingError::Invalid(m)) if m.contains("`dedup_window_secs`")), "{off}");
+    }
+}
+
 /// A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`,
 /// the request's `idempotency_key`, its timestamp and body, each as `submit-signed` signs a submission.
 // spec: surface.delegate.signed@f406d001

@@ -91,7 +91,8 @@ impl Project {
             "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\n",
         );
         repo.write("vendor.sh", VENDOR);
-        repo.write("feed.toml", "pipeline = \"feed\"\ntable = \"items\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\nworld = \"native\"\ncommand = [\"sh\", \"vendor.sh\"]\n[cursor]\nkind = \"opaque-token\"\n");
+        // The vendor deduplicates a repeated key for an hour, and its connector declares so.
+        repo.write("feed.toml", "pipeline = \"feed\"\ntable = \"items\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\nworld = \"native\"\ncommand = [\"sh\", \"vendor.sh\"]\ndedup_window_secs = 3600\n[cursor]\nkind = \"opaque-token\"\n");
         repo.write("notes.sh", "printf '{\"rows\":[{\"id\":\"n1\"}],\"more\":false}'\n");
         repo.write("notes.toml", "pipeline = \"notes\"\ntable = \"notes\"\n[connector]\nid = \"notes\"\nversion = \"1.0.0\"\nworld = \"native\"\ncommand = [\"sh\", \"notes.sh\"]\n");
         let project = Project { repo, cf: bin("contextful"), d1: Binding::start(), _s3: s3 };
@@ -161,8 +162,8 @@ fn m25_callback_guards() {
     assert_eq!(p.keys("effects.log", "\"p2\""), vec![recorded.clone()], "the guard records the key the request sent");
     assert_eq!(guard["scopes"][0]["pipeline_id"], "feed", "{guard}");
     assert_eq!(guard["attempt"], "feed-1");
-    assert_eq!(guard["window"], "none");
-    assert_eq!(guard["class"], "unknown");
+    assert_eq!(guard["window"], 3600, "the guard records the window its connector declares");
+    assert_eq!(guard["class"], "replay-safe");
 
     // Another job's admission proceeds while the guard holds the feed's rows.
     let notes = p.start("notes.toml", "notes-1");
@@ -184,18 +185,15 @@ fn m25_callback_guards() {
         assert!(stderr(&refused).contains("ExecutionGuardHeld") && Instant::now() < deadline, "{}", stderr(&refused));
         std::thread::sleep(Duration::from_millis(500));
     }
-    let unwindowed = p.reconcile(&token, &format!("idempotency:{recorded}"));
-    assert!(stderr(&unwindowed).contains("ExecutionGuardEvidenceMismatch"), "a `none` window covers no key: {}", stderr(&unwindowed));
+    // A lapsed lease confirms nothing: until the holder records its exit, the resume waits on
+    // the guard rather than replaying.
     let blocked = p.start("feed.toml", "feed-2");
     assert!(!blocked.status.success());
-    assert!(stderr(&blocked).contains(&token) && stderr(&blocked).contains("contextful storage reconcile-guard"), "{}", stderr(&blocked));
+    assert!(stderr(&blocked).contains(&token) && stderr(&blocked).contains("replay-safe"), "{}", stderr(&blocked));
     assert_eq!(p.guards().len(), 1, "mismatched evidence and a blocked resume leave the guard");
 
-    // The vendor deduplicates its key for an hour, and the reaping serve records the dead
-    // holder's exit: the guard becomes replay-safe.
-    p.d1.sql(&format!("UPDATE contextful_callback_guard SET window_us = 3600000000 WHERE token = '{token}'"));
+    // The reaping serve records the dead holder's exit.
     p.d1.sql(&format!("UPDATE contextful_guard_holder SET exited_at = 1 WHERE holder = '{}'", guard["holder"].as_str().unwrap()));
-    assert_eq!(p.guards()[0]["class"], "replay-safe");
 
     let resumed = p.start("feed.toml", "feed-3");
     assert!(resumed.status.success(), "{}", stderr(&resumed));

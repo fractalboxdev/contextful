@@ -99,14 +99,16 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> Calls<'_, '_, J, B> {
         stop
     }
 
-    fn record(&self, label: &str, input: &[u8], effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
+    fn record(&self, label: &str, input: &[u8], window_secs: Option<u64>, effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
         let key = EntryKey::new(self.x.execution_id(), &row_label(&self.key, label), input);
-        self.record_key(&key, effect)
+        self.record_key(&key, window_secs, effect)
     }
 
-    fn record_key(&self, key: &EntryKey, effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
+    /// Record one call under `key`, its guard recording `window_secs`, the window its
+    /// destination declares.
+    fn record_key(&self, key: &EntryKey, window_secs: Option<u64>, effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
         let idempotency = key.idempotency_key();
-        match self.x.step_keyed(key, &|_| true, &mut |_| effect(&idempotency)) {
+        match self.x.step_keyed_with_parent(key, &|_| true, &mut |_| effect(&idempotency), None, window_secs) {
             Ok(r) => Ok(r.bytes().to_vec()),
             Err(c) => Err(self.stop(c)),
         }
@@ -126,7 +128,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RecordedRowCalls for Prepare
         self.plan.effect(label).map_err(|e| self.calls.stop(Close::Failed(Failure::deterministic(FailureTag::Permanent, e.to_string()))))?;
         let key = EntryKey::new(self.calls.x.execution_id(), &row_label(&self.calls.key, label), input);
         let scope = EffectScope::new(&key, self.identity);
-        let bytes = self.calls.record_key(&key, &mut |idempotency| {
+        let bytes = self.calls.record_key(&key, None, &mut |idempotency| {
             let raw = effect(idempotency)?;
             let prepared = PreparedEmission::prepare(self.plan, label, &scope, &raw, self.admission)?;
             crate::guard::log_counts(&key.step_label, prepared.masked_cells());
@@ -139,8 +141,8 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RecordedRowCalls for Prepare
 }
 
 impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J, B> {
-    fn call(&self, label: &str, input: &[u8], effect: &mut CallEffect<'_>) -> Result<Vec<u8>, RowStop> {
-        self.record(label, input, effect)
+    fn call_within(&self, label: &str, input: &[u8], window_secs: Option<u64>, effect: &mut CallEffect<'_>) -> Result<Vec<u8>, RowStop> {
+        self.record(label, input, window_secs, effect)
     }
 
     fn context(&self) -> RowContext {
@@ -162,7 +164,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J
         let registry = engine.registry(&format!("suspending row `{}` on `{label}`", self.key)).map_err(|e| self.stop(Close::Refused(e)))?;
         let execution_id = self.x.execution_id().to_string();
         let scoped = row_label(&self.key, label);
-        let token = self.record(&format!("suspend:{label}"), &ttl_secs.to_be_bytes(), &mut |_| {
+        let token = self.record(&format!("suspend:{label}"), &ttl_secs.to_be_bytes(), None, &mut |_| {
             let created_at = engine.catalog.now()?.to_string();
             registry.suspend(&execution_id, &scoped, &created_at, ttl_secs).map(|a| a.token.into_bytes()).map_err(|e| match e {
                 crate::awake::AwakeError::Storage(f) => f,
@@ -185,7 +187,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J
         };
         // The first outcome read is the recorded one, a timeout included
         // (`run.suspend.recorded-timeout`).
-        let recorded = self.record(&format!("wake:{label}"), token.as_bytes(), &mut |_| Ok(woken.encode()))?;
+        let recorded = self.record(&format!("wake:{label}"), token.as_bytes(), None, &mut |_| Ok(woken.encode()))?;
         Woken::decode(&recorded).map_err(RowStop::Failed)
     }
 }

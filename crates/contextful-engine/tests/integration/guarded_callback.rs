@@ -267,3 +267,82 @@ impl Catalog for Recording {
     fn runs(&self, p: Option<&str>) -> Result<Vec<RunRow>, Failure> { self.gate.runs(p) }
     fn update_run(&self, id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure> { self.gate.update_run(id, f) }
 }
+
+/// Swap the rig's catalog for one noting every guard's effect, answering what it noted.
+fn noting(rig: &mut Rig) -> Seen {
+    let seen: Seen = Arc::default();
+    rig.engine.catalog = Arc::new(Recording {
+        gate: Gate { inner: rig.engine.catalog.clone(), held: Arc::new(AtomicUsize::new(0)), refuse: AtomicBool::new(false), parent: None },
+        dir: rig.dir.path().to_path_buf(),
+        seen: seen.clone(),
+    });
+    seen
+}
+
+/// The window each noted guard of a step labelled by `label` recorded.
+fn windows(seen: &Seen, label: &dyn Fn(&str) -> bool) -> Vec<Option<u64>> {
+    seen.lock().unwrap().iter().filter(|(entry, _, _)| label(&entry.step_label)).map(|(_, window, _)| *window).collect()
+}
+
+/// A plan's connector declares its destination's window, and each pull's guard records it; an
+/// undeclared connector's pulls record `none`.
+// spec: connector.declare-capability.dedup-window@b04e69cb
+#[test]
+fn each_pull_guard_records_the_window_its_connector_declares() {
+    use crate::support::{plan, three_pages, Pages, Sink};
+    let pull = |label: &str| label != "publication";
+    let mut rig = Rig::new();
+    let seen = noting(&mut rig);
+    let text = "pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\ndedup_window_secs = 600\n[cursor]\nkind = \"opaque-token\"\n";
+    let windowed = contextful_core::run::plan::Plan::compile(text.as_bytes()).unwrap();
+    rig.run(&windowed, "1.0.0", "guarded-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    let declared = windows(&seen, &pull);
+    assert!(!declared.is_empty(), "the run's pulls took guards");
+    assert!(declared.iter().all(|w| *w == Some(600)), "{declared:?}");
+
+    let mut rig = Rig::new();
+    let seen = noting(&mut rig);
+    rig.run(&plan("kind = \"opaque-token\"", ""), "1.0.0", "guarded-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    let undeclared = windows(&seen, &pull);
+    assert!(!undeclared.is_empty(), "the run's pulls took guards");
+    assert!(undeclared.iter().all(Option::is_none), "{undeclared:?}");
+}
+
+/// One paid call through a body that names the delegate's window.
+struct Windowed;
+impl contextful_core::run::drive::RowBody for Windowed {
+    fn run(&self, row: &contextful_core::run::drive::InputRow, calls: &dyn contextful_core::run::drive::RowCalls) -> Result<contextful_core::run::drive::Emitted, contextful_core::run::drive::RowStop> {
+        calls.call_within("delegate/1", row.key.as_bytes(), Some(900), &mut |_| Ok(b"answer".to_vec()))?;
+        calls.call("local", row.key.as_bytes(), &mut |_| Ok(b"local".to_vec()))?;
+        Ok(BTreeMap::new())
+    }
+}
+
+/// A row body names the window of the destination a call reaches, and that call's guard records
+/// it while the body's other steps record `none`.
+// spec: surface.delegate.dedup-window@10ae0bc6
+#[test]
+fn a_row_call_guard_records_the_window_its_body_names() {
+    use contextful_core::run::drive::{InputSet, StoreInput};
+    let mut rig = Rig::new();
+    let seen = noting(&mut rig);
+    let drive = contextful_engine::drive::Drive {
+        job: "windowed".into(),
+        input: StoreInput { body: "windowed".into(), statement: "SELECT 1".into(), as_of: Some(crate::support::T0.into()), sweep: None, structural_identity: None },
+        body: &Windowed,
+        max_in_flight: 1,
+        run_id: "guarded-1".into(),
+        site_id: "site".into(),
+        pid: 1,
+        boot_id: "boot".into(),
+        schedule: Schedule::single_attempt(),
+        poll: std::time::Duration::from_millis(10),
+    };
+    let row = serde_json::json!({ "id": "a" }).as_object().cloned().unwrap();
+    let mut read = |as_of: &str| Ok(InputSet { as_of: as_of.into(), snapshots: BTreeMap::new(), rows: vec![row.clone()] });
+    rig.engine.drive(&drive, &mut read, &mut |_| Ok(contextful_core::run::ports::Landed::default())).unwrap();
+    let called = windows(&seen, &|label| label.ends_with("/delegate/1"));
+    assert_eq!(called, [Some(900)], "the delegate call's guard records its window");
+    let local = windows(&seen, &|label| label.ends_with("/local"));
+    assert_eq!(local, [None], "a call naming no window records `none`");
+}

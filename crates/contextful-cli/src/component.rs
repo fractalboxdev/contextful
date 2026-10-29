@@ -89,6 +89,8 @@ mod hosted {
         declared: Declared,
         /// The manifest's `require_wasm_pin`.
         require_pin: bool,
+        /// The manifest's `dedup_window_secs` (`connector.declare-capability.dedup-window`).
+        dedup_window_secs: Option<u64>,
         limits: Limits,
         content_hash: String,
         /// The admitted bytes, kept for the admission store a replay resolves its pin from.
@@ -269,7 +271,7 @@ mod hosted {
             }
         }
         let decl = &pinned;
-        let (declared, require_pin) = (manifest.declared, manifest.require_wasm_pin);
+        let (declared, require_pin, dedup_window_secs) = (manifest.declared, manifest.require_wasm_pin, manifest.dedup_window_secs);
         let limits = limits(decl)?;
         let target = match target {
             ComponentTarget::Native => Target::Native,
@@ -280,7 +282,7 @@ mod hosted {
         let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, PinRequirement { store: store_pin, manifest: require_pin }).map_err(failure)?;
         connector.admit(&declared).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
-        Ok(Loaded { name: name.to_string(), host, connector, declared, require_pin, limits, content_hash, wasm })
+        Ok(Loaded { name: name.to_string(), host, connector, declared, require_pin, dedup_window_secs, limits, content_hash, wasm })
     }
 
     impl Loaded {
@@ -320,7 +322,7 @@ mod hosted {
             let (connector, digest) = host.load_artifact(&pinned.artifact, wasm, requirement).map_err(failure)?;
             connector.admit(&self.declared).map_err(failure)?;
             let content_hash = content_hash(&digest, decl.guest.as_ref());
-            Ok(Loaded { name: self.name.clone(), host, connector, declared: self.declared.clone(), require_pin: self.require_pin, limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
+            Ok(Loaded { name: self.name.clone(), host, connector, declared: self.declared.clone(), require_pin: self.require_pin, dedup_window_secs: self.dedup_window_secs, limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
         }
 
         /// The connector a run of this component pins.
@@ -330,6 +332,7 @@ mod hosted {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 world: WORLD.to_string(),
                 command: vec![format!("component:{}", self.name)],
+                dedup_window_secs: self.dedup_window_secs,
             }
         }
 

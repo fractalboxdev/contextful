@@ -1,6 +1,6 @@
 //! `surface.delegate`: a store-driven item's body on deploy-bound code outside the binary.
 //! The binding a daemon's `[control.delegates.<name>]` declares (`binding`, `host`,
-//! `call-timeout`, `call-timeout-ceiling`, `version`), the envelope one request carries
+//! `call-timeout`, `call-timeout-ceiling`, `version`, `dedup-window`), the envelope one request carries
 //! (`envelope`), the signatures on request and answer (`signed`, `rejected`) and the closed
 //! outcome vocabulary an answer uses (`outcome`).
 
@@ -47,6 +47,9 @@ pub struct Binding {
     /// A version the operator rotates when the delegate's semantics change; it joins the
     /// owner pins (`surface.delegate.version`).
     pub version: Option<String>,
+    /// The seconds the delegate deduplicates a repeated `idempotency_key`; each call's guard
+    /// records it, `None` recording `none` (`surface.delegate.dedup-window`).
+    pub dedup_window_secs: Option<u64>,
 }
 
 /// Why a binding does not read.
@@ -94,12 +97,16 @@ impl Binding {
             None => None,
             Some(v) => Some(v.as_str().filter(|s| !s.trim().is_empty()).ok_or_else(|| invalid("`version` is a non-empty string".into()))?.to_string()),
         };
+        let dedup_window_secs = match table.get("dedup_window_secs") {
+            None => None,
+            Some(v) => Some(v.as_integer().and_then(|n| u64::try_from(n).ok()).ok_or_else(|| invalid("`dedup_window_secs` is a whole number of seconds".into()))?),
+        };
         for key in table.keys() {
-            if !matches!(key.as_str(), "url" | "mode" | "timeout" | "version") {
+            if !matches!(key.as_str(), "url" | "mode" | "timeout" | "version" | "dedup_window_secs") {
                 return Err(invalid(format!("carries unknown key `{key}`")));
             }
         }
-        Ok(Binding { name: name.to_string(), url, mode, timeout_secs, version })
+        Ok(Binding { name: name.to_string(), url, mode, timeout_secs, version, dedup_window_secs })
     }
 
     /// The name a job's `body = { delegate = "<name>" }` resolves to.
