@@ -583,6 +583,24 @@ fn a_hold_on_an_unknown_build_is_refused() {
     assert!(!p.dir().join("holds").join("snapshot-00000000000000000001.json").exists());
 }
 
+/// A recorded hold returns the hold file's bytes as read under its lock, and restoring them undoes the hold.
+#[test]
+fn a_recorded_hold_restores_the_prior_file() {
+    use contextful_context::build::{hold_recorded, restore_hold};
+    let p = Project::new();
+    let b = p.build(MODEL, "2030-01-01T00:00:00Z").unwrap();
+    let path = p.dir().join("holds").join(format!("{}.json", b.build_id));
+    let (_, _, none) = hold_recorded(&p.fx.store, "daily", &b.build_id, "ops", 60, at("2030-01-01T01:00:00Z")).unwrap();
+    assert!(none.is_none());
+    let first = std::fs::read(&path).unwrap();
+    let (_, _, prior) = hold_recorded(&p.fx.store, "daily", &b.build_id, "ops", 600, at("2030-01-01T01:00:30Z")).unwrap();
+    assert_eq!(prior.as_deref(), Some(first.as_slice()));
+    restore_hold(&p.fx.store, "daily", &b.build_id, prior).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), first);
+    restore_hold(&p.fx.store, "daily", &b.build_id, None).unwrap();
+    assert!(!path.exists());
+}
+
 /// A hold or renewal naming a build beside the bucket's `_collected.json` raises `ModelBuildCollected` and writes
 /// nothing, while a renewal of a build the bucket keeps succeeds.
 // spec: run.model.hold-collected@e8145d8b

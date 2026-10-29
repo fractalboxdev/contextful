@@ -248,6 +248,12 @@ pub fn held(store: &Store, model: &str, now: Instant) -> Result<BTreeSet<String>
 /// committed manifest records refuses (`run.model.hold-unknown-build`); an unexpired hold
 /// on it is renewed, anything else is held anew.
 pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u64, now: Instant) -> Result<(Receipt, HoldRecord)> {
+    hold_recorded(store, model, build_id, principal, secs, now).map(|(receipt, record, _)| (receipt, record))
+}
+
+/// [`hold`], also returning the hold file's bytes as read under its lock before the write, so
+/// [`restore_hold`] can undo it (`run.model.hold-bucket-first`).
+pub fn hold_recorded(store: &Store, model: &str, build_id: &str, principal: &str, secs: u64, now: Instant) -> Result<(Receipt, HoldRecord, Option<Vec<u8>>)> {
     store.check_writable("build hold")?;
     let committed = manifests(store, model)?;
     let published: Vec<String> = committed.iter().filter_map(|m| m.publish.as_ref().map(|s| s.build_id.clone())).collect();
@@ -262,6 +268,7 @@ pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u
     fs::create_dir_all(&dir).at(&dir)?;
     let _lock = FileLock::acquire(&dir.join(".lock"), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     let path = dir.join(format!("{build_id}.json"));
+    let raw = std::fs::read(&path).ok();
     let prior: Option<HoldRecord> = store.metadata_files().read_optional(&path)?.and_then(|bytes| serde_json::from_slice(&bytes).ok());
     let receipt = if prior.is_some_and(|p| p.active(now)) { Receipt::Renewed } else { Receipt::Held };
     // A build the bucket's collect reclaimed reads nothing, a renewal included
@@ -275,7 +282,25 @@ pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u
     let record = HoldRecord { build_id: build_id.to_string(), principal: principal.to_string(), placed_at: now, expires_at: now.plus_secs(secs) };
     store.metadata_files().replace(&path, serde_json::to_string_pretty(&record).expect("a hold serializes").as_bytes())?;
     write_logs(store, model)?;
-    Ok((receipt, record))
+    Ok((receipt, record, raw))
+}
+
+/// Undo a hold [`hold_recorded`] wrote, under the hold directory's lock: the file returns to
+/// `prior`'s bytes, or leaves when there were none (`run.model.hold-bucket-first`).
+pub fn restore_hold(store: &Store, model: &str, build_id: &str, prior: Option<Vec<u8>>) -> Result<()> {
+    let dir = holds_dir(store, model)?;
+    let _lock = FileLock::acquire(&dir.join(".lock"), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
+    let path = dir.join(format!("{build_id}.json"));
+    match prior {
+        Some(bytes) => fs::write(&path, bytes).at(&path)?,
+        None => match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(ContextError::Io { path, source: e }),
+        },
+    }
+    drop(_lock);
+    write_logs(store, model)
 }
 
 fn read_log<T: DeserializeOwned>(store: &Store, path: &Path) -> Result<Vec<T>> {

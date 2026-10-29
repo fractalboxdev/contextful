@@ -37,6 +37,8 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
   *A-store#validity-interval-row*
 - `echo` — A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant RFC 3339 UTC with nine fractional digits and a `Z`; an unbounded read omits it.
 
+unsettled: Does an `as_of` read selecting a held snapshot older than a collected one read that snapshot, rather than refuse under {{store.bound-time.as-of-unretained}}? owner: store affects: store.bound-time
+
 ## available-time
 
 The source availability timestamp, its value at landing and row selection under `available_as_of`.

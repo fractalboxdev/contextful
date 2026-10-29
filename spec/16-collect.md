@@ -35,10 +35,12 @@ Unlisting and deleting the bucket objects no reader needs, and the generation ma
   *because a record lapsing before its object goes lets a merge list the key again*
 - `retained-kept` — Collect deletes no recorded object a retained snapshot names, reporting its key under `referenced`, and the key stays recorded.
   *because a hold reaching the bucket outside {{run.model.hold-bucket-first}} then leaves a refusal rather than a loss*
-- `serialized` — On a bucket whose conditional writes span clients, collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.
+- `serialized` — Collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.
   *because a hold or a record a concurrent collect commits otherwise reaches the deletes of a collect that never read it*
-- `repair` — Collect records as collected each key the manifest it first reads lists with no object behind it.
-  *because a listed key with no object stops every pull*
+- `lease-renewed` — Collect renews its lease at a fresh clock reading before its deletes and at {{store.lease.renewal}}'s interval through them, and deletes nothing more once {{store.lease.stale-fence}} answers a renewal.
+  *because a collect outliving its lease otherwise deletes beside a successor that read newer holds*
+- `metadata-kept` — Collect records no snapshot `_manifest.json` or `_collected.json`, pointer, `schema.json`, hold or run state, and no key a retained snapshot names, a tombstoned one included.
+  *because those keys hold the chain and the coordination state every reader walks*
 - `marker-first-writer` — A collect uploads `_collected.json` only where no object holds its key, and lists the bytes the bucket then holds.
   *because a losing concurrent collect overwriting a listed marker fails every pull's digest check*
 - `generation-listed` — Collect deletes no object whose key a retained generation lists, and leaves it for a later collect.

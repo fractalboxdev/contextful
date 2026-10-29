@@ -5558,7 +5558,7 @@
       "statement": "`[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, omitted from canonical serialization when unset. `column` holds the source availability instant as `timestamptz`, which landing keeps and availability bounds compare alone; `zone` defaults to UTC.",
       "why": "A-store#availability-declared-column",
       "file": "spec/12-time.md",
-      "line": 44
+      "line": 46
     },
     {
       "id": "store.available-time.lag-fill",
@@ -5569,7 +5569,7 @@
       "statement": "At landing, `available_time.lag` fills a null availability column with valid-time `to`, else `from`, plus the duration `lag.classes` maps the row's `lag.class_column` value to, and injects `_available_imputed` true; a class without an entry leaves the instant null.",
       "why": "because a source can publish different record classes after different declared delays",
       "file": "spec/12-time.md",
-      "line": 46
+      "line": 48
     },
     {
       "id": "store.available-time.live-since",
@@ -5580,7 +5580,7 @@
       "statement": "A date-typed availability value resolves at landing to the start of the next day in the declared `zone`; rows available before `available_time.live_since`, when the source began publishing live, get injected `_available_reconstructed` true.",
       "why": "because a date gives no publication time within its day",
       "file": "spec/12-time.md",
-      "line": 48
+      "line": 50
     },
     {
       "id": "store.available-time.available-as-of",
@@ -5591,7 +5591,7 @@
       "statement": "`available_as_of` filters the inner source with `<column> <= available_as_of` under {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies them.",
       "why": "A-store#availability-declared-column, P5",
       "file": "spec/12-time.md",
-      "line": 50,
+      "line": 52,
       "scenarios": [
         "WHEN a 2026 backfill lands a first-quarter measurement with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none."
       ]
@@ -5605,7 +5605,7 @@
       "statement": "A read carrying `available_as_of` adds it, in the same instant form, to the object {{store.bound-time.echo}} returns.",
       "why": "",
       "file": "spec/12-time.md",
-      "line": 52
+      "line": 54
     },
     {
       "id": "store.available-time.undeclared",
@@ -5616,7 +5616,7 @@
       "statement": "An `available_as_of` read of a table declaring no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table; a landing row resolving to a null instant raises `StoreAvailableTimeNull`, naming the table and run.",
       "why": "because a missing availability instant either hides a backfill or leaks it to every bound",
       "file": "spec/12-time.md",
-      "line": 53
+      "line": 55
     },
     {
       "id": "store.available-time.vintage-rows",
@@ -5627,7 +5627,7 @@
       "statement": "A keyed table declaring `available_time` is a vintage table, keeping every vintage per primary key, valid-time `from` and availability instant; a read returns the latest at or before any `available_as_of`, or under `vintage = \"first\"` the earliest.",
       "why": "A-store#restatement-vintage-row, A-store#adjustment-factors-apply, A-read#join-matches-availability",
       "file": "spec/12-time.md",
-      "line": 55,
+      "line": 57,
       "scenarios": [
         "WHEN a first-quarter measurement lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3, an unbounded read returns 17016.0 before and after a fold, and `vintage = \"first\"` returns 17149.6."
       ]
@@ -5641,7 +5641,7 @@
       "statement": "A landing row whose `content_hash_column` value equals that of its key's latest vintage lands no new vintage.",
       "why": "because a re-pulled unchanged window otherwise lands a false restatement",
       "file": "spec/12-time.md",
-      "line": 57,
+      "line": 59,
       "scenarios": [
         "WHEN a re-pull lands the measurement at 17016.0 with an unchanged content hash, THEN the table still holds three measurement vintages."
       ]
@@ -5655,7 +5655,7 @@
       "statement": "A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared`, and one declaring {{store.declare.retain-rows}} raises `StoreVintageRetainRows`, at validation, naming the table.",
       "why": "because a re-pull without a hash reads as a restatement, and a row-age cutoff shrinks a past answer",
       "file": "spec/12-time.md",
-      "line": 59
+      "line": 61
     },
     {
       "id": "store.available-time.vintage-dedup-key",
@@ -5666,7 +5666,7 @@
       "statement": "A vintage table reads through {{store.declare.dedup-view}}, or {{store.bound-time.interval-rows}} under `valid_time`, and folds under {{store.declare.dedup-view}} or {{store.fold.valid-time-line}}, each adding the availability column to the key and keeping every vintage; an unclustered `valid_time` fold sorts by `from`, then primary key.",
       "why": "A-store#restatement-vintage-row, A-store#validity-interval-row, A-store#adjustment-factors-apply",
       "file": "spec/12-time.md",
-      "line": 61
+      "line": 63
     },
     {
       "id": "store.available-time.vintage-scope",
@@ -5677,7 +5677,7 @@
       "statement": "A vintage landing compares only its own keys' stored vintages, skipping row groups that text or signed-integer key bloom filters, or footer bounds on text, integer or temporal keys or temporal valid time, exclude.",
       "why": "A-store#vintage-landing-reads",
       "file": "spec/12-time.md",
-      "line": 63,
+      "line": 65,
       "scenarios": [
         "WHEN day 101 of 100 entities lands over 100 stored daily runs, THEN its comparison decodes no stored row; WHEN a revision of day 50 lands, THEN the comparison decodes only day 50's 100 rows."
       ]
@@ -5691,7 +5691,7 @@
       "statement": "`available_time.adjustment` keeps stored values raw; an `available_as_of` read multiplies each `adjust_columns` column by the product of `factor_column` vintages available by the bound, over factor rows sharing its factor-table `primary_key` values with a later valid-time `from`.",
       "why": "because applying a correction published later exposes information unavailable at an earlier read bound",
       "file": "spec/12-time.md",
-      "line": 65
+      "line": 67
     },
     {
       "id": "store.replicate.write-refused",
@@ -6387,21 +6387,32 @@
       "operation": "collect",
       "subject": "serialized",
       "kind": "behavior",
-      "statement": "On a bucket whose conditional writes span clients, collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.",
+      "statement": "Collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.",
       "why": "because a hold or a record a concurrent collect commits otherwise reaches the deletes of a collect that never read it",
       "file": "spec/16-collect.md",
       "line": 38
     },
     {
-      "id": "store.collect.repair",
+      "id": "store.collect.lease-renewed",
       "contract": "store",
       "operation": "collect",
-      "subject": "repair",
+      "subject": "lease-renewed",
       "kind": "behavior",
-      "statement": "Collect records as collected each key the manifest it first reads lists with no object behind it.",
-      "why": "because a listed key with no object stops every pull",
+      "statement": "Collect renews its lease at a fresh clock reading before its deletes and at {{store.lease.renewal}}'s interval through them, and deletes nothing more once {{store.lease.stale-fence}} answers a renewal.",
+      "why": "because a collect outliving its lease otherwise deletes beside a successor that read newer holds",
       "file": "spec/16-collect.md",
       "line": 40
+    },
+    {
+      "id": "store.collect.metadata-kept",
+      "contract": "store",
+      "operation": "collect",
+      "subject": "metadata-kept",
+      "kind": "behavior",
+      "statement": "Collect records no snapshot `_manifest.json` or `_collected.json`, pointer, `schema.json`, hold or run state, and no key a retained snapshot names, a tombstoned one included.",
+      "why": "because those keys hold the chain and the coordination state every reader walks",
+      "file": "spec/16-collect.md",
+      "line": 42
     },
     {
       "id": "store.collect.marker-first-writer",
@@ -6412,7 +6423,7 @@
       "statement": "A collect uploads `_collected.json` only where no object holds its key, and lists the bytes the bucket then holds.",
       "why": "because a losing concurrent collect overwriting a listed marker fails every pull's digest check",
       "file": "spec/16-collect.md",
-      "line": 42
+      "line": 44
     },
     {
       "id": "store.collect.generation-listed",
@@ -6423,7 +6434,7 @@
       "statement": "Collect deletes no object whose key a retained generation lists, and leaves it for a later collect.",
       "why": "because `sync pull --generation` restores a retained generation's keys at their listed digests",
       "file": "spec/16-collect.md",
-      "line": 44,
+      "line": 46,
       "scenarios": [
         "WHEN a tombstoned run is unlisted while 64 retained generations list it, THEN the collect deletes none of its objects."
       ]
@@ -6437,7 +6448,7 @@
       "statement": "`[sync] retain_generations`, default 64 generations, sets how many newest generation manifests a collect keeps, the current one included; a value of 0 fails the configuration's parse.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
-      "line": 46
+      "line": 48
     },
     {
       "id": "store.collect.generations",
@@ -6448,7 +6459,7 @@
       "statement": "Collect heals an absent copy of the read generation, then deletes every `manifests/gen-<N>.json` older than the newest {{store.collect.retain-generations}}, so a restore of one meets {{store.pull.generation-absent}}.",
       "why": "because each generation manifest lists the whole store, and a push after every run writes one per run",
       "file": "spec/16-collect.md",
-      "line": 48
+      "line": 50
     },
     {
       "id": "store.collect.shared-prefix",
@@ -6459,7 +6470,7 @@
       "statement": "While the bucket manifest names another project's key, record or control head, collect records no key as collected, deletes no generation manifest, treats every generation as retained, and reports `shared_prefix`.",
       "why": "because generation manifests belong to the prefix, and one project's `retain_generations` binds no other project's restores",
       "file": "spec/16-collect.md",
-      "line": 50
+      "line": 52
     },
     {
       "id": "store.collect.drop-first",
@@ -6470,7 +6481,7 @@
       "statement": "Collect commits a bucket manifest recording each key it unlists as collected, by the conditional replace of {{store.push.manifest-commit}}, before deleting any object, so no push lists a deleted object and a lazy read meets {{store.pull.part-collected}}.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
-      "line": 52,
+      "line": 54,
       "scenarios": [
         "WHEN an owner restoring a tombstoned run reads the manifest, a collect then commits and deletes the run's objects, and the owner's push commits, THEN the push loses its condition, re-merges, and lists no deleted object."
       ]
@@ -15818,7 +15829,7 @@
       "operation": "model",
       "subject": "hold-bucket-first",
       "kind": "behavior",
-      "statement": "On a store declaring `[sync]`, `build hold` commits the hold to the bucket before printing a receipt the bucket's copy names; a failed write undoes the local hold and fails the command.",
+      "statement": "On a store declaring `[sync]`, `build hold` commits the hold to the bucket before printing a receipt the bucket's copy names; a failed write, or a commit round meeting a collect of the build, undoes the local hold.",
       "why": "because a hold one disk alone records protects nothing from a collect elsewhere",
       "file": "spec/31-pipeline.md",
       "line": 683,
@@ -35408,6 +35419,14 @@
     [
       "store.collect.serialized",
       "store.lease.held"
+    ],
+    [
+      "store.collect.lease-renewed",
+      "store.lease.renewal"
+    ],
+    [
+      "store.collect.lease-renewed",
+      "store.lease.stale-fence"
     ],
     [
       "store.collect.generations",
@@ -64772,6 +64791,13 @@
         "name": "a_bucket_first_hold_keeps_its_build_through_a_collect",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_hold_racing_a_collect_commit_refuses",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "run.model.hold-collected": [
@@ -67425,6 +67451,15 @@
         "proved": false
       }
     ],
+    "store.collect.lease-renewed": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_collect_whose_lease_another_took_deletes_nothing",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "store.collect.manifest-kept": [
       {
         "kind": "test",
@@ -67443,20 +67478,20 @@
         "proved": false
       }
     ],
+    "store.collect.metadata-kept": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_collect_records_no_metadata_key",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "store.collect.record-stands": [
       {
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
         "name": "a_collect_unlists_first_and_deletes_once_no_retained_generation_lists_the_key",
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
-    "store.collect.repair": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-sync/tests/integration/collect.rs",
-        "name": "a_listed_key_with_no_object_is_recorded",
         "verdict": "performed",
         "proved": false
       }
@@ -67475,6 +67510,13 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
         "name": "a_recorded_key_a_retained_snapshot_names_keeps_its_object",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_hold_committed_inside_a_collects_commit_keeps_the_parts",
         "verdict": "performed",
         "proved": false
       }
@@ -69339,6 +69381,13 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
         "name": "a_copy_pushed_after_its_record_lapses_stays_out",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_push_walks_the_chain_only_back_to_its_oldest_candidate_run",
         "verdict": "performed",
         "proved": false
       }

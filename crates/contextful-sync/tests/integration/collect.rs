@@ -778,7 +778,7 @@ fn a_recorded_key_a_retained_snapshot_names_keeps_its_object() {
 }
 
 /// Collect serializes on the bucket's collect lease: a second collect refuses while one holds it.
-// spec: store.collect.serialized@fec89c2a
+// spec: store.collect.serialized@039d7b65
 #[test]
 fn a_second_collect_refuses_while_one_holds_the_lease() {
     let h = history(1);
@@ -791,20 +791,158 @@ fn a_second_collect_refuses_while_one_holds_the_lease() {
     assert!(report.superseded.dropped > 0, "{report:?}");
 }
 
-/// A key the bucket manifest lists with no object behind it is recorded as collected, so every pull converges again.
-// spec: store.collect.repair@83c4eca3
+/// Collect records no metadata key, a tombstoned one included: a hold, a schema and a snapshot manifest stay.
+// spec: store.collect.metadata-kept@39422932
 #[test]
-fn a_listed_key_with_no_object_is_recorded() {
+fn a_collect_records_no_metadata_key() {
     let h = history(1);
-    let part = "research/tables/filings/data/runs/run-3/ingest-b/part-00000.parquet";
-    assert!(manifest(h.b.as_ref()).entries.contains_key(part));
-    h.b.delete(&format!("team/{part}")).unwrap();
-    assert!(node("before", h.b.clone(), "").syncer.pull(&PullScope::default()).is_err(), "a listed key without its object stops a pull");
-    let report = h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
-    assert!(report.unlisted.dropped > 0, "{report:?}");
+    let hold = "research/tables/filings/holds/snapshot-00000000000000000009.json";
+    h.b.put(&format!("team/{hold}"), b"{}", contextful_core::store::object::Condition::None).unwrap();
+    let f1 = format!("research/tables/filings/data/snapshots/{}/_manifest.json", h.snapshots[0]);
+    let mut m = manifest(h.b.as_ref());
+    for k in [hold.to_string(), "research/tables/filings/schema.json".to_string(), f1.clone()] {
+        m.entries.remove(&k);
+        m.tombstones.insert(k, contextful_core::store::sync::Tombstone::unsigned("ingest-z", at("2030-01-10T00:00:00Z")));
+    }
+    h.b.put("team/manifest.json", &serde_json::to_vec(&m).unwrap(), contextful_core::store::object::Condition::None).unwrap();
+    h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
     let m = manifest(h.b.as_ref());
-    assert!(!m.entries.contains_key(part) && m.collected.contains_key(part));
-    node("after", h.b.clone(), "").syncer.pull(&PullScope::default()).unwrap();
+    for k in [hold, "research/tables/filings/schema.json", f1.as_str()] {
+        assert!(!m.collected.contains_key(k), "`{k}` was recorded");
+        assert!(h.b.get(&format!("team/{k}")).unwrap().is_some(), "`{k}` was deleted");
+    }
+}
+
+/// A hold whose commit round meets a collect's commit of its build refuses, and lists nothing.
+// spec: run.model.hold-bucket-first@ed65568d
+#[test]
+fn a_hold_racing_a_collect_commit_refuses() {
+    use std::sync::atomic::AtomicUsize;
+    let h = history(1);
+    let build = h.snapshots[0].clone();
+    let hold = json!({"build_id": build, "principal": "ops", "placed_at": "2030-01-11T00:00:00Z", "expires_at": "2030-02-20T00:00:00Z"}).to_string();
+    std::fs::create_dir_all(h.writer.root().join("tables/filings/holds")).unwrap();
+    std::fs::write(h.writer.root().join(format!("tables/filings/holds/{build}.json")), &hold).unwrap();
+    // The collect commits after the hold's bucket check and before the hold's commit round reads.
+    let reads = Arc::new(AtomicUsize::new(0));
+    let (seen, collector, decl) = (reads.clone(), rebucketed(&h.a, h.b.clone()), h.decl.clone());
+    let script = Script {
+        on_get: Some(Box::new(move |key| {
+            if key == "team/manifest.json" && seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                collector.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+            }
+            None
+        })),
+        ..Script::default()
+    };
+    let holding = rebucketed(&h.writer, Arc::new(Scripted { inner: h.b.clone(), script }));
+    assert!(!holding.push_hold("filings", &build, at("2030-01-11T00:00:00Z")).unwrap(), "the hold refuses");
+    let m = manifest(h.b.as_ref());
+    assert!(m.entries.contains_key(&format!("research/tables/filings/data/snapshots/{build}/_collected.json")));
+    assert!(!m.entries.contains_key(&format!("research/tables/filings/holds/{build}.json")), "the hold is not listed");
+}
+
+/// A collect whose commit round meets a hold committed after its first read deletes nothing the hold retains: its
+/// delete step answers to the reclaim of the round that committed.
+// spec: store.collect.retained-kept@c46c0379
+#[test]
+fn a_hold_committed_inside_a_collects_commit_keeps_the_parts() {
+    use std::sync::atomic::AtomicUsize;
+    let mut h = history(3);
+    let decls = std::slice::from_ref(&h.decl);
+    let f1 = format!("research/tables/filings/data/snapshots/{}/", h.snapshots[0]);
+    let parts: Vec<String> = listed(&manifest(h.b.as_ref()), &f1).into_iter().filter(|k| k.ends_with(".parquet")).collect();
+    assert!(!parts.is_empty());
+    h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, decls).unwrap();
+    h.a.syncer.config.retain_generations = NonZeroU64::new(1);
+    // A hold lands between the second collect's first read and its commit round.
+    let reads = Arc::new(AtomicUsize::new(0));
+    let (seen, inner, build) = (reads.clone(), h.b.clone(), h.snapshots[0].clone());
+    let script = Script {
+        on_get: Some(Box::new(move |key| {
+            if key == "team/manifest.json" && seen.fetch_add(1, Ordering::SeqCst) == 1 {
+                let hkey = format!("research/tables/filings/holds/{build}.json");
+                let hold = json!({"build_id": build, "principal": "ops", "placed_at": "2030-01-12T00:00:00Z", "expires_at": "2030-02-20T00:00:00Z"}).to_string();
+                inner.put(&format!("team/{hkey}"), hold.as_bytes(), contextful_core::store::object::Condition::None).unwrap();
+                let mut m: BucketManifest = serde_json::from_slice(&inner.get(key).unwrap().unwrap().0).unwrap();
+                m.entries.insert(hkey, contextful_core::store::sync::Entry { sha256: contextful_core::run::journal::sha256_hex(hold.as_bytes()), size: hold.len() as u64, owner: String::new() });
+                m.generation += 1;
+                inner.put(key, &serde_json::to_vec(&m).unwrap(), contextful_core::store::object::Condition::None).unwrap();
+            }
+            None
+        })),
+        ..Script::default()
+    };
+    let racing = rebucketed(&h.a, Arc::new(Scripted { inner: h.b.clone(), script }));
+    let report = racing.collect_declared(at("2030-01-12T00:00:00Z"), false, decls).unwrap();
+    assert!(reads.load(Ordering::SeqCst) >= 2);
+    for k in &parts {
+        assert!(h.b.get(&format!("team/{k}")).unwrap().is_some(), "`{k}` was deleted under a hold: {report:?}");
+    }
+}
+
+/// A collect renews its lease with a fresh clock before deleting; a lease another collect took past its expiry stops
+/// it without deleting anything.
+// spec: store.collect.lease-renewed@4e0904f0
+#[test]
+fn a_collect_whose_lease_another_took_deletes_nothing() {
+    use std::sync::atomic::AtomicUsize;
+    let h = history(1);
+    let f1 = format!("research/tables/filings/data/snapshots/{}/", h.snapshots[0]);
+    let parts: Vec<String> = listed(&manifest(h.b.as_ref()), &f1).into_iter().filter(|k| k.ends_with(".parquet")).collect();
+    assert!(!parts.is_empty());
+    // Eleven minutes into the collect's commit, another node takes the expired lease.
+    let reads = Arc::new(AtomicUsize::new(0));
+    let (seen, other) = (reads.clone(), rebucketed(&h.writer, h.b.clone()));
+    let script = Script {
+        on_get: Some(Box::new(move |key| {
+            if key == "team/manifest.json" && seen.fetch_add(1, Ordering::SeqCst) == 1 {
+                assert!(other.acquire_collect(at("2030-01-11T00:11:00Z")).unwrap().is_some());
+            }
+            None
+        })),
+        ..Script::default()
+    };
+    let collecting = rebucketed(&h.a, Arc::new(Scripted { inner: h.b.clone(), script }));
+    let err = collecting.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap_err();
+    assert!(err.to_string().starts_with("LeaseFenced"), "{err}");
+    assert!(parts.iter().all(|k| h.b.get(&format!("team/{k}")).unwrap().is_some()), "nothing was deleted");
+}
+
+/// A push holding a run a collect folded out reads its table's chain only back to the first snapshot created before
+/// that run committed.
+// spec: store.merge.collected-directory@d7221403
+#[test]
+fn a_push_walks_the_chain_only_back_to_its_oldest_candidate_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = node("ingest-a", b.clone(), "");
+    a.syncer.config.retain_generations = NonZeroU64::new(1);
+    let writer = node("ingest-b", b.clone(), "");
+    let decl = keyed("filings");
+    let mut snapshots = Vec::new();
+    for i in 1..=4 {
+        writer.land(&format!("run-{i}"), json!([{"id": 1, "v": i}, {"id": 10 + i}]), &format!("2030-01-01T0{i}:30:00Z"));
+        writer.syncer.push(at(&format!("2030-01-01T0{i}:30:00Z"))).unwrap();
+        a.syncer.pull(&PullScope::default()).unwrap();
+        snapshots.push(fold_at(&a, &decl, &format!("2030-01-01T0{}:00:00Z", i + 1)));
+        a.syncer.push(at(&format!("2030-01-01T0{}:00:00Z", i + 1))).unwrap();
+    }
+    a.syncer.collect_declared(at("2030-01-09T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+    // Forty days on the records lapsed; the writer pushes again, holding run-4 alone.
+    a.syncer.collect_declared(at("2030-02-20T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+    for i in 1..=3 {
+        std::fs::remove_dir_all(writer.root().join(format!("tables/filings/data/runs/run-{i}"))).unwrap();
+    }
+    let script = Script::default();
+    let watched = Arc::new(Scripted { inner: b.clone(), script });
+    let pushing = rebucketed(&writer, watched.clone());
+    pushing.push(at("2030-02-21T00:00:00Z")).unwrap();
+    let fetched = watched.script.gets.lock().unwrap().clone();
+    let manifest_of = |id: &str| format!("team/research/tables/filings/data/snapshots/{id}/_manifest.json");
+    assert!(fetched.contains(&manifest_of(&snapshots[3])) && fetched.contains(&manifest_of(&snapshots[2])), "{fetched:?}");
+    assert!(!fetched.contains(&manifest_of(&snapshots[1])) && !fetched.contains(&manifest_of(&snapshots[0])), "{fetched:?}");
+    assert!(listed(&manifest(b.as_ref()), "research/tables/filings/data/runs/run-4/").is_empty(), "run-4 stays out");
 }
 
 /// A project named by several segments collects its tables as a one-segment project does.

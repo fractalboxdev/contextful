@@ -7,7 +7,7 @@ use crate::pipeline::manifests;
 use crate::project::open_face;
 use crate::run::{site_id_for, ProjectArgs};
 use anyhow::{Context, Result};
-use contextful_context::build::{build, hold, status, write_logs, BuildRequest};
+use contextful_context::build::{build, hold_recorded, restore_hold, status, write_logs, BuildRequest};
 use contextful_context::Store;
 use contextful_core::pipeline::declare::collect;
 use contextful_core::pipeline::model::{collect_models, duration_secs, ModelSpec, Receipt};
@@ -162,23 +162,24 @@ pub fn run(args: BuildArgs) -> Result<()> {
                 }
                 renewing = s.bucket_hold_active(&id, &build_id, at)?;
             }
-            let path = store.table_dir(&id)?.join("holds").join(format!("{build_id}.json"));
-            let prior = std::fs::read(&path).ok();
-            let (receipt, record) = hold(&store, &id, &build_id, &principal, duration, at)?;
-            // A hold on a synced store reaches the bucket before it is reported, or is undone
-            // (`run.model.hold-bucket-first`).
+            let (receipt, record, prior) = hold_recorded(&store, &id, &build_id, &principal, duration, at)?;
+            // A hold on a synced store reaches the bucket before it is reported, or is undone; a
+            // commit round meeting a collect of the build refuses (`run.model.hold-bucket-first`).
             let receipt = match &synced {
-                Some(s) => {
-                    if let Err(e) = s.push_hold(&id, &build_id, at) {
-                        match prior {
-                            Some(bytes) => std::fs::write(&path, bytes).with_context(|| format!("restoring `{}`", path.display()))?,
-                            None => std::fs::remove_file(&path).with_context(|| format!("removing `{}`", path.display()))?,
-                        }
-                        write_logs(&store, &id)?;
+                Some(s) => match s.push_hold(&id, &build_id, at) {
+                    Ok(true) => if renewing { Receipt::Renewed } else { Receipt::Held },
+                    Ok(false) => {
+                        restore_hold(&store, &id, &build_id, prior)?;
+                        return Err(RunError::ModelBuildCollected(format!(
+                            "model `{id}` build `{build_id}`: a collect recorded its parts while the hold committed, so the hold is undone"
+                        ))
+                        .into());
+                    }
+                    Err(e) => {
+                        restore_hold(&store, &id, &build_id, prior)?;
                         return Err(e).context("the hold did not reach the bucket, so it is undone");
                     }
-                    if renewing { Receipt::Renewed } else { Receipt::Held }
-                }
+                },
                 None => receipt,
             };
             let word = match receipt {
