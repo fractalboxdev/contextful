@@ -529,8 +529,9 @@ fn a_run_only_an_unpublished_snapshot_folds_stays() {
 }
 
 /// Local retention on a synced store writes no `_collected.json` and its push lists none, so another node pulling
-/// the snapshot reads it `as_of`; once a bucket collect lists the marker, that node's pull brings it down and the
-/// read refuses. A pull bringing the parts home again lets the retaining node read the snapshot.
+/// the snapshot does not count it collected, and a pull bringing the parts home stops the retaining node counting
+/// it collected; a bound needing the runs the owner's retention removed still refuses on both. Once a bucket
+/// collect lists the marker, a pull brings it down.
 // spec: store.fold.collected-snapshot@bc6b164e
 #[test]
 fn only_a_bucket_collect_marks_a_snapshot_collected() {
@@ -562,11 +563,14 @@ fn only_a_bucket_collect_marks_a_snapshot_collected() {
     reader.syncer.pull(&PullScope::default()).unwrap();
     assert!(!reader.syncer.store.snapshot_collected("filings", &first).unwrap());
     // The bound still refuses there: the run the next snapshot folds left the bucket by its owner's retention.
+    let err = contextful_context::scan::scan(&reader.syncer.store, &decl, bound).unwrap_err().to_string();
+    assert!(err.starts_with("StoreAsOfUnretained"), "{err}");
 
     // The retaining node's pull brings the parts home again.
     a.syncer.pull(&PullScope::default()).unwrap();
     assert!(!a.syncer.store.snapshot_collected("filings", &first).unwrap());
-
+    let err = contextful_context::scan::scan(&a.syncer.store, &decl, bound).unwrap_err().to_string();
+    assert!(err.starts_with("StoreAsOfUnretained"), "{err}");
 
     a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
     assert!(manifest(b.as_ref()).entries.contains_key(&format!("{f1}_collected.json")));

@@ -675,7 +675,7 @@ fn a_lazy_pull_skips_no_manifest_its_own_node_wrote() {
 }
 
 /// An eager pull after a lazy one brings every skipped manifest home and leaves no record.
-// spec: store.pull.skipped-record@cd5a2cd0
+// spec: store.pull.skipped-record@ed0644af
 #[test]
 fn an_eager_pull_clears_the_skipped_runs_record() {
     let dir = tempfile::tempdir().unwrap();
@@ -693,7 +693,7 @@ fn an_eager_pull_clears_the_skipped_runs_record() {
 /// Once a collect takes a folded run a lazy pull skipped, an unbounded listing leaves it out, an `as_of` read
 /// needing it refuses, and a pull scoped to another table drops it from the record.
 // spec: store.pull.folded-run-collected@64b3b1b8
-// spec: store.pull.skipped-record@cd5a2cd0
+// spec: store.pull.skipped-record@ed0644af
 #[test]
 fn a_listing_leaves_out_skipped_runs_a_collect_took() {
     use contextful_core::store::bound_time::{Bound, Bounds};
@@ -726,6 +726,35 @@ fn a_listing_leaves_out_skipped_runs_a_collect_took() {
     cold.syncer.pull(&scope).unwrap();
     let kept: SkippedRuns = std::fs::read(&record).ok().map(|b| serde_json::from_slice(&b).unwrap()).unwrap_or_default();
     assert_eq!(kept.manifests.iter().filter(|m| m.contains("/run-9/")).count(), 0, "the record names no manifest a collect took");
+}
+
+/// A generation restore scoped to one table keeps the skipped entries of every other table: the generation's listing
+/// is not the live bucket's.
+// spec: store.pull.skipped-record@ed0644af
+#[test]
+fn a_scoped_restore_keeps_other_tables_skipped_entries() {
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = pushed(b.clone(), 3);
+    contextful_context::fold::fold(&a.syncer.store, &TableDecl::named("filings"), at("2030-01-02T00:00:00Z")).unwrap();
+    a.land_into("orders", "run-1", json!([{ "id": 1 }]), "2030-01-02T00:00:00Z");
+    a.syncer.push(at("2030-01-02T00:30:00Z")).unwrap();
+    let restored = listed(&b).generation;
+    // run-9 lands and folds into the bucket's head after that generation, which never lists it.
+    a.land("run-9", json!([{ "id": 9, "title": "t9" }]), "2030-01-02T01:00:00Z");
+    a.syncer.push(at("2030-01-02T01:00:00Z")).unwrap();
+    contextful_context::fold::fold(&a.syncer.store, &TableDecl::named("filings"), at("2030-01-02T02:00:00Z")).unwrap();
+    a.syncer.push(at("2030-01-02T02:00:00Z")).unwrap();
+    let cold = lazy(b.clone(), None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let record = cold.root().join(SKIPPED_RUNS_FILE);
+    let before: SkippedRuns = serde_json::from_slice(&std::fs::read(&record).unwrap()).unwrap();
+    assert!(before.manifests.iter().any(|m| m.contains("/run-9/")), "{:?}", before.manifests);
+    let scope = PullScope { tables: vec![contextful_core::grant::TablePattern::parse("orders").unwrap()], generation: Some(restored), ..PullScope::default() };
+    cold.syncer.pull(&scope).unwrap();
+    let after: SkippedRuns = serde_json::from_slice(&std::fs::read(&record).unwrap()).unwrap();
+    assert!(after.manifests.iter().any(|m| m.contains("/run-9/")), "the restore keeps run-9's entry: {:?}", after.manifests);
 }
 
 /// On a lazy store, a bounded read inside the window leaves out a skipped manifest a collect reclaimed whose run a

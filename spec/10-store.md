@@ -337,7 +337,7 @@ Compaction passes, their triggers and retention, and snapshot publication throug
 - `partial-snapshot` — A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.
   *P4*
 - `lost-pointer` — If a pointer replacement loses its condition, the pass publishes nothing. Collection removes the staged snapshot.
-- `group-marker` — Collection keeps a folded run's `_group.json` while a member table holding a copy of that run folds it in no snapshot created `retain_runs` ago, and removes it once every member does.
+- `group-marker` — Collection keeps a folded run's `_group.json` while a member table other than the root still holds its copy of that run, which the member's own retention removes, and removes the marker once none does.
   *because a member run reads as committed only beside its group root's marker, an `as_of` read inside the window included*
 - `staging-collected` — The next pass collects staging directories and snapshot directories unreachable through any pointer chain. Reads exclude these directories.
 - `non-blocking` — A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.
@@ -672,7 +672,7 @@ A lazy store pulls metadata and fetches each data part and folded run manifest w
   *A-store#folded-runs-on-demand*
 - `lazy-folded-runs` — Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.
   *A-store#folded-runs-on-demand*
-- `skipped-record` — Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it; an empty record leaves no file.
+- `skipped-record` — Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.
   *because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone*
 - `folded-runs-fetched` — Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.
   *A-store#folded-runs-on-demand*
