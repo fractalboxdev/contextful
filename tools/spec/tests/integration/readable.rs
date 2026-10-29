@@ -116,10 +116,14 @@ fn a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding() {
 #[test]
 fn a_guide_over_its_length_or_off_its_title_is_a_guide_finding() {
     let s = Scratch::copy();
+    let fragment: toml::Table = toml::from_str(&s.read("spec/terms/store.toml")).unwrap();
+    let operations = fragment["operation"].as_table().expect("the store's operations").len();
+    assert!(operations > 0);
+    let cap = 400 + 20 * operations;
     let text = s.read(GUIDE).replacen("# The store and its sync", "# The store", 1);
-    s.write(GUIDE, &format!("{text}\n{}\n", "word ".repeat(700)));
+    s.write(GUIDE, &format!("{text}\n{}\n", "word ".repeat(cap + 1)));
     let found = codes(&s.lint("guide"), "SpecGuide");
-    assert!(found.iter().any(|m| m.contains("exceed 800")), "{found:?}");
+    assert!(found.iter().any(|m| m.ends_with(&format!(" words exceed {cap}"))), "{found:?}");
     assert!(found.iter().any(|m| m.contains("differs from registry")), "{found:?}");
 }
 
