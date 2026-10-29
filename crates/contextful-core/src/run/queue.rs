@@ -51,6 +51,10 @@ pub enum QueueMessage {
         /// (`run.land.receive-queued-window`).
         queued_at: i64,
         body: BodyRef,
+        /// The route span the delivery queued under, which the runs landing it continue
+        /// (`disclosure.record.queued-parent`); `None` lands under the consumer's trace.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trace: Option<crate::trace::Carrier>,
     },
     /// An object created in `bucket` at `key`: a hint that wakes the prefix reads covering
     /// it (`run.land.object-arrival-wake`).

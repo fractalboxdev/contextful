@@ -31,10 +31,13 @@ impl Receiver {
     /// Queue an admitted delivery's `body` under `key` and answer the receipt
     /// (`run.land.receive-queued`, `run.land.receive-queued-spill`). The key window opens
     /// now (`run.land.receive-queued-window`); the queue slot frees once the message is sent.
+    /// The message carries the route span the delivery arrived under
+    /// (`disclosure.record.queued-parent`).
     pub(super) fn enqueue(&self, admitted: Admitted, key: &str, credential: Option<&str>, body: &[u8]) -> Result<Value> {
         let queued_at = admitted.wired.clock.now().unix_secs();
         let port = crate::queue::Port::open(&self.l)?;
-        port.with(|queue, bodies| enqueue(queue, bodies, &self.spec.id, key, credential, queued_at, body))?;
+        let trace = self.trace.as_ref().map(contextful_core::trace::Carrier::of);
+        port.with(|queue, bodies| enqueue(queue, bodies, &self.spec.id, key, credential, queued_at, trace.as_ref(), body))?;
         Ok(json!({
             "pipeline": self.spec.id,
             "key": key,
@@ -109,7 +112,8 @@ impl Receiver {
             Err(e) => return Ok(Err(e.to_string())),
         };
         let credential = author.as_ref().map(|a| a.authority().credential_id().to_string());
-        Ok(Ok((Spooled { id: spool_id(credential.as_deref()), key: key.clone(), credential, bytes: body.len() as u64, tables }, author)))
+        let trace = batch.trace.as_ref().and_then(contextful_core::trace::Carrier::context);
+        Ok(Ok((Spooled { id: spool_id(credential.as_deref()), key: key.clone(), credential, bytes: body.len() as u64, tables, trace }, author)))
     }
 
     /// Land the admitted `members` of one credential as groups of at most `max_queue_depth`

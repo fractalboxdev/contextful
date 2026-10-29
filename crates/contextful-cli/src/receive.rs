@@ -276,7 +276,7 @@ impl Receiver {
             Err(e) => return Ok(Err(Refusal::final_(e))),
         };
         let credential = author.as_ref().map(|a| a.authority().credential_id().to_string());
-        let member = Spooled { id: spool_id(credential.as_deref()), key: key.to_string(), credential, bytes: body.len() as u64, tables };
+        let member = Spooled { id: spool_id(credential.as_deref()), key: key.to_string(), credential, bytes: body.len() as u64, tables, trace: None };
         let spool = self.spool();
         member.write(&spool)?;
         note(&format!("{}: batch `{key}` spooled; waiting for the land lock", self.spec.id));
@@ -459,8 +459,9 @@ impl Receiver {
                     }
                 }
             };
-            let mut land = |run_id: String, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>| -> Landing {
-                let landing = self.land_table(w, &mut dest, t.name(), &table, &artifact, &run_id, key, keys, rows);
+            // A run continues its first member's queued route span (`disclosure.record.queued-parent`).
+            let mut land = |run_id: String, member: &Spooled, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>| -> Landing {
+                let landing = self.land_table(w, &mut dest, member.trace.as_ref(), t.name(), &table, &artifact, &run_id, key, keys, rows);
                 opened |= landing.opened;
                 if landing.opened {
                     attempted.push(landing.run_id.clone());
@@ -469,18 +470,18 @@ impl Receiver {
             };
             if !grouped {
                 let i = pending[0].0;
-                let landing = land(next, &key, None, members[i].tables[t.name()].clone());
+                let landing = land(next, &members[i], &key, None, members[i].tables[t.name()].clone());
                 landing.answer(&table, &mut tables[i], &mut failed[i], None);
                 continue;
             }
             let group = key;
             let keys: Vec<String> = pending.iter().map(|(i, _)| members[*i].key.clone()).collect();
             let rows: Vec<_> = pending.iter().flat_map(|(i, _)| members[*i].tables[t.name()].iter().cloned()).collect();
-            let landing = land(next, &group, Some(keys), rows);
+            let landing = land(next, &members[pending[0].0], &group, Some(keys), rows);
             if matches!(landing.result, Err(false)) {
                 // A failure that does not retry lands each member alone (`run.land.receive-group`).
                 for (i, next) in &pending {
-                    let alone = land(next.clone(), &members[*i].key, None, members[*i].tables[t.name()].clone());
+                    let alone = land(next.clone(), &members[*i], &members[*i].key, None, members[*i].tables[t.name()].clone());
                     alone.answer(&table, &mut tables[*i], &mut failed[*i], None);
                 }
                 continue;
@@ -561,11 +562,12 @@ impl Receiver {
     }
 
     /// Land `rows` of table `name` as run `run_id` under batch `key`: alone, or for the
-    /// member `keys` of a group.
+    /// member `keys` of a group. The run continues `queued`, a queued member's route span,
+    /// else the served delivery's, else the process's trace.
     #[allow(clippy::too_many_arguments)]
-    fn land_table(&self, w: &Wired, dest: &mut StoreDestination, name: &str, table: &str, artifact: &str, run_id: &str, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>) -> Landing {
+    fn land_table(&self, w: &Wired, dest: &mut StoreDestination, queued: Option<&contextful_core::trace::TraceContext>, name: &str, table: &str, artifact: &str, run_id: &str, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>) -> Landing {
         let spec = &self.spec;
-        let trace = match &self.trace {
+        let trace = match queued.or(self.trace.as_ref()) {
             Some(caller) => crate::telemetry::RunTrace::under(Some(caller)),
             None => crate::telemetry::RunTrace::open(),
         };
@@ -697,6 +699,10 @@ struct Spooled {
     credential: Option<String>,
     bytes: u64,
     tables: std::collections::BTreeMap<String, Vec<contextful_core::run::ports::Row>>,
+    /// A queued member's route span, which the runs landing it continue
+    /// (`disclosure.record.queued-parent`); a spooled member lands under its leader's trace.
+    #[serde(skip)]
+    trace: Option<contextful_core::trace::TraceContext>,
 }
 
 impl Spooled {

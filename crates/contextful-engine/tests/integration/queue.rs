@@ -3,6 +3,7 @@
 
 use contextful_core::run::queue::{BodyRef, BodyStore, Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
+use contextful_core::trace::Carrier;
 use contextful_engine::queue::{drain, enqueue, Batch, Drained, LocalSpool, MemoryQueue, Wake, SPOOL_MESSAGE_CAP};
 use std::collections::BTreeSet;
 
@@ -15,7 +16,7 @@ fn arrival(key: &str) -> QueueMessage {
 }
 
 fn batch(key: &str) -> QueueMessage {
-    QueueMessage::Receive { pipeline: "events".into(), batch_key: key.into(), credential: None, queued_at: 1_900_000_000, body: BodyRef::Inline { body: format!("{key}\n").into_bytes() } }
+    QueueMessage::Receive { pipeline: "events".into(), batch_key: key.into(), credential: None, queued_at: 1_900_000_000, body: BodyRef::Inline { body: format!("{key}\n").into_bytes() }, trace: None }
 }
 
 #[test]
@@ -181,8 +182,8 @@ fn a_body_past_the_cap_spills_and_leaves_once_its_outcome_records() {
     assert_eq!(spool.message_cap(), SPOOL_MESSAGE_CAP);
     let small = b"{\"id\":1}\n".to_vec();
     let big = vec![b'x'; SPOOL_MESSAGE_CAP];
-    enqueue(&spool, &spool, "events", "small", Some("token-1"), 7, &small).unwrap();
-    enqueue(&spool, &spool, "events", "big", Some("token-1"), 7, &big).unwrap();
+    enqueue(&spool, &spool, "events", "small", Some("token-1"), 7, None, &small).unwrap();
+    enqueue(&spool, &spool, "events", "big", Some("token-1"), 7, None, &big).unwrap();
     let pending = spool.receive(10).unwrap();
     let spilled: Vec<String> = pending
         .iter()
@@ -208,4 +209,20 @@ fn a_body_past_the_cap_spills_and_leaves_once_its_outcome_records() {
     let mut again = Woken::default();
     drain(&spool, &spool, 10, &mut again).unwrap();
     assert_eq!(again.batches[0].body, None);
+}
+
+/// A batch queued under a trace carrier hands the consumer that carrier, its body inline or spilled; one queued
+/// without a carrier hands none.
+#[test]
+fn a_queued_batch_hands_its_consumer_the_trace_carrier_it_queued_under() {
+    let dir = tempfile::tempdir().unwrap();
+    let spool = LocalSpool::open(dir.path()).unwrap();
+    let carrier = Carrier { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".into(), tracestate: Some("vendor=1".into()) };
+    enqueue(&spool, &spool, "events", "small", None, 7, Some(&carrier), b"{\"id\":1}\n").unwrap();
+    enqueue(&spool, &spool, "events", "big", None, 7, Some(&carrier), &vec![b'x'; SPOOL_MESSAGE_CAP]).unwrap();
+    enqueue(&spool, &spool, "events", "untraced", None, 7, None, b"{\"id\":2}\n").unwrap();
+    let mut woken = Woken::default();
+    assert_eq!(drain(&spool, &spool, 10, &mut woken).unwrap().batches, 3);
+    let traces: Vec<(&str, Option<&Carrier>)> = woken.batches.iter().map(|b| (b.batch_key.as_str(), b.trace.as_ref())).collect();
+    assert_eq!(traces, [("small", Some(&carrier)), ("big", Some(&carrier)), ("untraced", None)]);
 }

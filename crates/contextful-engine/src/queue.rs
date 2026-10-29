@@ -10,6 +10,7 @@ use crate::fsutil::{replace, FileLock};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::queue::{BodyRef, BodyStore, Delivery, Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
+use contextful_core::trace::Carrier;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -223,20 +224,25 @@ pub struct Batch {
     pub credential: Option<String>,
     pub queued_at: i64,
     pub body: Option<Vec<u8>>,
+    /// The route span the batch queued under (`disclosure.record.queued-parent`).
+    pub trace: Option<Carrier>,
 }
 
 /// Queue `body` as a `receive` batch (`run.land.receive-queued-spill`): inline when the
 /// message fits the queue's cap, else written to `bodies` under the batch key first and
-/// referenced.
-pub fn enqueue(queue: &dyn Queue, bodies: &dyn BodyStore, pipeline: &str, batch_key: &str, credential: Option<&str>, queued_at: i64, body: &[u8]) -> Result<(), Failure> {
+/// referenced. The message carries `trace`, the route span's W3C carriers alone
+/// (`disclosure.record.queued-content`).
+#[allow(clippy::too_many_arguments)]
+pub fn enqueue(queue: &dyn Queue, bodies: &dyn BodyStore, pipeline: &str, batch_key: &str, credential: Option<&str>, queued_at: i64, trace: Option<&Carrier>, body: &[u8]) -> Result<(), Failure> {
     let credential = credential.map(|c| contextful_core::run::queue::Credential(c.to_string()));
-    let inline = QueueMessage::Receive { pipeline: pipeline.into(), batch_key: batch_key.into(), credential: credential.clone(), queued_at, body: BodyRef::Inline { body: body.to_vec() } };
+    let trace = trace.cloned();
+    let inline = QueueMessage::Receive { pipeline: pipeline.into(), batch_key: batch_key.into(), credential: credential.clone(), queued_at, body: BodyRef::Inline { body: body.to_vec() }, trace: trace.clone() };
     if inline.encoded_len() <= queue.message_cap() {
         return queue.send(&inline);
     }
     let key = spill_key(pipeline, batch_key);
     bodies.put(&key, body)?;
-    queue.send(&QueueMessage::Receive { pipeline: pipeline.into(), batch_key: batch_key.into(), credential, queued_at, body: BodyRef::Spilled { key } })
+    queue.send(&QueueMessage::Receive { pipeline: pipeline.into(), batch_key: batch_key.into(), credential, queued_at, body: BodyRef::Spilled { key }, trace })
 }
 
 /// The key a spilled body sits under: its pipeline and batch key, so a resend overwrites it.
@@ -295,7 +301,7 @@ pub fn drain(queue: &dyn Queue, bodies: &dyn BodyStore, max: usize, wake: &mut d
                 objects.insert((bucket, key));
                 arrivals.push(d.receipt);
             }
-            QueueMessage::Receive { pipeline, batch_key, credential, queued_at, body } => {
+            QueueMessage::Receive { pipeline, batch_key, credential, queued_at, body, trace } => {
                 let (spill, body) = match body {
                     BodyRef::Inline { body } => (None, Ok(Some(body))),
                     BodyRef::Spilled { key } => {
@@ -304,7 +310,7 @@ pub fn drain(queue: &dyn Queue, bodies: &dyn BodyStore, max: usize, wake: &mut d
                     }
                 };
                 match body {
-                    Ok(body) => queued.push((d.receipt, spill, Batch { pipeline, batch_key, credential: credential.map(|c| c.0), queued_at, body })),
+                    Ok(body) => queued.push((d.receipt, spill, Batch { pipeline, batch_key, credential: credential.map(|c| c.0), queued_at, body, trace })),
                     Err(f) => {
                         left += 1;
                         failed.get_or_insert(f);
