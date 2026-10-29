@@ -1039,6 +1039,7 @@ fn a_push_reads_the_index_instead_of_walking_the_chain() {
     let fetched = watched.script.gets.lock().unwrap().clone();
     let manifest_of = |id: &str| format!("team/research/tables/filings/data/snapshots/{id}/_manifest.json");
     assert!(fetched.contains(&manifest_of(&snapshots[3])), "{fetched:?}");
+    assert!(!snapshots[..3].is_empty());
     assert!(snapshots[..3].iter().all(|s| !fetched.contains(&manifest_of(s))), "{fetched:?}");
     assert!(listed(&manifest(b.as_ref()), "research/tables/filings/data/runs/run-4/").is_empty(), "run-4 stays out");
 }

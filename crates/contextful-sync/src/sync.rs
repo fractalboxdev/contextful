@@ -1647,7 +1647,7 @@ impl Syncer {
                 let leaves = |k: &str| husk_of(k).is_some_and(|t| covered.contains(&t)) && self.local_path(k).is_some_and(|p| !p.exists());
                 let needed: Vec<(&String, &Entry)> = husks.iter().filter(|(k, _)| !leaves(k)).copied().collect();
                 husks_left = husks.iter().filter(|(k, _)| leaves(k)).map(|(k, _)| (*k).clone()).collect();
-                let mut came = each(width, &needed, &fetch)?.into_iter();
+                let mut came = each(width, &needed, fetch)?.into_iter();
                 for (k, _) in &husks {
                     first.push(if husks_left.contains(*k) { Fetched::Kept } else { came.next().unwrap_or(Fetched::Kept) });
                 }
