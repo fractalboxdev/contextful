@@ -1694,15 +1694,24 @@ impl Syncer {
                     continue;
                 }
                 let ahead = (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id);
-                if generation.is_none() && ahead {
-                    // A local pointer ahead of the bucket's stays only on a snapshot descending from
-                    // the bucket's; any other misses the runs the bucket's head folded
-                    // (`store.pull.pointer-adopt`).
-                    let local = h.snapshot_id.to_string();
-                    if h.snapshot_id == snapshot_id || matches!(ancestry(&self.store, &table_dir, &local, &snapshot), Ancestry::Descends) {
+                let local = h.snapshot_id.to_string();
+                if generation.is_none() && h.snapshot_id == snapshot_id {
+                    if ahead {
                         continue;
                     }
-                    adopting = Some(local);
+                } else if generation.is_none() {
+                    // A local pointer behind on the bucket's own chain advances plainly. Any other,
+                    // whatever its fence, stays on a snapshot descending from the bucket's while ahead,
+                    // and is otherwise replaced only once its branch's runs are recoverable
+                    // (`store.pull.pointer-adopt`).
+                    let behind = matches!(ancestry(&self.store, &table_dir, &snapshot, &local), Ancestry::Descends);
+                    let descends = !behind && matches!(ancestry(&self.store, &table_dir, &local, &snapshot), Ancestry::Descends);
+                    if ahead && descends {
+                        continue;
+                    }
+                    if !behind {
+                        adopting = Some(local);
+                    }
                 }
             }
             // A lazy store advances a pointer once its snapshot manifest is home; its parts follow on first read.

@@ -4844,7 +4844,7 @@
       "operation": "pull",
       "subject": "pointer-advance",
       "kind": "behavior",
-      "statement": "Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.",
+      "statement": "Pull advances a local pointer whose snapshot the bucket pointer's chain names, keeping one on the same snapshot at a higher fence, and replaces any other only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.",
       "why": "A-store#replica-read-whole",
       "file": "spec/10-store.md",
       "line": 625
@@ -4855,7 +4855,7 @@
       "operation": "pull",
       "subject": "pointer-adopt",
       "kind": "behavior",
-      "statement": "Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot, whatever its fence, and warns, once {{store.pull.local-fold-unrecoverable}} admits its branch, so the branch's runs fold again against the bucket's head.",
+      "statement": "Pull replaces a local pointer the bucket pointer's chain does not name, whatever its fence, save one ahead whose ancestry names the bucket pointer's snapshot, and warns once {{store.pull.local-fold-unrecoverable}} admits its branch.",
       "why": "because a fold outside a lease writes no fence, and a local snapshot off the bucket's chain misses every run the bucket's head folded",
       "file": "spec/10-store.md",
       "line": 627
@@ -69419,6 +69419,13 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/converge.rs",
         "name": "a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/converge.rs",
+        "name": "a_fenceless_local_fold_behind_a_leased_head_still_meets_the_recoverability_check",
         "verdict": "performed",
         "proved": false
       }

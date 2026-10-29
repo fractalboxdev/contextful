@@ -259,7 +259,7 @@ fn local_pointer(n: &crate::support::Node) -> String {
 /// Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot,
 /// whatever its fence, and warns, once every run its branch folds is on disk, listed in the bucket or folded on
 /// the bucket's chain, so those runs fold again against the bucket's head.
-// spec: store.pull.pointer-adopt@189469ea
+// spec: store.pull.pointer-adopt@e20613e9
 #[test]
 fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
     let (_dir, _a, c, head) = while_away();
@@ -325,9 +325,44 @@ fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
     snapshot_id
 }
 
+/// A local fold without a fence reads as behind a leased bucket head, yet its branch still meets
+/// {{store.pull.local-fold-unrecoverable}}: a pull keeps it when retention removed the runs it folds, while a
+/// pointer merely behind on the bucket's own chain advances without a warning.
+// spec: store.pull.pointer-adopt@e20613e9
+#[test]
+fn a_fenceless_local_fold_behind_a_leased_head_still_meets_the_recoverability_check() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c, d) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""), node("ingest-d", b.clone(), ""));
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    let first = publish(&a, "filings", NOW);
+    d.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(local_pointer(&d), first);
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T02:00:00Z");
+    a.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    let head = publish(&a, "filings", "2030-01-01T03:00:00Z");
+
+    // D sits behind on the bucket's own chain: a plain advance.
+    let report = d.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(local_pointer(&d), head);
+    assert!(report.discarded.is_empty(), "{:?}", report.discarded);
+
+    // C never pulled; it folds run-3 without a lease, then retention removes run-3.
+    c.land("run-3", json!([{"id": 3}]), "2030-01-01T04:00:00Z");
+    let local = folded(&c, "2030-01-01T05:00:00Z");
+    contextful_context::fold::collect(&c.syncer.store, &TableDecl::named("filings"), at("2030-01-20T00:00:00Z")).unwrap();
+    assert!(!c.root().join("tables/filings/data/runs/run-3").exists());
+    let held: serde_json::Value = serde_json::from_slice(&std::fs::read(c.root().join("tables/filings/_pointer.json")).unwrap()).unwrap();
+    assert!(held["fence"].is_null(), "{held}");
+    let err = c.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(matches!(&err, SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(m)) if m.contains("run-3/ingest-b")), "{err}");
+    assert_eq!(local_pointer(&c), local, "the local pointer stays");
+}
+
 /// Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only
 /// under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
-// spec: store.pull.pointer-advance@35d3c46c
+// spec: store.pull.pointer-advance@2d870999
 #[test]
 fn a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies() {
     let dir = tempfile::tempdir().unwrap();
