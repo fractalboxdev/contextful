@@ -795,6 +795,38 @@ fn a_second_collect_refuses_while_one_holds_the_lease() {
     assert!(report.superseded.dropped > 0, "{report:?}");
 }
 
+/// Collect keeps a folded-runs segment a retained snapshot carries from a snapshot it reclaims, so a reader still stops
+/// at the head's index.
+// spec: store.fold.reference-retention@44e6f5f5
+#[test]
+fn a_collect_keeps_a_carried_folded_runs_segment() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = node("ingest-a", b.clone(), "");
+    a.syncer.config.retain_generations = NonZeroU64::new(1);
+    let decl = keyed("filings");
+    // F1 folds enough runs to flush its index into a segment its successors carry.
+    for i in 0..70 {
+        a.land(&format!("run-{i:03}"), json!([{"id": i}]), T0);
+    }
+    let f1 = fold_at(&a, &decl, "2030-01-01T01:00:00Z");
+    a.syncer.push(at("2030-01-01T01:00:00Z")).unwrap();
+    for (run, landed, folded) in [("run-a", "2030-01-01T02:00:00Z", "2030-01-01T03:00:00Z"), ("run-b", "2030-01-10T00:00:00Z", "2030-01-10T01:00:00Z")] {
+        a.land(run, json!([{"id": 100}]), landed);
+        fold_at(&a, &decl, folded);
+        a.syncer.push(at(folded)).unwrap();
+    }
+    let segment = format!("research/tables/filings/data/snapshots/{f1}/folded/segment-00000.runs");
+    assert!(manifest(b.as_ref()).entries.contains_key(&segment), "F1 flushed a segment");
+    let report = a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+    assert!(manifest(b.as_ref()).entries.contains_key(&format!("research/tables/filings/data/snapshots/{f1}/_collected.json")), "F1 is reclaimed: {report:?}");
+    assert!(manifest(b.as_ref()).entries.contains_key(&segment) && b.get(&format!("team/{segment}")).unwrap().is_some(), "the carried segment stays");
+    let cold = node("reader", b.clone(), "");
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let state = cold.syncer.store.state(&decl).unwrap();
+    assert_eq!(state.index.as_ref().map(|ix| ix.at), Some(0), "the head's index reads valid");
+}
+
 /// Collect records no metadata key, a tombstoned one included: a hold, a schema and a snapshot manifest stay.
 // spec: store.collect.metadata-kept@39422932
 #[test]

@@ -241,7 +241,7 @@ fn format_of(path: &std::path::Path) -> serde_json::Value {
 
 /// Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.0` for snapshots referencing parts or
 /// segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
-// spec: store.lay-out.format-version@d4995730
+// spec: store.lay-out.format-version@27a89fb7
 #[test]
 fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     let f = Fixture::new();
@@ -252,15 +252,15 @@ fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     let (chain, _) = f.store.chain("filings").unwrap();
     let snap_manifest = f.store.snapshot_dir("filings", &chain[0].snapshot_id).unwrap().join("_manifest.json");
-    assert_eq!(format_of(&snap_manifest), json!("1.0"));
+    assert_eq!(format_of(&snap_manifest), json!("2.1"), "a snapshot carrying its folded-runs index declares 2.1");
 
-    // The next pass carries the first snapshot's part by reference, under 2.0.
+    // The next pass carries the first snapshot's part by reference, and its index, under 2.1.
     f.land(&d, "run-2", json!([{"id": "b"}]), "2030-01-01T02:00:00Z").unwrap();
     fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
     let (later, _) = f.store.chain("filings").unwrap();
     assert!(later[0].parts.iter().any(|p| p.origin.is_some()));
     let carrying = f.store.snapshot_dir("filings", &later[0].snapshot_id).unwrap().join("_manifest.json");
-    assert_eq!(format_of(&carrying), json!("2.0"));
+    assert_eq!(format_of(&carrying), json!("2.1"));
     assert_eq!(format_of(&f.table_dir("filings").join("data/runs/run-2/ingest-a/_manifest.json")), json!("1.0"));
 
     // An absent version reads as 1.0; a newer minor, with a field this build does not know, reads too.
@@ -311,7 +311,7 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
 
 /// A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the
 /// next pass references those parts under `2.0`, rewriting no manifest in place.
-// spec: store.lay-out.format-migrate@8a09eb9b
+// spec: store.lay-out.format-migrate@6e6fb26d
 #[test]
 fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {
     let f = Fixture::new();
@@ -333,7 +333,7 @@ fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {
     f.land(&d, "run-2", json!([{"id": "d", "day": "d2"}]), "2030-01-01T02:00:00Z").unwrap();
     fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
     let (chain, _) = f.store.chain("filings").unwrap();
-    assert_eq!(chain[0].format_version.to_string(), "2.0");
+    assert_eq!(chain[0].format_version.to_string(), "2.1");
     let carried: Vec<_> = chain[0].parts.iter().filter(|p| p.origin.as_ref() == Some(&chain[1].snapshot_id)).map(|p| (p.partition().to_string(), p.rows)).collect();
     assert_eq!(carried, [("day=d1".to_string(), Some(1)), ("day=d2".to_string(), Some(2))]);
     assert_eq!(chain[0].row_count, 4);

@@ -38,6 +38,7 @@ fn state() -> TableState {
         chain: vec![s1, s0],
         history_collected: false,
         collected: Default::default(),
+        index: None,
     }
 }
 

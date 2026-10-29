@@ -2,6 +2,7 @@
 //! omits into a new snapshot, then publishes it by a version-checked pointer replace.
 
 mod carry;
+pub(crate) mod folded;
 mod merge;
 
 use crate::error::{ContextError, IoPath, Result};
@@ -242,7 +243,9 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
             fence,
             commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
             publish: None,
+            folded_runs: None,
         };
+        let manifest = with_folded_index(store, &state, &unfolded_runs, &out.staging, manifest)?;
         let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
         store.metadata().write(&out.staging.join(MANIFEST_FILE), &bytes)?;
         return Ok(Prepared::Staged(Box::new(Staged {
@@ -373,7 +376,9 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         fence,
         commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
         publish: None,
+        folded_runs: None,
     };
+    let manifest = with_folded_index(store, &state, &unfolded_runs, &staging, manifest)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     store.metadata().write(&staging.join(MANIFEST_FILE), &bytes)?;
     Ok(Prepared::Staged(Box::new(Staged {
@@ -387,6 +392,16 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         built,
         _in_flight: Some(std::sync::Arc::new(in_flight)),
     })))
+}
+
+/// `manifest` with the folded-runs index a pass writes beside it, declaring `2.1` when it carries
+/// one (`store.fold.folded-index`, `store.lay-out.format-version`).
+fn with_folded_index(store: &Store, state: &contextful_core::store::resolve::TableState, unfolded: &[&RunManifest], staging: &std::path::Path, mut manifest: SnapshotManifest) -> Result<SnapshotManifest> {
+    manifest.folded_runs = folded::write(store, state, &manifest.snapshot_id, unfolded, staging)?;
+    if manifest.folded_runs.is_some() {
+        manifest.format_version = manifest.format_version.max(contextful_core::store::lay_out::FormatVersion::FOLDED_INDEX);
+    }
+    Ok(manifest)
 }
 
 /// A whole part whose exact footer maximum precedes the cutoff needs no row read.
@@ -563,6 +578,12 @@ fn referenced<'a>(survivors: impl IntoIterator<Item = &'a SnapshotManifest>) -> 
             let Some(path) = index.path() else { continue };
             for segment in index.segments() {
                 keep.entry(segment.snapshot_id.clone()).or_default().push(path.to_string());
+            }
+        }
+        // A folded-runs segment a survivor carries stays at its origin (`store.fold.folded-index`).
+        for segment in s.folded_runs.iter().flat_map(|f| &f.segments) {
+            if let Some(origin) = &segment.origin {
+                keep.entry(origin.to_string()).or_default().push(segment.name.clone());
             }
         }
     }

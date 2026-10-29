@@ -121,6 +121,7 @@ fn snapshot(created: &str, parent: Option<&SnapshotId>, publish: Option<PublishS
             s.build_id = id.to_string();
             s
         }),
+        folded_runs: None,
     }
 }
 

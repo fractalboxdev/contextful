@@ -937,22 +937,76 @@ impl Store {
         Ok((chain, false))
     }
 
+    /// The pointer's chain as a read under `bound` needs it, and the folded-runs index it
+    /// stops at (`store.lay-out.folded-index-valid`): newest first, ending at the first
+    /// snapshot whose index reads valid, or past it at the first created at or before `bound`.
+    /// Without a valid index the walk reads the whole chain. The flag says the chain ends at a
+    /// parent no longer on disk.
+    fn chain_for(&self, table: &str, bound: Option<contextful_core::store::bound_time::Bound>) -> Result<(Vec<SnapshotManifest>, bool, Option<contextful_core::store::resolve::FoldedSet>)> {
+        let Some((ptr, _)) = self.pointer(table)? else { return Ok((Vec::new(), false, None)) };
+        let mut chain = Vec::new();
+        let mut index: Option<contextful_core::store::resolve::FoldedSet> = None;
+        let mut seen = std::collections::BTreeSet::new();
+        let mut next = Some(ptr.snapshot_id);
+        while let Some(id) = next {
+            if !seen.insert(id.to_string()) {
+                return Err(StoreError::StoreManifestUnreadable(format!(
+                    "table `{table}`: snapshot {id} is its own ancestor; the parent chain does not terminate"
+                ))
+                .into());
+            }
+            let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
+            let bytes = match self.metadata().read_optional(&path)? {
+                Some(b) => b,
+                None if !chain.is_empty() => return Ok((chain, true, index)),
+                None => return Err(ContextError::Invalid(format!("{}: missing snapshot manifest", path.display()))),
+            };
+            if let Some(v) = FormatVersion::declared(&bytes) {
+                v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+            }
+            let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?;
+            next = m.parent.clone();
+            if index.is_none() {
+                if let Some(rows) = crate::fold::folded::read(self, table, &m) {
+                    index = Some(contextful_core::store::resolve::FoldedSet { at: chain.len(), rows });
+                }
+            }
+            let reached = bound.is_none_or(|b| b.admits(m.created_at));
+            chain.push(m);
+            if index.is_some() && reached {
+                break;
+            }
+        }
+        Ok((chain, false, index))
+    }
+
     /// Everything an unbounded read or a fold resolves against, for one table: the run
     /// manifests on disk, without fetching any a lazy pull skipped.
     pub fn state(&self, decl: &TableDecl) -> Result<TableState> {
+        self.state_bounded(decl, None)
+    }
+
+    /// [`Store::state`], its chain read as far as a read under `bound` needs it.
+    fn state_bounded(&self, decl: &TableDecl, bound: Option<contextful_core::store::bound_time::Bound>) -> Result<TableState> {
         let table = decl.name.as_str();
         let runs = self.local_runs_held(table)?.0;
-        let (chain, parent_collected) = self.chain(table)?;
-        let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
-        let run_collected = chain.iter().flat_map(|s| &s.includes_runs).any(|r| !present.contains(r.as_str()));
-        Ok(TableState {
+        let (chain, parent_collected, index) = self.chain_for(table, bound)?;
+        let mut state = TableState {
             table: table.to_string(),
             write_mode: decl.write_mode(),
             runs,
             chain,
-            history_collected: parent_collected || run_collected,
+            history_collected: parent_collected,
             collected: BTreeSet::new(),
-        })
+            index,
+        };
+        if !state.chain.is_empty() {
+            let present: BTreeSet<String> = state.runs.iter().map(RunManifest::key).collect();
+            state.history_collected |= state.folded(0).iter().any(|r| !present.contains(*r));
+        }
+        Ok(state)
     }
 
     /// [`Store::state`] for a read bounded by `as_of`: one resolving before the pointer's
@@ -962,7 +1016,7 @@ impl Store {
         match as_of {
             Some(b) if state.chain.first().is_none_or(|s| !b.admits(s.created_at)) => {
                 self.fetch_skipped(&decl.name, None, Leave::Folded)?;
-                let mut state = self.state(decl)?;
+                let mut state = self.state_bounded(decl, as_of)?;
                 // Collected snapshots sit behind every retained one: from the first, the rest are.
                 let mut beyond = false;
                 for s in state.chain.iter().skip(1) {

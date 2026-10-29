@@ -394,6 +394,18 @@ A reader counts a run as folded only by its key in some chain snapshot's `includ
 
 Revisit: a chain walk dominates a cold read, or kept manifests a bucket's bytes.
 
+## folded-index — A snapshot carries every run its chain folds
+
+Kept manifests make a chain whole, and a read walking it grows with history. Each pass writes the set of folded runs as Parquet segments beside its snapshot, carrying its parent's by reference and merging 4 segments of one tier into one, so a pass writes few rows and a reader reads one snapshot. A reader trusts the set only where it names its own snapshot and every segment matches its digest, and otherwise walks, so a stale or damaged set costs time, never rows. A pass whose parent's chain holds no valid set and ends at a missing manifest writes none. A `2.0` reader ignores the field and walks the kept manifests.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Tiered Parquet segments carried by reference *(chosen)* | — | A segment per tier stays per snapshot, and retention keeps the carried ones. |
+| One JSON file of every folded run per snapshot | Write cost | Each pass rewrites every run the chain ever folded. |
+| A `commit_seq` high-water mark | Correct rows | A run merged from another node, or one carrying no `commit_seq`, falls outside the range. |
+
+Revisit: reading a snapshot's segments dominates a cold read.
+
 ## unpushed-run-marked — An unpushed run is marked in the execution database
 
 On a disposable disk a run commits locally before its push, so a failed push leaves the run on a disk the next release discards. The execution database is already durable.

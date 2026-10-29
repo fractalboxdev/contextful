@@ -12,7 +12,6 @@ owns:
   - emit
   - push
   - pull
-  - merge
 ---
 
 # The store and its sync
@@ -80,6 +79,12 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
 - `snapshot-manifest` — A snapshot's `_manifest.json` holds a `lay_out::SnapshotManifest`, and each entry of `parts` and `indexes` carries its `key_version`.
 - `ancestors` — A snapshot manifest records `ancestors`, its parent then the parent's `ancestors`, at most 256 entries; a root, or a child of a parent lacking the field, records none.
   *because retention collects superseded snapshots, and a push decides descent from the snapshot's own manifest*
+- `folded-index` — A snapshot manifest's `folded_runs` names Parquet segments whose rows list each run its chain folds, by run key and folding snapshot with commit instant and `_commit_seq`, and `through`, the snapshot they describe.
+  *A-store#folded-index*
+- `folded-index-valid` — A reader trusts `folded_runs` only where `through` names its snapshot and every segment reads at its recorded digest and row count, and otherwise walks the chain, so the index never names fewer runs than the walk.
+  *A-store#folded-index*
+- `folded-index-walk` — An unbounded read reads the pointer's snapshot and its parents down to the first valid index; a bounded read reads on to the first snapshot created at or before its bound.
+  *A-store#folded-index*
 - `unrecognised-index-entry` — An `indexes` entry of unsupported kind or fields parses as unrecognised: the manifest stays readable, probes ignore the entry and rewrites keep it byte for byte.
   *because an older build neither refuses nor drops a newer builder's sidecar*
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and commit fence; readers reach only snapshots reachable from it directly or through `parent` links.
@@ -118,11 +123,11 @@ A run commits through its manifest, and a repeated landing replays or refuses.
 Each manifest names its layout version.
 
 - `manifest-default` — A field added to a manifest carries a default value.
-- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.0` for snapshots referencing parts or segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
+- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.1` for snapshots carrying `folded_runs`, `2.0` for others referencing parts or segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
   *A-store#manifest-carries-format*
 - `format-newer` — A run or snapshot manifest of a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file and both versions, and the table refuses reads until a newer build reads it.
   *A-store#manifest-carries-format*
-- `format-migrate` — A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the next pass references those parts under `2.0`, rewriting no manifest in place.
+- `format-migrate` — A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the next pass references those parts under major `2`, rewriting no manifest in place.
   *A-store#manifest-carries-format*
 - `manifest-unreadable` — A run manifest or reachable snapshot manifest failing to parse raises `StoreManifestUnreadable`, naming the table and file; the table refuses reads until it parses.
   *P4*
@@ -320,7 +325,7 @@ Compaction passes, their triggers and retention, and snapshot publication throug
 - `job-pass-synced` — On a store declaring `[sync]`, a fold job's pass takes each table's compaction lease, pulls, folds, pushes and publishes as `contextful sync compact <table>` does; on any other store it folds locally as `contextful context compact <table>` does.
   *because a node publishing a snapshot outside the lease races every other node's pass on the bucket pointer*
 - `retention` — `retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older than the window.
-- `reference-retention` — Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the collected snapshot's directory, its manifest included save under {{store.fold.manifest-kept}}.
+- `reference-retention` — Collection keeps the parts, sidecar segments and folded-runs segments a retained snapshot references and removes the rest of the collected snapshot's directory, its manifest included save under {{store.fold.manifest-kept}}.
   *A-store#pass-carries-untouched*
 - `cached-inputs` — Under {{store.pull.lazy-parts}}, a fold fetches input parts through {{store.pull.part-cache}}; inputs exceeding the cache raise `FoldInputsExceedCache`, naming both byte counts, and publish nothing.
   *A-store#cold-store-boots*
@@ -346,6 +351,8 @@ Compaction passes, their triggers and retention, and snapshot publication throug
   *because the bucket keeps every chain manifest, and a copy of a folded run beside a chain lacking its folding manifest reads twice*
 - `collected-snapshot` — A snapshot counts as collected while the bucket's `_collected.json` stands beside it or, on a store reading through no part source, a part it names is absent; no `as_of` read, pin or hold resolves to it.
   *because local retention removes parts the bucket still holds, and a pull bringing them home makes the snapshot readable again*
+- `folded-index` — A pass writes `folded_runs` over its parent's valid index, carried by reference with the runs walked above it, or over a walk reaching a root, merging 4 segments of one size tier into one; otherwise it writes none.
+  *A-store#folded-index*
 
 A fold pass under the compaction lease, from run selection to the pointer commit.
 
@@ -718,40 +725,6 @@ sequenceDiagram
 #### Scenarios
 
 - `store.pull.control-head`: WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head.
-
-## merge
-
-Merging bucket manifests across writers, verifying tombstones and retrying conditional manifest commits.
-
-- `tombstone-owner` — A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.
-  *A-store#bucket-index-commits*
-- `tombstone-signed` — Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.
-  *A-store#bucket-index-commits*
-- `tombstone-unverified` — Unsigned tombstones, invalid signatures, or keys absent from the key-set ledger's verifying set at `deleted_at` raise `SyncTombstoneUnverified`. Merge preserves the named entry; pull deletes nothing.
-  *A-store#bucket-index-commits*
-- `tombstone-ttl` — A tombstone leaves the manifest 30 d after its `deleted_at`.
-- `retries` — `[sync] push_retries`, default 5 attempts, bounds consecutive re-commit rounds whose re-read manifest carries no newer generation than the round before.
-  *A-store#bucket-index-commits*
-- `round-ceiling` — A push stops its manifest commit loop after 64 rounds, whatever generations those rounds meet.
-  *A-store#bucket-index-commits*
-- `exhausted` — Exhausting {{store.merge.retries}} or {{store.merge.round-ceiling}} raises `SyncManifestRebaseExhausted`, reports every uploaded object as in the bucket and asks for a re-run.
-  *A-store#bucket-index-commits*
-- `cursor-recency` — Resolving a cursor by last-write time raises `SyncCursorConflict`. A cursor resolves through its commit.
-  *A-run#incremental-position-bound*
-- `scoped-union` — A merge takes local entries owned by this writer or unowned, and all other remote entries. It tombstones a writer-owned remote entry only when {{store.merge.held-record}} lists the key and the store lacks the file.
-  *A-store#bucket-index-commits*
-- `held-record` — Push records locally held owned keys under its node id in `.sync-held.json`, adding before commit and replacing that node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.
-  *A-store#bucket-index-commits*
-- `held-absent` — With no keys for the node in `.sync-held.json`, a surviving `.push.lock` means the store holds every remote key the node owns, and none without it.
-  *A-store#bucket-index-commits*
-- `held-unreadable` — An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.
-  *because corruption establishes no ownership and a replacement discards other nodes' entries*
-- `collected-directory` — A merge keeps out each key under a snapshot directory whose `_collected.json` the bucket lists, save its `_manifest.json`, and each run file {{store.collect.folded-runs}} reclaims, whatever any record says.
-  *because a lapsed record otherwise lets a node holding a copy list a reclaimed key again*
-- `collected` — A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.
-  *A-store#bucket-collect*
-- `ownership` — A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.
-  *A-store#bucket-index-commits*
 
 ## Shapes
 

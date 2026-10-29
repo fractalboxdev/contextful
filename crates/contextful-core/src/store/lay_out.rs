@@ -209,6 +209,10 @@ impl FormatVersion {
     /// reference (`store.lay-out.format-version`).
     pub const CURRENT: FormatVersion = FormatVersion { major: 2, minor: 0 };
 
+    /// The layout of a snapshot manifest carrying a folded-runs index: `2.1`. A build reading
+    /// `2.0` parses it as its own and ignores the field (`store.lay-out.format-version`).
+    pub const FOLDED_INDEX: FormatVersion = FormatVersion { major: 2, minor: 1 };
+
     /// The layout of a run manifest, and of a snapshot manifest holding every part in its
     /// own directory: `1.0`, which a build of either major reads.
     pub const SELF_CONTAINED: FormatVersion = FormatVersion { major: 1, minor: 0 };
@@ -423,6 +427,67 @@ pub struct SnapshotManifest {
     /// data it publishes (`run.publish.manifest-commit`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish: Option<crate::pipeline::model::PublishSection>,
+
+    /// Every run the snapshot's chain folds, in segments (`store.lay-out.folded-index`). A
+    /// reader trusts it only where `through` names this snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folded_runs: Option<FoldedIndex>,
+}
+
+/// A snapshot's folded-runs index: the segments listing every run its chain folds, and the
+/// snapshot they describe (`store.lay-out.folded-index`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FoldedIndex {
+    /// The snapshot the segments describe; any other snapshot carrying the field ignores it.
+    pub through: SnapshotId,
+    pub segments: Vec<FoldedSegment>,
+    /// Rows no segment holds yet, fewer than [`FoldedIndex::INLINE_MAX`]: a pass folding a
+    /// few runs writes no file for them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inline: Vec<FoldedRow>,
+}
+
+impl FoldedIndex {
+    /// The directory, under a snapshot directory, holding the segments it writes.
+    pub const DIR: &'static str = "folded";
+    /// Inline rows a pass flushes into a segment once they reach this many.
+    pub const INLINE_MAX: usize = 64;
+}
+
+/// One Parquet file of folded-run rows, sorted by run key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FoldedSegment {
+    /// Relative to the directory holding the file: the manifest's own, or `origin`'s.
+    pub name: String,
+    /// The earlier snapshot whose directory holds the file, on a segment carried by reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<SnapshotId>,
+    /// The SHA-256 of the file's bytes as written; a segment reading otherwise is unread.
+    pub sha256: String,
+    pub rows: u64,
+}
+
+impl FoldedSegment {
+    /// The file's path relative to its table directory, named by the manifest of `own`.
+    pub fn location(&self, own: &SnapshotId) -> String {
+        format!("{SNAPSHOTS_DIR}/{}/{}", self.origin.as_ref().unwrap_or(own), self.name)
+    }
+}
+
+/// One run a chain folds, as a folded-runs index records it (`store.lay-out.folded-index`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FoldedRow {
+    /// `<run-id>/<node-id>`, the key `includes_runs` names.
+    #[serde(rename = "run")]
+    pub run_key: String,
+    /// The snapshot whose `includes_runs` names the run.
+    #[serde(rename = "snapshot")]
+    pub snapshot_id: SnapshotId,
+    /// The run's commit instant, where its manifest was on disk when the row was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub committed_at: Option<Instant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_seq: Option<i64>,
 }
 
 impl SnapshotManifest {

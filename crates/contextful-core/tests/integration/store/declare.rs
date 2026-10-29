@@ -207,6 +207,7 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
         chain: vec![s0],
         history_collected: false,
         collected: Default::default(),
+        index: None,
     };
     let r = state.resolve(None).unwrap();
     assert!(r.snapshot.is_none());
@@ -238,6 +239,7 @@ fn a_marked_empty_run_is_a_replacement_frontier() {
         chain: vec![],
         history_collected: false,
         collected: Default::default(),
+        index: None,
     };
     assert!(state.resolve(None).unwrap().files().is_empty());
     let earlier = state.resolve(Some(Bound::parse("2030-01-01T00:30:00Z").unwrap())).unwrap();

@@ -13,6 +13,7 @@ mod fold;
 mod fold_amplification;
 mod fold_carry;
 mod fold_model;
+mod folded_index;
 mod fulltext_rebuild;
 mod index;
 mod init;
