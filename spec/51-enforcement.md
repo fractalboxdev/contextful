@@ -279,7 +279,7 @@ The per-table licence bound applied at push, the root-object allowlist, and the 
   *A-authority#redistribution*
 - `left-behind` — Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.
   *A-authority#redistribution*
-- `manifest-is-an-index` — An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.
+- `manifest-is-an-index` — An object stays fetchable by its key after the manifest stops naming it, until {{store.collect.drop-first}} deletes it; a manifest authorizes nothing.
   *A-authority#redistribution*
 - `report` — A left-behind report names at most 100 files and states the total found.
   *A-authority#redistribution*

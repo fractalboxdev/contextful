@@ -73,6 +73,7 @@ impl ServingEdge {
         let mut manifest: BucketManifest = serde_json::from_value(value).map_err(invalid)?;
         manifest.entries.retain(|k, _| self.reaches(k));
         manifest.tombstones.retain(|k, _| self.reaches(k));
+        manifest.collected.retain(|k, _| self.reaches(k));
         manifest.pointers.retain(|k, _| self.reaches(k));
         manifest.control_heads.retain(|p, _| p == &self.project);
         serde_json::to_vec_pretty(&manifest).map_err(invalid)

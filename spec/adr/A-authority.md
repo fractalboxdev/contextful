@@ -216,11 +216,11 @@ Revisit: fragment-level provenance through synthesis becomes observable; per-zon
 
 ## redistribution — Redistribution ships an allowlist and never reaches backwards
 
-Redistribution fails toward not shipping, and the engine is not the bucket's retention arbiter.
+Redistribution fails toward not shipping, and a withheld table's left-behind objects are the operator's to delete.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Enumerate what ships; name left-behind objects *(chosen)* | — | An operator cleans the bucket by hand. |
+| Enumerate what ships; name left-behind objects *(chosen)* | — | An operator deletes a withheld table's left-behind objects by hand. |
 | Name the objects that stay behind | Failure direction | A new object ships by default carrying withheld rows. |
 | Inspect each root object at push | Soundness | Record-blob contents are not statically decidable. |
 | Delete left-behind objects automatically | Bucket authority | Deletion is irreversible and can cut a replica from its readers. |

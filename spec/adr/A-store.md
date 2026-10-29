@@ -381,6 +381,19 @@ A container booting on an empty disk downloads every bucket object, and every de
 
 Revisit: cold-table first reads past the wait bound under ordinary bucket latency.
 
+## bucket-collect — Collection deletes only unlisted objects and old generations
+
+Snapshots and folded run directories stay in the bucket, so every reader's chain stays whole and no folded run reads twice. An owner may list a key it once tombstoned again, so a collected record in the manifest, read under the commit's compare-and-set, keeps a deleted key out of every merge while it stands. A commit writes format 2 only while the manifest holds a record; a build parsing format 1 then refuses it rather than dropping the records, so every node upgrades before the first collect. Generations are kept by count, since a push after every run writes one per run.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Unlisted objects and old generations, with collected records *(chosen)* | — | Superseded snapshot directories and folded runs still grow; every node upgrades before the first collect. |
+| Delete superseded snapshots and folded runs too | Correct rows | A node offline past the record's age, or a restored disk, reads or lists a folded run its chain no longer names. |
+| Reclaim a superseded snapshot's parts and keep its `_manifest.json` | Read cost | One manifest per snapshot stays, and every read walks the whole chain. |
+| An operator deletes by hand | Torn reads | A deletion beside a live push leaves a listed key with no object. |
+
+Revisit: superseded snapshot directories dominate a bucket's object count.
+
 ## unpushed-run-marked — An unpushed run is marked in the execution database
 
 On a disposable disk a run commits locally before its push, so a failed push leaves the run on a disk the next release discards. The execution database is already durable.

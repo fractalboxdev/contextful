@@ -335,6 +335,8 @@ Compaction passes, their triggers and retention, and snapshot publication throug
 - `partial-snapshot` — A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.
   *P4*
 - `lost-pointer` — If a pointer replacement loses its condition, the pass publishes nothing. Collection removes the staged snapshot.
+- `group-marker` — Collection keeps a folded run's `_group.json` while a member table's copy of that run stays unfolded, and removes it once every member folds the run.
+  *because a member run reads as committed only beside its group root's marker*
 - `staging-collected` — The next pass collects staging directories and snapshot directories unreachable through any pointer chain. Reads exclude these directories.
 - `non-blocking` — A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.
 - `supersedes` — A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.
@@ -495,20 +497,14 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *because two nodes landing different columns into one table both keep them*
 - `manifest-commit` — A push commits by replacing `<prefix>/manifest.json` under `If-Match` on the ETag it read; this bucket manifest lists each key's sha256, size and owner.
   *A-store#push-tombstones-owned*
-- `manifest-format` — The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.
-- `format-unsupported` — A bucket or generation manifest with `format` above 1 raises `SyncManifestFormatUnsupported`, naming the key and format, before the push commit or any pull file write.
+- `manifest-format` — The bucket manifest and every generation manifest carry `format`: `1` while they hold no collected record, `2` while they hold one; a manifest without `format` reads as `1`.
+  *A-store#bucket-collect*
+- `format-unsupported` — A bucket or generation manifest with `format` above 2 raises `SyncManifestFormatUnsupported`, naming the key and format, before the push commit or any pull file write.
   *because a reader rewriting a manifest it parses in part drops a newer writer's fields*
-- `generation` — Each manifest commit records `generation` under {{store.push.generation-floor}} and the project's table pointers read before it, then creates `<prefix>/manifests/gen-<N>.json` with the committed bytes under `If-None-Match`.
-  *because a restore or pre-push gate names one committed state*
-- `commit-stamp` — Each manifest commit records `committed_at`, the push instant, and `committed_by`, the pushing node id; a plan records neither.
-- `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
-  *because reusing a taken number collides with its immutable copy*
-- `generation-probe` — Push lists `gen-<G>.json`, G the read manifest's generation, and each later generation's key one by one until the first absent key; only a manifest without `generation` lists all of `manifests/`.
-  *because the prefix gains one copy per commit and is never pruned*
-- `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the read manifest's generation creates it from the bytes it read.
-  *because a missing `gen-<N>.json` otherwise leaves a gap no later push sees*
-- `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
-  *because the immutable copy keeps the first commit, so `pull --generation` restores another state*
+- `collected` — A push uploads no key a standing collected record names in the manifest it reads, and {{store.merge.collected}} keeps that key out of its commit.
+  *A-store#bucket-collect*
+- `hold-renewal` — A hold record `holds/<build-id>.json` and a table's `holds.jsonl` commit as `schema.json` does, merged into the bucket's copy, a hold record keeping the later `expires_at`; a pull merges a hold record alike.
+  *because a renewal rewrites a hold in place, and an immutable key refuses the rewrite*
 - `run-state` — `sync push` and `sync manifest --emit` first write `nodes/<node-id>/run-state.json`, recording each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root*
 - `run-state-upload` — A push uploads its node's run state whatever digest the bucket manifest lists.
@@ -545,6 +541,22 @@ A run or a job fire pushes the store without an operator's push.
   *because a push spends bucket writes on every fire, which a scheduled sync avoids*
 - `job-push` — `contextful job fire` on a `sync-push` job pushes the store once as `contextful sync push` does; on a store declaring no `[sync]` the fire fails, naming the store's `config.toml`.
   *A-surface#maintenance-kinds*
+
+### generations
+
+Each manifest commit numbers a generation and writes its immutable copy, which a restore reads.
+
+- `generation` — Each manifest commit records `generation` under {{store.push.generation-floor}} and the project's table pointers read before it, then creates `<prefix>/manifests/gen-<N>.json` with the committed bytes under `If-None-Match`.
+  *because a restore or pre-push gate names one committed state*
+- `commit-stamp` — Each manifest commit records `committed_at`, the push instant, and `committed_by`, the pushing node id; a plan records neither.
+- `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
+  *because reusing a taken number collides with its immutable copy*
+- `generation-probe` — Push lists `gen-<G>.json`, G the read manifest's generation, and each later generation's key one by one until the first absent key; only a manifest without `generation` lists all of `manifests/`.
+  *because the prefix gains one copy per commit and is never pruned*
+- `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the read manifest's generation creates it from the bytes it read.
+  *because a missing `gen-<N>.json` otherwise leaves a gap no later push sees*
+- `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
+  *because the immutable copy keeps the first commit, so `pull --generation` restores another state*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
@@ -659,7 +671,7 @@ A lazy store pulls metadata and fetches each data part and folded run manifest w
 - `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.
   *because a partial acquisition and a lost index leave completed downloads subject to eviction*
 - `part-collected` — A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.
-  *because retention collects a superseded snapshot's parts while a container holding its pointer reads them*
+  *because `sync collect` deletes a tombstoned run's parts while a container whose pointer predates the tombstone reads them*
 
 A pull converges on the bucket manifest and writes each table pointer last.
 
@@ -718,6 +730,8 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
   *A-store#bucket-index-commits*
 - `held-unreadable` — An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.
   *because corruption establishes no ownership and a replacement discards other nodes' entries*
+- `collected` — A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.
+  *A-store#bucket-collect*
 - `ownership` — A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.
   *A-store#bucket-index-commits*
 

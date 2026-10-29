@@ -25,11 +25,15 @@ pub const TRANSFER_WIDTH: usize = 16;
 pub const PART_CACHE_BYTES: u64 = 8 << 30;
 /// Age at which a tombstone leaves the bucket manifest: 30 d (`store.merge.tombstone-ttl`).
 pub const TOMBSTONE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
+/// Default count of newest generation manifests a collect keeps: 64 generations
+/// (`store.collect.retain-generations`).
+pub const RETAIN_GENERATIONS: u64 = 64;
 
 /// The bucket manifest's key under the prefix.
 pub const MANIFEST_KEY: &str = "manifest.json";
-/// The bucket manifest format this build writes and the newest it parses (`store.push.manifest-format`).
-pub const MANIFEST_FORMAT: u32 = 1;
+/// The bucket manifest format this build writes and the newest it parses
+/// (`store.push.manifest-format`): format 2 adds the collected records.
+pub const MANIFEST_FORMAT: u32 = 2;
 
 /// The immutable copy of generation `n`'s committed manifest, under the prefix (`store.push.generation`).
 pub fn generation_key(n: u64) -> String {
@@ -91,6 +95,10 @@ pub struct SyncConfig {
     /// Push the store once a fire's runs close, success or failure (`store.push.after-run`).
     #[serde(default)]
     pub push_after_run: Option<bool>,
+    /// Newest generation manifests a collect keeps, the current one included
+    /// (`store.collect.retain-generations`).
+    #[serde(default)]
+    pub retain_generations: Option<std::num::NonZeroU64>,
     /// The signing region of an `https://` or loopback `http://` endpoint; `us-east-1` when absent.
     #[serde(default)]
     pub region: Option<String>,
@@ -204,6 +212,12 @@ impl SyncConfig {
 
     pub fn push_wait_secs(&self) -> u64 {
         self.push_wait_secs.unwrap_or(PUSH_WAIT_SECS)
+    }
+
+    /// The generations a collect keeps: `retain_generations`, default 64, never below 1
+    /// (`store.collect.retain-generations`).
+    pub fn retain_generations(&self) -> u64 {
+        self.retain_generations.map_or(RETAIN_GENERATIONS, std::num::NonZeroU64::get)
     }
 
     /// Resolve `endpoint` to a bucket adapter's address (`store.endpoint.schemes`): `file://`,
@@ -367,8 +381,25 @@ impl Tombstone {
     }
 }
 
+/// A key whose object a collect deletes, recorded in the bucket manifest before the delete so
+/// no merge lists it again while the record stands (`store.collect.drop-first`); unsigned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Collected {
+    pub collected_at: Instant,
+    /// The node whose collect dropped the key.
+    pub collected_by: String,
+}
+
+impl Collected {
+    /// Whether the record still keeps its key out of the manifest at `now`
+    /// (`store.merge.collected`).
+    pub fn stands(&self, now: Instant) -> bool {
+        self.collected_at.secs_until(now) < TOMBSTONE_TTL_SECS
+    }
+}
+
 /// The bucket manifest: its format and generation, key (relative to the prefix) to entry,
-/// tombstones, and each table pointer as read before the commit.
+/// tombstones, collected keys, and each table pointer as read before the commit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BucketManifest {
     /// Absent reads as 1, the format of a manifest written before the field existed.
@@ -381,6 +412,10 @@ pub struct BucketManifest {
     pub entries: BTreeMap<String, Entry>,
     #[serde(default)]
     pub tombstones: BTreeMap<String, Tombstone>,
+    /// Keys a collect dropped, each kept out of every merge while its record stands
+    /// (`store.merge.collected`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub collected: BTreeMap<String, Collected>,
     /// Pointer key to the pointer the bucket held as the commit was made.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pointers: BTreeMap<String, BucketPointer>,
@@ -415,7 +450,16 @@ fn is_zero(n: &u64) -> bool {
 
 impl Default for BucketManifest {
     fn default() -> BucketManifest {
-        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), pointers: BTreeMap::new(), control_heads: BTreeMap::new(), residency: None, committed_at: None, committed_by: None }
+        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), collected: BTreeMap::new(), pointers: BTreeMap::new(), control_heads: BTreeMap::new(), residency: None, committed_at: None, committed_by: None }
+    }
+}
+
+impl BucketManifest {
+    /// The format a commit writes: `2` while the manifest holds a collected record, `1`
+    /// otherwise, so a build parsing format 1 reads every bucket no collect has touched
+    /// (`store.push.manifest-format`).
+    pub fn written_format(&self) -> u32 {
+        if self.collected.is_empty() { 1 } else { MANIFEST_FORMAT }
     }
 }
 
@@ -516,9 +560,11 @@ pub fn merge_verified(
     now: Instant,
     verify: &dyn Fn(&str, &Tombstone) -> Result<(), String>,
 ) -> Result<Merged, StoreError> {
-    let mut out = BucketManifest { residency: remote.residency.clone(), control_heads: remote.control_heads.clone(), ..BucketManifest::default() };
+    // A standing collected record keeps its key out of the merge, a local copy included (`store.merge.collected`).
+    let collected: BTreeMap<String, Collected> = remote.collected.iter().filter(|(_, c)| c.stands(now)).map(|(k, c)| (k.clone(), c.clone())).collect();
+    let mut out = BucketManifest { residency: remote.residency.clone(), control_heads: remote.control_heads.clone(), collected, ..BucketManifest::default() };
     let mut refused = Vec::new();
-    for (key, entry) in local {
+    for (key, entry) in local.iter().filter(|(k, _)| !out.collected.contains_key(*k)) {
         // A key another node owns lists the owner's entry, never a local copy of it.
         if !entry.owner.is_empty() && entry.owner != me {
             continue;
@@ -533,7 +579,7 @@ pub fn merge_verified(
         out.entries.insert(key.clone(), entry.clone());
     }
     for (key, entry) in &remote.entries {
-        if out.entries.contains_key(key) {
+        if out.entries.contains_key(key) || out.collected.contains_key(key) {
             continue;
         }
         if entry.owner == me && held.holds(key) {

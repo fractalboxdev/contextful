@@ -5,7 +5,7 @@ use contextful_context::fold::fold;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::object::{Condition, ObjectStore};
-use contextful_core::store::sync::{generation_key, BucketManifest, MANIFEST_FORMAT};
+use contextful_core::store::sync::{generation_key, BucketManifest};
 use contextful_core::store::StoreError;
 use contextful_sync::{PullScope, SyncError};
 use serde_json::json;
@@ -42,7 +42,7 @@ fn an_emitted_plan_lists_what_the_push_commits_and_touches_no_bucket() {
     let emitted = serde_json::to_vec_pretty(&plan.manifest()).unwrap();
     assert_eq!(emitted, serde_json::to_vec_pretty(&again.manifest()).unwrap(), "an unchanged store emits identical bytes");
     let listed: BucketManifest = serde_json::from_slice(&emitted).unwrap();
-    assert_eq!(listed.format, MANIFEST_FORMAT);
+    assert_eq!(listed.format, 1, "a plan holds no collected record");
     a.syncer.push(at(NOW)).unwrap();
     assert_eq!(listed.entries, manifest(b.as_ref()).entries, "the committed manifest lists the plan's entries");
 }
@@ -67,11 +67,11 @@ fn a_plan_leaves_out_keys_another_node_owns() {
     assert_eq!(entries["research/tables/filings/schema.json"].sha256, contextful_core::run::journal::sha256_hex(&schema));
 }
 
-/// The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without
-/// `format` reads as `1`.
-// spec: store.push.manifest-format@85bad2a5
+/// The bucket manifest and every generation manifest carry `format`: `1` while they hold no collected record or
+/// folded-run mark, `2` once they hold one; a manifest without `format` reads as `1`.
+// spec: store.push.manifest-format@bd112bbd
 #[test]
-fn a_manifest_without_a_format_reads_as_format_one() {
+fn a_manifest_without_a_format_reads_as_format_one_and_a_plain_commit_writes_format_one() {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
     b.put("team/manifest.json", br#"{"entries":{},"tombstones":{}}"#, Condition::IfNoneMatch).unwrap();
@@ -79,24 +79,24 @@ fn a_manifest_without_a_format_reads_as_format_one() {
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     a.syncer.push(at(NOW)).unwrap();
     let raw: serde_json::Value = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
-    assert_eq!(raw["format"], json!(1));
+    assert_eq!(raw["format"], json!(1), "a manifest holding no collected record keeps format 1");
     let generation: serde_json::Value = serde_json::from_slice(&b.get(&format!("team/{}", generation_key(1))).unwrap().unwrap().0).unwrap();
     assert_eq!(generation["format"], json!(1));
 }
 
-/// A bucket or generation manifest with `format` above 1 raises `SyncManifestFormatUnsupported`, naming the key and
+/// A bucket or generation manifest with `format` above 2 raises `SyncManifestFormatUnsupported`, naming the key and
 /// format, before the push commit or any pull file write.
-// spec: store.push.format-unsupported@ccd866f0
+// spec: store.push.format-unsupported@a3dc702f
 #[test]
 fn a_manifest_of_a_newer_format_refuses_push_and_pull() {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
-    let newer = br#"{"format":2,"entries":{"research/tables/filings/schema.json":{"sha256":"x","size":1}},"shape":"unknown"}"#;
+    let newer = br#"{"format":3,"entries":{"research/tables/filings/schema.json":{"sha256":"x","size":1}},"shape":"unknown"}"#;
     b.put("team/manifest.json", newer, Condition::IfNoneMatch).unwrap();
     let a = node("ingest-a", b.clone(), "");
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     match a.syncer.push(at(NOW)) {
-        Err(SyncError::Store(StoreError::SyncManifestFormatUnsupported(m))) => assert!(m.contains("manifest.json") && m.contains('2'), "{m}"),
+        Err(SyncError::Store(StoreError::SyncManifestFormatUnsupported(m))) => assert!(m.contains("manifest.json") && m.contains('3'), "{m}"),
         other => panic!("{other:?}"),
     }
     assert_eq!(b.get("team/manifest.json").unwrap().unwrap().0, newer.to_vec(), "the newer manifest stays as written");

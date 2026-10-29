@@ -14,6 +14,7 @@ const MILESTONES_HEADING: &str = "## Milestones";
 const CLOSED_COLUMN: &str = "Closed";
 const CLOSED: &str = "closed";
 const STORE_FORMAT_FILE: &str = "crates/contextful-core/src/store/lay_out.rs";
+const MANIFEST_FORMAT_FILE: &str = "crates/contextful-core/src/store/sync.rs";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Version {
@@ -97,6 +98,28 @@ impl StoreFormat {
     }
 }
 
+/// A commit's bucket manifest format: the `MANIFEST_FORMAT` constant in `rev`'s
+/// `MANIFEST_FORMAT_FILE`, `1` where the file or the constant is absent, since a manifest
+/// without `format` reads as `1` (`assurance.release.manifest-format`).
+fn manifest_format_at(rev: &str) -> Result<u64> {
+    let path = format!("{rev}:{MANIFEST_FORMAT_FILE}");
+    let Some(source) = git(&["cat-file", "-e", &path]).ok().map(|_| git(&["show", &path])).transpose()? else { return Ok(1) };
+    let unread = || refuse("TagManifestFormatUnread", format!("{MANIFEST_FORMAT_FILE} at {rev} has an unreadable MANIFEST_FORMAT"));
+    let syntax = syn::parse_file(&source).map_err(|_| unread())?;
+    let constants: Vec<&syn::ItemConst> = syntax.items.iter().filter_map(|item| match item {
+        syn::Item::Const(c) if c.ident == "MANIFEST_FORMAT" => Some(c),
+        _ => None,
+    }).collect();
+    match constants.as_slice() {
+        [] => Ok(1),
+        [constant] => match &*constant.expr {
+            syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(n), .. }) => n.base10_parse().map_err(|_| unread()),
+            _ => Err(unread()),
+        },
+        _ => Err(unread()),
+    }
+}
+
 #[derive(Default)]
 struct Current<'ast> {
     constants: Vec<&'ast syn::ImplItemConst>,
@@ -150,8 +173,9 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
     let status = git(&["show", &format!("HEAD:{STATUS_FILE}")]).with_context(|| format!("reading {STATUS_FILE} at HEAD"))?;
     let closed = closed_milestones(&status);
     let format = StoreFormat::at(&head)?;
+    let manifest_format = manifest_format_at(&head)?;
     let existing: Vec<Version> = git(&["tag", "--list"])?.lines().filter_map(Version::of_tag).collect();
-    let minor = closed.len() as u64 + format.major.saturating_sub(1);
+    let minor = closed.len() as u64 + format.major.saturating_sub(1) + manifest_format.saturating_sub(1);
     let patch = existing.iter().filter(|v| v.major == 0 && v.minor == minor).map(|v| v.patch + 1).max().unwrap_or(0);
     let version = Version { major: 0, minor, patch };
 
@@ -164,11 +188,17 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
     }
 
     // `assurance.release.format-break-patch`: the last tag's format, read at that tag.
-    let last = existing.iter().max().map(|last| StoreFormat::at(&format!("v{last}")).map(|f| (*last, f))).transpose()?;
-    if let Some((last, was)) = last.filter(|(last, was)| last.minor == version.minor && was.major != format.major) {
+    let last = existing
+        .iter()
+        .max()
+        .map(|last| -> Result<(Version, StoreFormat, u64)> { let rev = format!("v{last}"); Ok((*last, StoreFormat::at(&rev)?, manifest_format_at(&rev)?)) })
+        .transpose()?;
+    if let Some((last, was, was_manifest)) = last.filter(|(last, was, was_manifest)| last.minor == version.minor && (was.major != format.major || *was_manifest != manifest_format)) {
         return Err(refuse(
             "TagFormatBreakPatch",
-            format!("the store format moves from {was} at v{last} to {format} at HEAD, yet v{version} keeps the minor version"),
+            format!(
+                "the store format moves from {was} and manifest format {was_manifest} at v{last} to {format} and manifest format {manifest_format} at HEAD, yet v{version} keeps the minor version"
+            ),
         ));
     }
 
@@ -197,8 +227,11 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
     let mut message = format!("Contextful {name}\n\n{} milestone(s) close:\n", closed.len());
     closed.iter().for_each(|m| message.push_str(&format!("- {m}\n")));
     // `assurance.release.format-notes`
-    if let Some((_, was)) = last.filter(|(_, was)| format.major > was.major) {
+    if let Some((_, was, _)) = last.filter(|(_, was, _)| format.major > was.major) {
         message.push_str(&format!("\nStore format {was} → {format}: upgrade every reader, then every writer together.\n"));
+    }
+    if let Some((_, _, was)) = last.filter(|(_, _, was)| manifest_format > *was) {
+        message.push_str(&format!("\nManifest format {was} → {manifest_format}: upgrade every reader, then every writer together.\n"));
     }
     git(&["tag", "--sign", "--message", &message, &name, &head]).context("creating the signed tag")?;
     println!("tag: created signed {name} on {short}; publish it with `git push origin {name}`");

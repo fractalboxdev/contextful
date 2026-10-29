@@ -103,7 +103,7 @@ Acceptance: `contextful_acceptance::m05::m05_read_face`
 
 | Operations | Intent |
 | --- | --- |
-| `store.endpoint`, `store.emit`, `store.push`, `store.pull`, `store.probe`, `store.merge`, `store.lease`, `store.replicate`, `store.drain` | Bucket endpoints and credentials, push planning, the wire format, push and pull, the conditional-write probe, merge, fenced leases, the replica and unpushed runs. |
+| `store.endpoint`, `store.emit`, `store.push`, `store.pull`, `store.probe`, `store.merge`, `store.lease`, `store.replicate`, `store.drain`, `store.collect` | Bucket endpoints and credentials, push planning, the wire format, push and pull, the conditional-write probe, merge, fenced leases, the replica, unpushed runs and bucket collection. |
 
 Reach: Two nodes share one bucket and converge without a coordinator.
 

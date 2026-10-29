@@ -136,6 +136,15 @@ impl Release {
         self.repo.commit("store format");
     }
 
+    /// Commit `format` as the bucket manifest format constant, in a commit of its own.
+    fn manifest_format(&self, format: &str) {
+        self.repo.write("crates/contextful-core/Cargo.toml", &manifest("contextful-core", ""));
+        self.repo.write("crates/contextful-core/src/lib.rs", "");
+        self.repo.write("crates/contextful-core/src/store/sync.rs", &format!("pub const MANIFEST_FORMAT: u32 = {format};\n"));
+        self.repo.lock();
+        self.repo.commit("manifest format");
+    }
+
     /// Commit `rows` and `version` as the head, the bump commit a tag follows.
     fn bump(&self, rows: &[Row], version: &str) {
         self.repo.write("spec/status.md", &status(rows));
@@ -156,8 +165,8 @@ fn refused(o: &Output, code: &str) -> String {
     err
 }
 
-/// A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.
-// spec: assurance.release.version@7a27ee41
+/// A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major and each manifest format past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.
+// spec: assurance.release.version@dd462c68
 #[test]
 fn the_version_counts_closed_milestones_and_earlier_tags_of_that_count() {
     // Milestones 0, 2 and 5 close and 1 is open though its acceptance test passes: a count,
@@ -218,8 +227,8 @@ fn a_store_format_major_past_one_raises_the_minor() {
     assert_eq!(r.tags(), "");
 }
 
-/// A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`
-// spec: assurance.release.format-notes@2eef30a7
+/// A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`, and one whose manifest format exceeds it the same line opening `Manifest format`.
+// spec: assurance.release.format-notes@199961ea
 #[test]
 fn a_tag_raising_the_store_format_major_names_the_upgrade_order() {
     let line = "Store format 1.0 → 2.0: upgrade every reader, then every writer together.";
@@ -244,8 +253,8 @@ fn a_tag_raising_the_store_format_major_names_the_upgrade_order() {
     assert!(!r.repo.git(&["cat-file", "tag", "v0.4.1"]).contains("Store format"), "a minor format step names an upgrade");
 }
 
-/// A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.
-// spec: assurance.release.format-break-patch@1b146c18
+/// A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major or manifest format differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.
+// spec: assurance.release.format-break-patch@e09642ae
 #[test]
 fn a_format_break_under_an_unchanged_minor_is_refused() {
     // Milestone 5 reopens as the format moves to major 2: 2 closed plus 1 keeps minor 3.
@@ -259,6 +268,52 @@ fn a_format_break_under_an_unchanged_minor_is_refused() {
     assert!(err.contains("1.0") && err.contains("2.0") && err.contains("v0.3.0"), "{err}");
     assert!(!r.cargo_ran(), "the gate ran for a format break under a patch");
     assert_eq!(r.tags(), "v0.3.0");
+}
+
+/// A commit's manifest format is the `MANIFEST_FORMAT` constant in its `crates/contextful-core/src/store/sync.rs`,
+/// `1` where absent: each format past `1` raises the minor, the tag raising it names the upgrade order, a break
+/// under an unchanged minor refuses, and a constant that does not parse raises `TagManifestFormatUnread`.
+// spec: assurance.release.manifest-format@9517eb68
+// spec: assurance.release.version@dd462c68
+// spec: assurance.release.format-notes@199961ea
+// spec: assurance.release.format-break-patch@e09642ae
+#[test]
+fn a_manifest_format_past_one_raises_the_minor_and_names_the_upgrade() {
+    let line = "Manifest format 1 → 2: upgrade every reader, then every writer together.";
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    r.earlier("v0.3.0");
+    r.manifest_format("1");
+    r.bump(&THREE_OF_FOUR, "0.3.1");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!r.repo.git(&["cat-file", "tag", "v0.3.1"]).contains("Manifest format"), "format 1 names an upgrade");
+
+    r.manifest_format("2");
+    r.bump(&THREE_OF_FOUR, "0.3.2");
+    let err = refused(&r.tag(&[]), "TagWorkspaceVersionMismatch");
+    assert!(err.contains("0.4.0"), "{err}");
+    r.bump(&THREE_OF_FOUR, "0.4.0");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let object = r.repo.git(&["cat-file", "tag", "v0.4.0"]);
+    assert!(object.contains(line), "the message omits the upgrade order: {object}");
+
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.1"));
+    r.earlier("v0.3.0");
+    let mut two = THREE_OF_FOUR;
+    two[3].2 = "open";
+    r.manifest_format("2");
+    r.bump(&two, "0.3.1");
+    let err = refused(&r.tag(&[]), "TagFormatBreakPatch");
+    assert!(err.contains("manifest format 1") && err.contains("manifest format 2") && err.contains("v0.3.0"), "{err}");
+    assert_eq!(r.tags(), "v0.3.0");
+
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    r.manifest_format("two");
+    let err = refused(&r.tag(&[]), "TagManifestFormatUnread");
+    assert!(err.contains("sync.rs"), "{err}");
+    assert!(!r.cargo_ran(), "the gate ran over an unread manifest format");
+    assert_eq!(r.tags(), "");
 }
 
 #[test]

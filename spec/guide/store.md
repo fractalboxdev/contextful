@@ -137,6 +137,11 @@ When two writers race, the push merges manifests and retries within a bound
 ({{store.merge.retries}}). Deletions travel as signed tombstones
 ({{store.merge.tombstone-signed}}).
 
+`contextful sync collect` deletes tombstoned objects and old generation manifests from
+the bucket ({{store.collect.unlisted}}). Each deleted key is first recorded in the
+manifest, so no push lists it again and an old pointer's reader gets a named error
+({{store.collect.drop-first}}).
+
 A pull checks each downloaded object against its manifest digest
 ({{store.pull.digest-mismatch}}). Before downloading anything, a pull refuses a store
 holding a different identity ({{store.pull.identity-conflict}}).

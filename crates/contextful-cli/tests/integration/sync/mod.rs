@@ -3,6 +3,7 @@
 #![cfg(feature = "data-plane")]
 
 mod catalogs;
+mod collect;
 mod generations;
 mod hydrate;
 mod lease;

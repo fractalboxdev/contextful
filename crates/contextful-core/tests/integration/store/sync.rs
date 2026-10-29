@@ -160,6 +160,59 @@ fn a_tombstone_leaves_the_manifest_after_30_days() {
     assert!(dropped.manifest.tombstones.is_empty());
 }
 
+/// A merge drops every key a standing collected record names, a local copy and a remote entry alike, tombstones
+/// none of them, and carries the record until 30 d after its instant.
+// spec: store.merge.collected@ae4c5844
+#[test]
+fn a_collected_record_keeps_its_key_out_of_every_merge_until_it_ages_out() {
+    use contextful_core::store::sync::Collected;
+    const PART: &str = "research/tables/filings/data/snapshots/s1/part-00000.parquet";
+    let collected_at = at("2030-01-01T00:00:00Z");
+    let record = || Collected { collected_at, collected_by: "ingest-b".into() };
+    let remote = BucketManifest {
+        entries: [(SCHEMA.to_string(), entry("s", "")), (RUN_A.to_string(), entry("r", "ingest-a"))].into(),
+        collected: [(PART.to_string(), record()), (RUN_A.to_string(), record())].into(),
+        ..Default::default()
+    };
+    let local: BTreeMap<String, Entry> = [(PART.to_string(), entry("p", "")), (RUN_A.to_string(), entry("r", "ingest-a"))].into();
+    let merged = merge(&remote, &local, "ingest-a", collected_at.plus_secs(TOMBSTONE_TTL_SECS - 1)).unwrap().manifest;
+    assert!(merged.entries.contains_key(SCHEMA));
+    assert!(!merged.entries.contains_key(PART) && !merged.entries.contains_key(RUN_A), "{:?}", merged.entries.keys().collect::<Vec<_>>());
+    assert!(merged.tombstones.is_empty(), "a collected key propagates no deletion");
+    assert_eq!(merged.collected, remote.collected);
+    let aged = merge(&remote, &local, "ingest-a", collected_at.plus_secs(TOMBSTONE_TTL_SECS)).unwrap().manifest;
+    assert!(aged.collected.is_empty());
+    assert!(aged.entries.contains_key(PART) && aged.entries.contains_key(RUN_A), "a local copy lists again once the record leaves");
+}
+
+/// A manifest holding no collected record writes format 1 and one holding a record writes 2; this build parses
+/// format 2, and a manifest without `format` reads as 1.
+// spec: store.push.manifest-format@bd112bbd
+#[test]
+fn a_manifest_carries_format_two_only_with_a_collected_record() {
+    use contextful_core::store::sync::MANIFEST_FORMAT;
+    use contextful_core::store::sync::Collected;
+    assert_eq!(MANIFEST_FORMAT, 2);
+    assert_eq!(BucketManifest::default().written_format(), 1);
+    let collected = BucketManifest { collected: [(RUN_A.to_string(), Collected { collected_at: at("2030-01-01T00:00:00Z"), collected_by: "ingest-b".into() })].into(), ..Default::default() };
+    assert_eq!(collected.written_format(), 2);
+    let legacy: BucketManifest = serde_json::from_str(r#"{"entries":{}}"#).unwrap();
+    assert_eq!(legacy.format, 1);
+    assert!(legacy.collected.is_empty());
+}
+
+/// `[sync] retain_generations` defaults to 64 generations; a value of 0 fails the configuration's parse.
+// spec: store.collect.retain-generations@9aa2317d
+#[test]
+fn retain_generations_defaults_to_64_and_refuses_zero() {
+    use contextful_core::store::sync::RETAIN_GENERATIONS;
+    assert_eq!(RETAIN_GENERATIONS, 64);
+    assert_eq!(SyncConfig::default().retain_generations(), 64);
+    let parse = |n: u64| toml::from_str::<SyncConfig>(&format!("endpoint = 'file://b'\nbucket = 'b'\nretain_generations = {n}\n"));
+    assert_eq!(parse(3).unwrap().retain_generations(), 3);
+    assert!(parse(0).is_err(), "a store keeping no generation keeps no current state");
+}
+
 /// Resolving a cursor by last-write time raises `SyncCursorConflict`. A cursor resolves through its commit.
 // spec: store.merge.cursor-recency@a551b135
 #[test]

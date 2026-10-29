@@ -567,3 +567,25 @@ fn a_renamed_lock_does_not_remove_the_file_that_replaces_it() {
     drop(held);
     assert_eq!(fs::read(&path).unwrap(), b"another holder");
 }
+
+/// Collection keeps a folded run's `_group.json` while a member table's copy of the run stays unfolded, and removes
+/// it once every member has folded that run.
+// spec: store.fold.group-marker@4bbf754b
+#[test]
+fn collection_keeps_a_group_marker_while_a_member_run_is_unfolded() {
+    let f = Fixture::new();
+    let (filings, pages) = (decl("name = \"filings\""), decl("name = \"pages\""));
+    f.land(&filings, "run-1", json!([{"doc": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    f.land(&pages, "run-1", json!([{"page": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let node = f.table_dir("filings").join("data/runs/run-1/ingest-a");
+    let marker = node.join("_group.json");
+    fs::write(&marker, br#"["filings","pages"]"#).unwrap();
+    assert!(matches!(fold(&f.store, &filings, at("2030-01-01T00:00:00Z")).unwrap(), FoldOutcome::Folded { .. }));
+    // Nine days on, the window has passed the snapshot that folded the root run.
+    fold(&f.store, &filings, at("2030-01-10T00:00:00Z")).unwrap();
+    assert!(!node.join("_manifest.json").exists(), "the folded root run leaves");
+    assert!(marker.exists(), "the marker stays while the member's copy of the run is unfolded");
+    assert!(matches!(fold(&f.store, &pages, at("2030-01-10T00:00:00Z")).unwrap(), FoldOutcome::Folded { .. }));
+    fold(&f.store, &filings, at("2030-01-11T00:00:00Z")).unwrap();
+    assert!(!marker.exists(), "the marker leaves once every member folded the run");
+}
