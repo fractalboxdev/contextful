@@ -281,7 +281,7 @@ fn build_failure(error: &anyhow::Error) -> contextful_core::run::Failure {
     });
     match context {
         Some(ContextError::Catalog(failure)) => failure.clone(),
-        Some(ContextError::Run(_) | ContextError::Invalid(_) | ContextError::ColumnType { .. }) => Failure::deterministic(FailureTag::Permanent, format!("{error:#}")),
+        Some(ContextError::Run(_) | ContextError::Disclosure(_) | ContextError::Invalid(_) | ContextError::ColumnType { .. }) => Failure::deterministic(FailureTag::Permanent, format!("{error:#}")),
         _ => Failure::new(FailureTag::Storage, format!("{error:#}")),
     }
 }

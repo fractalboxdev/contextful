@@ -293,6 +293,8 @@ fn the_envelope_reports_table_hash_spend_suppression_and_rows_and_no_contributor
     assert_ne!(other.envelope.policy_hash, e.policy_hash);
 }
 
+/// A release with `emit_sentinel = true` represents every suppressed group together as one `__suppressed__` row carrying no group key or exact figure.
+// spec: disclosure.suppress.sentinel-row@fe4edc47
 #[test]
 fn the_balanced_group_publishes_and_the_dominated_one_collapses_into_one_sentinel() {
     let out = release(&policy(), &benchmark(), &request(10_000_000 * EPSILON), &ledger(&TENANTS, u64::MAX), &mut Seeded(5)).unwrap();
@@ -441,6 +443,14 @@ fn a_project_declares_each_units_lifetime_cap_in_its_disclosure_block() {
             other => panic!("{bad}: {other:?}"),
         }
     }
+}
+
+/// A build of a governed model outside the release verb refuses under its own identifier.
+#[test]
+fn a_governed_build_outside_a_release_raises_release_required() {
+    let e = DisclosureError::ReleaseRequired("model `revenue_by_industry`".into());
+    assert_eq!(e.identifier(), "DisclosureReleaseRequired");
+    assert!(e.to_string().starts_with("DisclosureReleaseRequired: model `revenue_by_industry`"), "{e}");
 }
 
 /// A release requesting an activation handle or lookalike segment refuses before any unit is charged.

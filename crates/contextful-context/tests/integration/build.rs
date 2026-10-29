@@ -786,6 +786,18 @@ fn a_released_build_publishes_the_release_steps_rows_without_the_contributor_key
     assert_eq!(columns.iter().filter(|c| !c.starts_with('_')).collect::<Vec<_>>(), ["day", "n"], "the contributor key is not published");
 }
 
+/// A plain build of a model declaring `[model.disclosure]` refuses before staging and
+/// publishes nothing; the refusal names the release verb.
+#[test]
+fn a_plain_build_of_a_governed_model_raises_release_required() {
+    let p = Project::new();
+    let e = refused(p.build(GOVERNED, "2030-01-01T01:00:00Z"), "DisclosureReleaseRequired");
+    assert!(e.contains("contextful disclosure release daily --project research"), "{e}");
+    assert!(current_section(&p.fx.store, "daily").unwrap().is_none(), "nothing was published");
+    assert!(!p.dir().join(POINTER_FILE).exists());
+    assert!(!p.dir().join("build-attempts").exists(), "no build attempt was recorded");
+}
+
 /// A refused release step publishes nothing and names its refusal.
 #[test]
 fn a_refused_release_step_publishes_nothing() {

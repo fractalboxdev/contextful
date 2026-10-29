@@ -346,6 +346,7 @@ mod materialize {
         disclosure_digest, withholds_cells, BuildStatus, ContractColumn, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
     };
     use contextful_core::disclosure::release::{Breakdown, DerivedTable, ReleaseError};
+    use contextful_core::disclosure::DisclosureError;
     use contextful_core::read::guard::{admit, Admitted};
     use contextful_core::read::template::Bindings;
     use contextful_core::store::declare::TableDecl;
@@ -737,6 +738,17 @@ mod materialize {
         let spec = req.model;
         store.check_writable("build")?;
         spec.validate().map_err(ContextError::from)?;
+        // Only the release step turns a governed statement's per-contributor rows into a
+        // derived table, so a build without one stages nothing (`disclosure.release.governed-build`).
+        if release.is_none() && spec.disclosure.is_some() {
+            return Err(ContextError::Disclosure(DisclosureError::ReleaseRequired(format!(
+                "model `{}` declares `[model.disclosure]`, so a plain build publishes nothing; run `contextful disclosure release {} --project {}`",
+                spec.id,
+                spec.id,
+                store.project_name()
+            )))
+            .into());
+        }
         let publishes = spec.publishes();
         let fingerprint = spec.schema_fingerprint();
         if let (true, Some(fp), Some(prior)) = (publishes, &fingerprint, current_section(store, &spec.id)?) {

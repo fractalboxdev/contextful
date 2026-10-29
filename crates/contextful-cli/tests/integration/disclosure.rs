@@ -288,3 +288,41 @@ fn a_release_of_a_publication_job_records_the_group_completion() {
     let source = ledger.source("industry-projection").unwrap().expect("the release records the group's completion");
     assert_eq!(source.frontiers.len(), 1);
 }
+
+/// A governed model's build outside `disclosure release` refuses with `error`, names the
+/// release verb, and leaves the model's table unpublished.
+fn assert_refused_unpublished(dir: &std::path::Path, out: &std::process::Output, error: &str) {
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.starts_with(&format!("{error}:")), "{stderr}");
+    assert!(stderr.contains("contextful disclosure release revenue_by_industry --project benchmark"), "{stderr}");
+    assert!(!stderr.contains("t4"), "{stderr}");
+    assert!(published(dir).is_none(), "nothing was published");
+}
+
+/// A build of a model declaring `[model.disclosure]` outside the release verb raises `DisclosureReleaseRequired` and publishes nothing.
+// spec: disclosure.release.governed-build@93613c4a
+#[test]
+fn a_plain_build_of_a_governed_model_raises_release_required() {
+    let dir = benchmark(&format!("{RELEASED}{CAP}"));
+    let out = cli(dir.path(), &["build", "revenue_by_industry", "--project", "benchmark"]);
+    assert_refused_unpublished(dir.path(), &out, "DisclosureReleaseRequired");
+    let out = release(dir.path(), &[]);
+    assert!(out.status.success(), "the release verb still publishes: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(published(dir.path()).is_some());
+}
+
+/// A build job naming a governed model refuses as the plain build does.
+#[test]
+fn a_build_job_naming_a_governed_model_raises_release_required() {
+    let job = "\n[[job]]\nname = \"industry-build\"\nkind = \"build\"\ntarget = \"revenue_by_industry\"\nschedule = \"every 1h\"\n";
+    let dir = benchmark(&format!("{RELEASED}{CAP}{job}"));
+    let out = cli(dir.path(), &["job", "fire", "industry-build", "--project", "benchmark"]);
+    assert_refused_unpublished(dir.path(), &out, "DisclosureReleaseRequired");
+    // The refusal is deterministic, so the job's execution records it as permanent.
+    let history = cli(dir.path(), &["run", "history", "--project", "benchmark", "--export"]);
+    let rows: Vec<serde_json::Value> = String::from_utf8_lossy(&history.stdout).lines().skip(1).map(|l| serde_json::from_str(l).unwrap()).collect();
+    let fired: Vec<_> = rows.iter().filter(|r| r["host_scope"] == "job:industry-build").collect();
+    assert_eq!(fired.len(), 1, "{rows:?}");
+    assert_eq!((&fired[0]["status"], &fired[0]["error_kind"]), (&serde_json::json!("failed"), &serde_json::json!("Permanent")), "{rows:?}");
+}
