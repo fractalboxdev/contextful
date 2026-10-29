@@ -514,13 +514,17 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
   *P1*
 - `file-size` — The exporter writes data files of at most 128 MiB, opening a new file before the next rows carry the current one past that size; one row larger than that fills a file alone.
   *A-topology#catalog-read-add-on*
+- `multipart` — The exporter streams each data file as a multipart upload, sending each 16 MiB part once encoded, a shorter last part, and the completion when the file closes; a file under one part uploads in one request.
+  *because a file held whole until it closes bounds the export's host by file size rather than by part size*
+- `memory` — While writing a data file, the exporter holds at most one part and one open row group of it in memory, whatever the file's size, and closes a row group once its encoded size reaches 16 MiB.
+  *because a host with a small memory limit then runs an export whatever size its data files reach*
 - `create` — An export finding no table creates it at the declared format version and commits its files as one `append` snapshot, requiring that `main` does not exist.
   *A-run#iceberg-overwrite-commit*
 - `overwrite` — Each later export commits one `overwrite` snapshot that adds its data files and marks every live file of the parent snapshot deleted, requiring the table uuid, `main` at the parent snapshot id, and the current schema and default spec ids.
   *A-run#iceberg-overwrite-commit*
 - `commit-retry` — A conflicting commit reloads the table and, while its uuid and schema and partition spec ids are unchanged, retries with the written files, at most 3 attempts; a changed id or the last conflict raises `ExportCommitConflict`.
   *A-run#iceberg-overwrite-commit*
-- `orphans` — After {{run.export-iceberg.commit-retry}} refuses, the exporter deletes every data and manifest file that export wrote; a retry deletes only the manifests it supersedes, keeping the data files it reuses.
+- `orphans` — After {{run.export-iceberg.commit-retry}} refuses, or an earlier step fails, the exporter aborts its open multipart uploads and deletes every data and manifest file that export wrote; a retry deletes only the manifests it supersedes, keeping the data files it reuses.
   *because catalog maintenance removes only files some snapshot referenced, so an uncommitted file stays until its writer removes it*
 - `commit-unknown` — A commit whose outcome is unknown deletes no file while it may still apply; a later run records it as taken when the table holds its snapshot, and deletes its files once another table stands or `main` leaves its parent.
   *because a commit the catalog applied, or is still applying, after the connection dropped references every file it added*
@@ -556,6 +560,8 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
 - `run.export-iceberg.commit-retry`: WHEN catalog compaction commits between the export's table load and its commit, THEN the export reloads, marks the compacted files deleted and commits on its second attempt.
 - `run.export-iceberg.type-refused`: WHEN a table holding a nanosecond timestamp column exports under `format_version = 2`, THEN preflight refuses naming the column and no Parquet file is written.
 - `run.export-iceberg.frontier`: WHEN an export runs twice with no commit and no grant change between, THEN the second run commits no snapshot.
+
+unsettled: Does a failed export list the multipart uploads under its data prefix, aborting one whose creation answer it lost? owner: pipeline affects: run.export-iceberg
 
 ## backfill
 

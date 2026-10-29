@@ -371,7 +371,7 @@ fn publish(
             break;
         }
     }
-    let added = files.finish(written)?;
+    let added = files.finish()?;
     if source_frontier(face.store(), &export.table)? != frontier {
         bail!("export `{}`: the source committed during the read; nothing is committed", export.name);
     }

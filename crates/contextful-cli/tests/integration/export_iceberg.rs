@@ -178,7 +178,7 @@ fn an_unchanged_export_commits_nothing() {
 /// retries with the files it wrote; the last conflict raises `ExportCommitConflict`, and the exporter deletes every
 /// file that export wrote.
 // spec: run.export-iceberg.commit-retry@1c61cfa9
-// spec: run.export-iceberg.orphans@671e1959
+// spec: run.export-iceberg.orphans@6fa7ecf4
 #[test]
 fn a_conflicting_commit_reloads_and_retries_then_refuses_and_removes_its_files() {
     let remote = Remote::start();
@@ -512,12 +512,17 @@ fn land_payloads(dir: &Path, run: &str, now: &str, rows: impl Iterator<Item = (S
     std::fs::remove_file(dir.join(&file)).unwrap();
 }
 
-/// A Parquet object's row count, read from its footer.
-fn parquet_rows(bytes: &[u8]) -> i64 {
+/// A Parquet object's footer.
+fn footer(bytes: &[u8]) -> parquet::file::metadata::ParquetMetaData {
     use parquet::file::metadata::{FooterTail, ParquetMetaDataReader};
     let tail: &[u8; 8] = bytes[bytes.len() - 8..].try_into().unwrap();
     let length = FooterTail::try_new(tail).unwrap().metadata_length();
-    ParquetMetaDataReader::decode_metadata(&bytes[bytes.len() - 8 - length..bytes.len() - 8]).unwrap().file_metadata().num_rows()
+    ParquetMetaDataReader::decode_metadata(&bytes[bytes.len() - 8 - length..bytes.len() - 8]).unwrap()
+}
+
+/// A Parquet object's row count, read from its footer.
+fn parquet_rows(bytes: &[u8]) -> i64 {
+    footer(bytes).file_metadata().num_rows()
 }
 
 /// Every data object of `remote` in write order, as its size in bytes and its row count.
@@ -565,4 +570,86 @@ fn data_files_stay_under_the_ceiling_and_an_oversized_row_fills_one_alone() {
     assert!(out.contains("committed 3 rows in 3 files"), "{out}");
     let files = data_files(&remote);
     assert_eq!(files.iter().map(|f| f.1).collect::<Vec<_>>(), [1, 1, 1], "the oversized row fills the middle file alone: {files:?}");
+}
+
+/// The size of each multipart upload part but the last.
+const PART: u64 = 16 * 1024 * 1024;
+
+/// Land 3,000 rows of 16 KiB noise, which encode to one data file of about 38 MiB.
+fn land_three_parts(dir: &Path) {
+    let mut seed = 0x0b1e_u64;
+    for run in 0..2 {
+        let ids = run * 1500..(run + 1) * 1500;
+        land_payloads(dir, &format!("load-{run}"), &format!("2030-01-01T00:00:{run:02}Z"), ids.map(|i| (format!("r{i:05}"), noise(&mut seed, 16 * 1024))));
+    }
+}
+
+/// A data file past one part streams as a multipart upload: every part but the last holds 16 MiB, the parts together
+/// are the file, and the upload completes when the file closes; a file under one part uploads in one request.
+// spec: run.export-iceberg.multipart@ee07f8c2
+#[test]
+fn a_data_file_past_one_part_streams_as_a_multipart_upload() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land_three_parts(p);
+    let out = ok(&export(p, "spans-lake", &public, &token));
+    assert!(out.contains("committed 3000 rows in 1 files"), "{out}");
+    let files = data_files(&remote);
+    let [(size, rows)] = files[..] else { panic!("one data file: {files:?}") };
+    assert_eq!(rows, 3000);
+    let parts = remote.s3.parts();
+    let Some((last, whole)) = parts.split_last() else { panic!("the file uploads in parts") };
+    assert!(whole.len() >= 2, "{parts:?}");
+    assert!(whole.iter().all(|p| *p == PART) && *last <= PART, "every part but the last holds 16 MiB: {parts:?}");
+    assert_eq!(parts.iter().sum::<u64>(), size, "the parts together are the file");
+    assert!(remote.s3.uploads().is_empty(), "the upload completes");
+    assert_eq!(strings(&remote.scan(), "span_id").len(), 3000);
+
+    let small = Remote::start();
+    let (dir, public, token) = project(&small.block("spans-lake", "svc://mirror", 2));
+    land(dir.path(), "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    ok(&export(dir.path(), "spans-lake", &public, &token));
+    assert_eq!(small.data_objects().len(), 1);
+    assert!(small.s3.parts().is_empty(), "a file under one part uploads in one request");
+}
+
+/// The writer closes each row group once its encoded size reaches 16 MiB, so a data file past one part holds several,
+/// each within a row of that size, and the open one bounds what the writer holds besides the spooled part.
+// spec: run.export-iceberg.memory@c221d4e4
+#[test]
+fn row_groups_close_at_their_encoded_size() {
+    const ROW_GROUP: i64 = 16 * 1024 * 1024;
+    const SLACK: i64 = 64 * 1024;
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land_three_parts(p);
+    ok(&export(p, "spans-lake", &public, &token));
+    let keys = remote.data_objects();
+    let [key] = &keys[..] else { panic!("one data file: {keys:?}") };
+    let groups: Vec<i64> = footer(&remote.s3.object(key).unwrap()).row_groups().iter().map(|g| g.compressed_size()).collect();
+    let Some((last, closed)) = groups.split_last() else { panic!("the file holds a row group") };
+    assert!(closed.len() >= 2, "{groups:?}");
+    assert!(closed.iter().all(|g| (ROW_GROUP - SLACK..=ROW_GROUP + SLACK).contains(g)), "each closed row group reaches 16 MiB and stops there: {groups:?}");
+    assert!(*last <= ROW_GROUP + SLACK, "{groups:?}");
+}
+
+/// An export failing while a data file's multipart upload is open aborts the upload, so neither its parts nor a data
+/// file stay behind; the next export writes the file afresh.
+// spec: run.export-iceberg.orphans@6fa7ecf4
+#[test]
+fn a_failed_export_aborts_its_open_multipart_upload() {
+    let remote = Remote::start();
+    let (dir, public, token) = project(&remote.block("spans-lake", "svc://mirror", 2));
+    let p = dir.path();
+    land_three_parts(p);
+    remote.s3.fail_parts(1, &["InternalError"]);
+    err(&export(p, "spans-lake", &public, &token));
+    assert_eq!(remote.s3.parts(), [PART], "the first part uploaded before the second failed");
+    assert!(remote.s3.uploads().is_empty(), "the open upload is aborted");
+    assert!(remote.data_objects().is_empty());
+    ok(&export(p, "spans-lake", &public, &token));
+    assert_eq!(data_files(&remote).len(), 1);
+    assert!(remote.s3.uploads().is_empty());
 }

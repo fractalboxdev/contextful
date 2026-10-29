@@ -15,12 +15,22 @@ use std::sync::Arc;
 use std::time::Duration;
 use url::Url;
 
-/// The wall clock one object transfer may take: a data file holds up to 128 MiB.
+/// The wall clock one object transfer may take.
 const OBJECT_TIMEOUT: Duration = Duration::from_secs(900);
 /// The largest object a transfer reads back: a manifest or manifest list.
 const OBJECT_BODY_BYTES: u64 = 256 * 1024 * 1024;
 /// How long a presigned URL stays valid.
 const PRESIGN: Duration = Duration::from_secs(3600);
+/// The most parts one S3 multipart upload holds.
+const MAX_PARTS: u16 = 10_000;
+
+/// An open multipart upload: the object it writes, the id the store assigned, and the ETag
+/// of each part uploaded, in part order.
+pub(super) struct Upload {
+    location: String,
+    id: String,
+    etags: Vec<String>,
+}
 
 /// A table as the catalog answered it, with the storage configuration it vends.
 pub(super) struct Loaded {
@@ -222,6 +232,60 @@ impl Storage {
         let response = self.send("PUT", url, Some(bytes))?;
         if !(200..300).contains(&response.status) {
             bail!("the object store answered {} writing `{location}`", response.status);
+        }
+        Ok(())
+    }
+
+    /// Open a multipart upload to `location` (`run.export-iceberg.multipart`).
+    pub fn create_upload(&self, location: &str) -> Result<Upload> {
+        use rusty_s3::S3Action;
+        let (bucket, key) = self.bucket(location)?;
+        let url = bucket.create_multipart_upload(Some(&self.credentials), &key).sign(PRESIGN);
+        let response = self.send("POST", url, None)?;
+        if !(200..300).contains(&response.status) {
+            bail!("the object store answered {} opening a multipart upload of `{location}`", response.status);
+        }
+        let text = String::from_utf8_lossy(&response.body);
+        let created = rusty_s3::actions::CreateMultipartUpload::parse_response(&text).map_err(|e| anyhow::anyhow!("the object store's multipart upload of `{location}` answered no upload id: {e}"))?;
+        Ok(Upload { location: location.to_string(), id: created.upload_id().to_string(), etags: Vec::new() })
+    }
+
+    /// Upload `bytes` as the next part of `upload`.
+    pub fn upload_part(&self, upload: &mut Upload, bytes: &[u8]) -> Result<()> {
+        use rusty_s3::S3Action;
+        let number = u16::try_from(upload.etags.len() + 1).ok().filter(|n| *n <= MAX_PARTS).with_context(|| format!("the multipart upload of `{}` holds {MAX_PARTS} parts", upload.location))?;
+        let (bucket, key) = self.bucket(&upload.location)?;
+        let url = bucket.upload_part(Some(&self.credentials), &key, number, &upload.id).sign(PRESIGN);
+        let response = self.send("PUT", url, Some(bytes))?;
+        if !(200..300).contains(&response.status) {
+            bail!("the object store answered {} to part {number} of `{}`", response.status, upload.location);
+        }
+        let etag = response.headers.iter().find(|(name, _)| name.eq_ignore_ascii_case("etag")).map(|(_, v)| v.clone());
+        upload.etags.push(etag.with_context(|| format!("the object store answered part {number} of `{}` with no ETag", upload.location))?);
+        Ok(())
+    }
+
+    /// Complete `upload` from its parts in order. A store may answer 200 with an error body.
+    pub fn complete_upload(&self, upload: &Upload) -> Result<()> {
+        use rusty_s3::S3Action;
+        let (bucket, key) = self.bucket(&upload.location)?;
+        let action = bucket.complete_multipart_upload(Some(&self.credentials), &key, &upload.id, upload.etags.iter().map(String::as_str));
+        let url = action.sign(PRESIGN);
+        let response = self.send("POST", url, Some(action.body().as_bytes()))?;
+        if !(200..300).contains(&response.status) || String::from_utf8_lossy(&response.body).contains("<Error>") {
+            bail!("the object store answered {} completing `{}`: {}", response.status, upload.location, String::from_utf8_lossy(&response.body));
+        }
+        Ok(())
+    }
+
+    /// Abort `upload`, freeing its parts; an upload already gone answers 404 (`run.export-iceberg.orphans`).
+    pub fn abort_upload(&self, upload: &Upload) -> Result<()> {
+        use rusty_s3::S3Action;
+        let (bucket, key) = self.bucket(&upload.location)?;
+        let url = bucket.abort_multipart_upload(Some(&self.credentials), &key, &upload.id).sign(PRESIGN);
+        let response = self.send("DELETE", url, None)?;
+        if !(200..300).contains(&response.status) && response.status != 404 {
+            bail!("the object store answered {} aborting the multipart upload of `{}`", response.status, upload.location);
         }
         Ok(())
     }

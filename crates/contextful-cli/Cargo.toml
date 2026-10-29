@@ -40,9 +40,15 @@ contextful-sync = { path = "../contextful-sync", optional = true }
 # The component host (`topology.package.component-host`), linked under `component-host`.
 contextful-wasm = { path = "../contextful-wasm", default-features = false, optional = true }
 # The Iceberg export (`run.export-iceberg`), linked under `iceberg-export`: the reference
-# library writes the Parquet files, manifests and manifest list into memory, and SigV4
-# presigning hands each object request to the mediated client.
+# library writes the Parquet files into a spool drained part by part and the manifests and
+# manifest list into memory; SigV4 presigning hands each object request to the mediated client.
 iceberg = { version = "=0.10.1", optional = true }
+# The spool implements the reference library's storage trait, whose serialization and
+# asynchronous signatures name these.
+typetag = { version = "0.2", optional = true }
+async-trait = { version = "0.1", optional = true }
+bytes = { version = "1", optional = true }
+futures-core = { version = "0.3", optional = true }
 arrow-array = { version = "58", optional = true }
 arrow-buffer = { version = "58", optional = true }
 arrow-schema = { version = "58", optional = true }
@@ -138,7 +144,7 @@ aws-secrets-manager = ["transport-ureq", "contextful-outbound/aws-secrets-manage
 aws-sqs = ["data-plane", "s3-sync", "transport-ureq", "contextful-outbound/aws-sqs"]
 # The Iceberg export target (`run.export-iceberg`); without it an Iceberg block refuses as
 # `ProfileCapabilityAbsent`.
-iceberg-export = ["data-plane", "transport-ureq", "dep:iceberg", "dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema", "dep:parquet", "dep:rusty-s3", "dep:tokio", "dep:uuid", "dep:base64"]
+iceberg-export = ["data-plane", "transport-ureq", "dep:iceberg", "dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema", "dep:parquet", "dep:rusty-s3", "dep:tokio", "dep:uuid", "dep:base64", "dep:typetag", "dep:async-trait", "dep:bytes", "dep:futures-core"]
 
 # Feature sets the features stage tests beside none and all
 # (`assurance.build.profile-build`): the bare data plane reaches each compiled-out

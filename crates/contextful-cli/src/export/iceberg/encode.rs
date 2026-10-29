@@ -1,9 +1,9 @@
 //! The Iceberg schema of a planned export, the Arrow batch a page of read-face rows
-//! becomes, and the Parquet data files those batches fill. Files are written into memory,
-//! each uploaded once it closes and then dropped (`run.export-iceberg.read`,
-//! `run.export-iceberg.file-size`).
+//! becomes, and the Parquet data files those batches fill. Each file streams to the object
+//! store as it is encoded, one part at a time (`run.export-iceberg.read`,
+//! `run.export-iceberg.file-size`, `run.export-iceberg.multipart`).
 
-use super::remote::Storage;
+use super::remote::{Storage, Upload};
 use anyhow::{anyhow, bail, Context, Result};
 use arrow_array::builder::BooleanBufferBuilder;
 use arrow_array::{
@@ -14,17 +14,24 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Fields, Schema as ArrowSchema, TimeUnit};
 use base64::Engine;
 use contextful_core::export::iceberg::{IcebergPlan, IcebergType, ICEBERG_DATA_FILE_BYTES};
-use iceberg::io::FileIO;
+use bytes::Bytes;
+use iceberg::io::{FileMetadata, FileRead, FileWrite, InputFile, OutputFile};
 use iceberg::spec::{DataContentType, DataFile, ListType, MapType, NestedField, PrimitiveType, Schema, StructType, Type};
 use iceberg::writer::file_writer::{FileWriter, FileWriterBuilder, ParquetWriter, ParquetWriterBuilder};
 use iceberg::writer::CurrentFileStatus;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Rows per Parquet row group.
 const ROW_GROUP_ROWS: usize = 131_072;
+/// The encoded size a Parquet row group closes at, which bounds the bytes the writer holds
+/// before they reach the spool.
+const ROW_GROUP_BYTES: usize = 16 * 1024 * 1024;
+/// The size of each multipart upload part but the last (`run.export-iceberg.multipart`).
+pub(super) const PART_BYTES: usize = 16 * 1024 * 1024;
 /// The in-memory size of one slice written at a time: an eighth of the data file ceiling.
 const SLICE_BYTES: u64 = ICEBERG_DATA_FILE_BYTES / 8;
 
@@ -227,29 +234,131 @@ pub(super) fn arrow_schema(schema: &Schema) -> Result<Arc<ArrowSchema>> {
     Ok(Arc::new(iceberg::arrow::schema_to_arrow_schema(schema)?))
 }
 
-/// Parquet data files written into memory, each uploaded once it reaches the ceiling or the
-/// export ends. Every uploaded location is pushed onto `uploaded` before the next file opens,
-/// so a failure deletes exactly what this export wrote.
+/// The bytes the Parquet writer has flushed that no request has yet carried.
+type Spooled = Arc<Mutex<Vec<u8>>>;
+
+/// The storage the Parquet writer writes into: each closed row group appends to the spool, and
+/// [`Files`] uploads whole parts from its front between writes. It serializes to an empty
+/// spool, as the reference library's in-memory storage does.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct Spool {
+    #[serde(skip)]
+    bytes: Spooled,
+}
+
+struct SpoolWrite(Spooled);
+
+fn poisoned() -> iceberg::Error {
+    iceberg::Error::new(iceberg::ErrorKind::Unexpected, "the export spool's lock is poisoned")
+}
+
+#[async_trait::async_trait]
+impl FileWrite for SpoolWrite {
+    async fn write(&mut self, bs: Bytes) -> iceberg::Result<()> {
+        self.0.lock().map_err(|_| poisoned())?.extend_from_slice(&bs);
+        Ok(())
+    }
+
+    async fn close(&mut self) -> iceberg::Result<()> {
+        Ok(())
+    }
+}
+
+fn write_only<T>() -> iceberg::Result<T> {
+    Err(iceberg::Error::new(iceberg::ErrorKind::FeatureUnsupported, "an export spool accepts writes alone"))
+}
+
+#[async_trait::async_trait]
+#[typetag::serde(name = "contextful-export-spool")]
+impl iceberg::io::Storage for Spool {
+    async fn exists(&self, _: &str) -> iceberg::Result<bool> {
+        Ok(false)
+    }
+
+    async fn metadata(&self, _: &str) -> iceberg::Result<FileMetadata> {
+        write_only()
+    }
+
+    async fn read(&self, _: &str) -> iceberg::Result<Bytes> {
+        write_only()
+    }
+
+    async fn reader(&self, _: &str) -> iceberg::Result<Box<dyn FileRead>> {
+        write_only()
+    }
+
+    async fn write(&self, _: &str, bs: Bytes) -> iceberg::Result<()> {
+        self.bytes.lock().map_err(|_| poisoned())?.extend_from_slice(&bs);
+        Ok(())
+    }
+
+    async fn writer(&self, _: &str) -> iceberg::Result<Box<dyn FileWrite>> {
+        Ok(Box::new(SpoolWrite(self.bytes.clone())))
+    }
+
+    async fn delete(&self, _: &str) -> iceberg::Result<()> {
+        Ok(())
+    }
+
+    async fn delete_prefix(&self, _: &str) -> iceberg::Result<()> {
+        Ok(())
+    }
+
+    async fn delete_stream(&self, _: futures_core::stream::BoxStream<'static, String>) -> iceberg::Result<()> {
+        Ok(())
+    }
+
+    fn new_input(&self, _: &str) -> iceberg::Result<InputFile> {
+        write_only()
+    }
+
+    fn new_output(&self, path: &str) -> iceberg::Result<OutputFile> {
+        Ok(OutputFile::new(Arc::new(self.clone()), path.to_string()))
+    }
+}
+
+/// Parquet data files, each streamed to the object store as it is encoded: a file reaching
+/// [`PART_BYTES`] opens a multipart upload that takes each whole part as the spool fills and
+/// completes when the file closes; a smaller file uploads in one request. Every location is
+/// pushed onto `uploaded` before its first request, so a failure deletes exactly what this
+/// export wrote, and dropping `Files` with an upload open aborts it (`run.export-iceberg.orphans`).
 pub(super) struct Files<'a> {
     rt: &'a tokio::runtime::Runtime,
-    io: FileIO,
+    spool: Spool,
     schema: Arc<Schema>,
     location: String,
     spec_id: i32,
     export: uuid::Uuid,
     storage: &'a Storage,
     open: Option<ParquetWriter>,
+    upload: Option<Upload>,
     count: usize,
     done: Vec<DataFile>,
 }
 
 impl<'a> Files<'a> {
     pub fn new(rt: &'a tokio::runtime::Runtime, schema: Arc<Schema>, location: &str, spec_id: i32, storage: &'a Storage) -> Files<'a> {
-        Files { rt, io: FileIO::new_with_memory(), schema, location: location.trim_end_matches('/').to_string(), spec_id, export: uuid::Uuid::new_v4(), storage, open: None, count: 0, done: Vec::new() }
+        Files {
+            rt,
+            spool: Spool::default(),
+            schema,
+            location: location.trim_end_matches('/').to_string(),
+            spec_id,
+            export: uuid::Uuid::new_v4(),
+            storage,
+            open: None,
+            upload: None,
+            count: 0,
+            done: Vec::new(),
+        }
     }
 
     fn properties() -> WriterProperties {
-        WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::try_new(1).unwrap_or_default())).set_max_row_group_row_count(Some(ROW_GROUP_ROWS)).build()
+        WriterProperties::builder()
+            .set_compression(Compression::ZSTD(ZstdLevel::try_new(1).unwrap_or_default()))
+            .set_max_row_group_row_count(Some(ROW_GROUP_ROWS))
+            .set_max_row_group_bytes(Some(ROW_GROUP_BYTES))
+            .build()
     }
 
     /// Write `batch` in slices of at most [`SLICE_BYTES`] by the per-row estimates `sizes`,
@@ -265,36 +374,66 @@ impl<'a> Files<'a> {
             }
             if let Some(open) = &self.open {
                 if open.current_written_size() as u64 + estimate > ICEBERG_DATA_FILE_BYTES {
-                    self.close(uploaded)?;
+                    self.close()?;
                 }
             }
             if self.open.is_none() {
                 let path = format!("{}/data/{}-{:05}.parquet", self.location, self.export, self.count);
                 self.count += 1;
-                let output = self.io.new_output(&path)?;
+                // Recorded before any request: a store that kept the object while the answer
+                // was lost still has it deleted.
+                uploaded.push(path.clone());
+                let output = OutputFile::new(Arc::new(self.spool.clone()), path);
                 let builder = ParquetWriterBuilder::new(Self::properties(), self.schema.clone());
                 self.open = Some(self.rt.block_on(builder.build(output))?);
             }
             let Some(writer) = self.open.as_mut() else { bail!("no data file is open") };
             self.rt.block_on(writer.write(&batch.slice(start, end - start)))?;
+            let path = writer.current_file_path();
+            self.drain(&path)?;
             if estimate > ICEBERG_DATA_FILE_BYTES {
-                self.close(uploaded)?;
+                self.close()?;
             }
             start = end;
         }
         Ok(())
     }
 
-    fn close(&mut self, uploaded: &mut Vec<String>) -> Result<()> {
+    /// Upload each whole part the spool holds, opening the file's multipart upload at its first.
+    fn drain(&mut self, path: &str) -> Result<()> {
+        loop {
+            let part = {
+                let mut held = self.spool.bytes.lock().map_err(|_| poisoned())?;
+                if held.len() < PART_BYTES {
+                    return Ok(());
+                }
+                let rest = held.split_off(PART_BYTES);
+                std::mem::replace(&mut *held, rest)
+            };
+            let upload = match self.upload.as_mut() {
+                Some(upload) => upload,
+                None => self.upload.insert(self.storage.create_upload(path)?),
+            };
+            self.storage.upload_part(upload, &part)?;
+        }
+    }
+
+    fn close(&mut self) -> Result<()> {
         let Some(writer) = self.open.take() else { return Ok(()) };
         let path = writer.current_file_path();
         let builders = self.rt.block_on(writer.close())?;
-        let bytes = self.rt.block_on(async { self.io.new_input(&path)?.read().await })?;
-        // Recorded before the upload: a store that kept the object while the answer was lost
-        // still has it deleted.
-        uploaded.push(path.clone());
-        self.storage.put(&path, &bytes)?;
-        self.rt.block_on(self.io.delete(&path))?;
+        self.drain(&path)?;
+        let rest = std::mem::take(&mut *self.spool.bytes.lock().map_err(|_| poisoned())?);
+        match self.upload.as_mut() {
+            None => self.storage.put(&path, &rest)?,
+            Some(upload) => {
+                if !rest.is_empty() {
+                    self.storage.upload_part(upload, &rest)?;
+                }
+                self.storage.complete_upload(upload)?;
+                self.upload = None;
+            }
+        }
         for mut builder in builders {
             self.done.push(builder.content(DataContentType::Data).partition_spec_id(self.spec_id).build().map_err(|e| anyhow!("building the data file entry: {e}"))?);
         }
@@ -302,9 +441,18 @@ impl<'a> Files<'a> {
     }
 
     /// Close the open file and answer every data file this export wrote.
-    pub fn finish(mut self, uploaded: &mut Vec<String>) -> Result<Vec<DataFile>> {
-        self.close(uploaded)?;
-        Ok(self.done)
+    pub fn finish(mut self) -> Result<Vec<DataFile>> {
+        self.close()?;
+        Ok(std::mem::take(&mut self.done))
     }
 }
 
+impl Drop for Files<'_> {
+    /// An upload still open when the export fails is aborted, taking its parts with it
+    /// (`run.export-iceberg.orphans`).
+    fn drop(&mut self) {
+        if let Some(upload) = self.upload.take() {
+            let _ = self.storage.abort_upload(&upload);
+        }
+    }
+}
