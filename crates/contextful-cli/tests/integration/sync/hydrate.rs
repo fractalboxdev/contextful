@@ -150,6 +150,40 @@ fn a_cold_http_server_is_ready_within_8_s_and_answers_once_its_pull_lands() {
     assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["result"]["structuredContent"]["rows"], json!([["1"]]), "{body}");
 }
 
+/// A lazy store's hydration completes while its bucket's only part cannot be read yet, and
+/// the first query fetches that part in its own path.
+// spec: read.cache.lazy-hydration@9d3747a1
+#[test]
+fn a_lazy_http_server_hydrates_on_metadata_and_its_first_query_fetches_the_part() {
+    let bucket = tempfile::tempdir().unwrap();
+    let _a = seed(&file_sync(bucket.path(), ""), &[]);
+    // The bucket's data object becomes a pipe: a read of it holds until the test feeds it.
+    let part = objects(bucket.path()).into_iter().find(|p| p.extension().is_some_and(|e| e == "parquet")).expect("a pushed data object");
+    let bytes = std::fs::read(&part).unwrap();
+    std::fs::remove_file(&part).unwrap();
+    assert!(Command::new("mkfifo").arg(&part).status().unwrap().success());
+
+    let cold = project("ingest-l", &file_sync(bucket.path(), "pull_before_run = true\nlazy_parts = true\n"));
+    let (public, token) = issue(cold.path());
+    let served = serve_within(cold.path(), &public, Duration::from_secs(8));
+    let mapped = served.line("hydrated:", Duration::from_secs(60)).expect("hydration completes without the part");
+    assert!(mapped.contains("files: 0,"), "{mapped}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while hydration(&served.addr) != "complete" {
+        assert!(Instant::now() < deadline, "hydration never completed");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let local = cold.path().join(super::STORE).join(super::LANDED);
+    assert!(!local.exists(), "hydration fetched no part");
+
+    let feeder = std::thread::spawn(move || std::fs::OpenOptions::new().write(true).open(&part).unwrap().write_all(&bytes).unwrap());
+    let (status, body) = query(&served.addr, &token);
+    feeder.join().unwrap();
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["result"]["structuredContent"]["rows"], json!([["1"]]), "{body}");
+    assert!(local.exists(), "the query fetched the part it read");
+}
+
 /// A server whose store is already on local disk still binds before it maps: a data file
 /// that cannot be read yet holds hydration, not readiness.
 #[test]

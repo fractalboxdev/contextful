@@ -512,3 +512,38 @@ fn a_lazy_fold_reads_its_inputs_through_the_cache_and_refuses_past_its_bound() {
     assert!(matches!(fold(&store, &decl, at("2030-01-02T00:00:00Z")).unwrap(), FoldOutcome::Folded { .. }));
     assert_eq!(ids(table_rows(&store, &decl, &["id"]).unwrap()), [0, 1, 2]);
 }
+
+/// A lazy pull of a folded table with a later run writes the pointer while no part of its
+/// snapshot is local, and brings home every listed object other than a data part: the
+/// schema, the snapshot manifest and each run manifest, folded runs' included.
+// spec: store.pull.lazy-pointer@3f707c97
+// spec: store.pull.lazy-ready@57926350
+#[test]
+fn a_lazy_pull_writes_the_pointer_on_the_snapshot_manifest_and_brings_home_metadata_alone() {
+    use contextful_context::fold::fold;
+    use contextful_core::store::sync::BucketManifest;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = pushed(b.clone(), 3);
+    let decl = TableDecl::named("filings");
+    fold(&a.syncer.store, &decl, at("2030-01-02T00:00:00Z")).unwrap();
+    a.land("run-9", json!([{ "id": 9, "title": "t9" }]), "2030-01-02T00:00:00Z");
+    a.syncer.push(at("2030-01-02T01:00:00Z")).unwrap();
+    let (bytes, _) = b.get("team/manifest.json").unwrap().unwrap();
+    let listed: BucketManifest = serde_json::from_slice(&bytes).unwrap();
+    let mut metadata: Vec<String> = listed.entries.keys().filter(|k| !contextful_sync::lazy::is_lazy_part(k)).cloned().collect();
+    metadata.sort();
+    assert!(metadata.iter().any(|k| k.contains("/data/snapshots/")), "the table is folded: {metadata:?}");
+    assert_eq!(metadata.iter().filter(|k| k.contains("/data/runs/") && k.ends_with("/_manifest.json")).count(), 4, "{metadata:?}");
+
+    let cold = lazy(b, None);
+    let report = cold.syncer.pull(&PullScope::default()).unwrap();
+    let mut downloaded = report.downloaded.clone();
+    downloaded.sort();
+    assert_eq!(downloaded, metadata, "a lazy pull brings home every object but a data part");
+    assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"]);
+    assert!(local_parts(&cold).is_empty(), "the pointer stands on its snapshot manifest alone");
+
+    let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
+    assert_eq!(ids(table_rows(&store, &decl, &["id"]).unwrap()), [0, 1, 2, 9]);
+}

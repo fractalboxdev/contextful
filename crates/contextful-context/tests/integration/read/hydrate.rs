@@ -11,8 +11,9 @@ fn read_set(r: &Reads, table: &str) -> Vec<PathBuf> {
     state.resolve(None).unwrap().files().iter().map(|f| dir.join(f)).collect()
 }
 
-/// The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.
-// spec: read.cache.hot-local-parquet@44bdb0bf
+/// The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path
+/// except as {{read.cache.lazy-hydration}} admits.
+// spec: read.cache.hot-local-parquet@70c07c35
 #[test]
 fn the_face_maps_exactly_the_current_snapshot_set_it_reads() {
     let r = Reads::new();
