@@ -170,9 +170,23 @@ fn paged(f: &Fixture, crash: bool) -> Result<()> {
                 .filter(|key| !key.is_empty()).ok_or("ConformanceRetryIdentityMissing")?;
             let state: Value = serde_json::from_str(&f.ok(&["storage", "guard", "--project", PROJECT], &[])?)
                 .map_err(|_| "ConformanceGuardReportMalformed")?;
-            let token = state["token"].as_str().ok_or("ConformanceGuardMissing")?;
-            f.ok(&["storage", "reconcile-guard", "--project", PROJECT, "--token", token,
-                "--evidence", &format!("idempotency:{key}")], &[])?;
+            let token = state["guards"][0]["token"].as_str().ok_or("ConformanceGuardMissing")?.to_string();
+            // The killed holder records no exit, so its guard reconciles once its owner lease
+            // lapses, against a receipt carrying the key its request sent.
+            let evidence = format!("receipt:{key}:effects-log");
+            let deadline = Instant::now() + f.timeout;
+            loop {
+                let reconciled = f.invoke(&["storage", "reconcile-guard", "--project", PROJECT, "--token", &token,
+                    "--evidence", &evidence, "--operator", "conformance"], &[])?;
+                if reconciled.status.success() {
+                    break;
+                }
+                let held = reconciled.stderr.contains("ExecutionGuardHeld");
+                if !held || Instant::now() >= deadline {
+                    return Err(failed("ConformanceGuardReconcileFailed", &["storage"], &reconciled.stderr));
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
         }
         let deadline = Instant::now() + f.timeout;
         let mut attempt = 0;

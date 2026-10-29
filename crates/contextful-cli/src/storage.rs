@@ -32,12 +32,13 @@ pub enum StorageCmd {
         #[command(flatten)]
         project: ProjectArgs,
     },
-    /// Show a D1 callback guard left by an active or crashed execution.
+    /// Show each D1 callback guard: its protected rows, recorded effect and evidence class.
     Guard {
         #[command(flatten)]
         project: ProjectArgs,
     },
-    /// Record external-effect evidence and release a stopped D1 callback guard.
+    /// Release a stopped D1 callback guard against evidence carrying its recorded key:
+    /// `idempotency:<key>` within its window, or `receipt:<key>:<id>`.
     ReconcileGuard {
         #[command(flatten)]
         project: ProjectArgs,
@@ -45,6 +46,9 @@ pub enum StorageCmd {
         token: String,
         #[arg(long)]
         evidence: String,
+        /// The operator the audit row names.
+        #[arg(long)]
+        operator: String,
     },
 }
 
@@ -254,7 +258,7 @@ pub fn run(command: StorageCmd) -> Result<()> {
         StorageCmd::Initialize { project } => (project, true),
         StorageCmd::Capture { project } => return capture(project),
         StorageCmd::Guard { project } => return guard(project, None),
-        StorageCmd::ReconcileGuard { project, token, evidence } => return guard(project, Some((token, evidence))),
+        StorageCmd::ReconcileGuard { project, token, evidence, operator } => return guard(project, Some((token, evidence, operator))),
     };
     let Some(remote) = remote()? else {
         if initialize {
@@ -310,7 +314,7 @@ fn capture(args: ProjectArgs) -> Result<()> {
     { let _ = (endpoint, generation); bail!("ProfileCapabilityAbsent: recovery capture requires `d1-catalog`") }
 }
 
-fn guard(args: ProjectArgs, reconciliation: Option<(String, String)>) -> Result<()> {
+fn guard(args: ProjectArgs, reconciliation: Option<(String, String, String)>) -> Result<()> {
     let Some(remote) = remote()? else { bail!("StorageProfileUnsupported: callback guards require `{CLOUDFLARE_D1}`") };
     let Remote::D1 { endpoint, .. } = &remote else { bail!("StorageProfileUnsupported: callback guards require `{CLOUDFLARE_D1}`") };
     let project = args.locate(None)?.project;
@@ -319,10 +323,10 @@ fn guard(args: ProjectArgs, reconciliation: Option<(String, String)>) -> Result<
     #[cfg(feature = "d1-catalog")]
     {
         let catalog = contextful_d1::D1Catalog::connect(endpoint)?;
-        if let Some((token, evidence)) = reconciliation {
-            catalog.reconcile_guard(&token, &evidence)?;
+        if let Some((token, evidence, operator)) = reconciliation {
+            catalog.reconcile_guard(&token, &evidence, &operator)?;
         }
-        println!("{}", json!({ "profile":CLOUDFLARE_D1, "token":catalog.pending_guard()? }));
+        println!("{}", json!({ "profile":CLOUDFLARE_D1, "guards":catalog.guards()? }));
         Ok(())
     }
     #[cfg(not(feature = "d1-catalog"))]

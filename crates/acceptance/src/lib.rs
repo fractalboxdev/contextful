@@ -53,6 +53,11 @@ pub fn bin(name: &str) -> PathBuf {
     if !built.iter().any(|b| b == &key) {
         let mut command = Command::new(env!("CARGO"));
         command.args(["build", "-q", "--bin", name]);
+        // The developer build with the D1 catalog, so a milestone drives the `cloudflare-d1`
+        // storage profile against the loopback D1 binding.
+        if name == "contextful" {
+            command.args(["--features", "contextful-cli/d1-catalog"]);
+        }
         if profile == "release" {
             command.arg("--release");
         }

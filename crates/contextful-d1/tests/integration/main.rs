@@ -1,3 +1,4 @@
+mod callback_guard;
 mod catalog_cost;
 mod publication;
 mod size;
@@ -307,32 +308,33 @@ fn a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover() {
     let db = D1::connect(&fixture.endpoint).unwrap();
     db.initialize_recovery("sample", "generation").unwrap();
     let catalog = contextful_d1::D1Catalog::connect(&fixture.endpoint).unwrap();
-    let admission = ExecutionAdmission::new(vec![], vec![], true).unwrap();
+    let key = LeaseKey::Cadence("export".into());
+    let lease = catalog.acquire(&key, "first", 1).unwrap().unwrap();
+    let entry = EntryKey::new("export", "delivery", b"batch-1");
+    let admission = ExecutionAdmission::new(vec![], vec![lease.clone()], true).unwrap().with_effect(entry.clone(), None);
     let guard = catalog.execution_guard(&admission).unwrap();
     std::mem::forget(guard);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
     let replacement = contextful_d1::D1Catalog::connect(&fixture.endpoint).unwrap();
-    assert!(replacement.execution_guard(&admission).is_err());
-    let token = replacement
-        .pending_guard()
-        .unwrap()
-        .expect("durable guard token");
-    assert!(replacement
-        .reconcile_guard("wrong-token", "idempotency:key-1")
-        .is_err());
-    assert!(replacement.reconcile_guard(&token, "").is_err());
-    assert!(replacement.execution_guard(&admission).is_err());
-    replacement
-        .reconcile_guard(&token, "idempotency:key-1")
-        .unwrap();
-    assert!(replacement.pending_guard().unwrap().is_none());
-    assert!(replacement.execution_guard(&admission).is_ok());
+    assert!(replacement.acquire(&key, "second", 90).is_err(), "the crashed callback's guard outlives its lease");
+    let guards = replacement.guards().unwrap();
+    assert_eq!(guards.len(), 1);
+    let token = guards[0].token.clone();
+    let receipt = format!("receipt:{}:delivery-1", entry.idempotency_key());
+    assert!(replacement.reconcile_guard(&"0".repeat(64), &receipt, "ops").is_err());
+    assert!(replacement.reconcile_guard(&token, "", "ops").is_err());
+    assert!(replacement.acquire(&key, "second", 90).is_err());
+    replacement.reconcile_guard(&token, &receipt, "ops").unwrap();
+    assert!(replacement.guards().unwrap().is_empty());
+    let next = replacement.acquire(&key, "second", 90).unwrap().unwrap();
+    assert!(next.fence > lease.fence);
     let recorded = db
         .query(
-            "SELECT evidence FROM contextful_reconciliation WHERE token = ?",
+            "SELECT evidence FROM contextful_guard_reconciliation WHERE token = ?",
             vec![json!(token)],
         )
         .unwrap();
-    assert_eq!(recorded.rows[0]["evidence"], "idempotency:key-1");
+    assert_eq!(recorded.rows[0]["evidence"], receipt);
 }
 
 fn owner() -> ExecutionOwner {

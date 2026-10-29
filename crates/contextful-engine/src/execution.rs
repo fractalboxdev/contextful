@@ -391,7 +391,16 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.current_attempt().map(|_| ())
     }
 
+    /// Admit one bounded callback under its owner, attempt, parents and fences, naming the
+    /// journal entry a step's requests carry the idempotency key of; a publication names its
+    /// attempt's commit. No declaration carries a destination's deduplication window, so every
+    /// guard records `none` (`run.callback-guard.identity`).
     pub(crate) fn guard(&self, parent: Option<&crate::drive::BodyOwner>, publication: bool) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
+        let entry = EntryKey::new(&self.execution_id, "publication", self.run_id.as_bytes());
+        self.guard_effect(parent, publication, &entry)
+    }
+
+    fn guard_effect(&self, parent: Option<&crate::drive::BodyOwner>, publication: bool, entry: &EntryKey) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
         use contextful_core::coordinate::{ExecutionAdmission, ExecutionExpectation};
         let mut owners = vec![ExecutionExpectation { scope: self.scope.clone(), execution_id: self.execution_id.clone(), pins: self.pins.clone(), run_id: self.run_id.clone() }];
         owners.extend(self.parents.clone());
@@ -401,7 +410,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             owners.extend(parent.parents.clone());
             leases.extend(parent.fence.clone());
         }
-        self.engine.catalog.execution_guard(&ExecutionAdmission::new(owners, leases, publication)?)
+        self.engine.catalog.execution_guard(&ExecutionAdmission::new(owners, leases, publication)?.with_effect(entry.clone(), None))
     }
 
     pub(crate) fn inherit(&mut self, parent: &Self) {
@@ -609,7 +618,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         loop {
             self.assert_current()?;
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
-            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard(parent, false)?; effect(token) }) {
+            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard_effect(parent, false, key)?; effect(token) }) {
                 Ok(r) => {
                     self.emit(Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
                     return Ok(r);

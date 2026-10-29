@@ -147,12 +147,29 @@ pub struct ExecutionExpectation {
     pub run_id: String,
 }
 
+/// The effect a guarded callback sends: its journal entry, whose idempotency key every
+/// request carries, and its destination's declared deduplication window, `None` when the
+/// destination declares none (`run.callback-guard.identity`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuardedEffect {
+    pub entry: crate::run::journal::EntryKey,
+    pub window_secs: Option<u64>,
+}
+
+impl GuardedEffect {
+    /// The key the callback's requests carry (`run.journal.idempotency-key`).
+    pub fn idempotency_key(&self) -> String {
+        self.entry.idempotency_key()
+    }
+}
+
 /// Canonical lock order and exact identities for one bounded dispatch or publication.
 #[derive(Debug, Clone)]
 pub struct ExecutionAdmission {
     owners: Vec<ExecutionExpectation>,
     leases: Vec<Lease>,
     pub publication: bool,
+    effect: Option<GuardedEffect>,
 }
 
 impl ExecutionAdmission {
@@ -167,10 +184,16 @@ impl ExecutionAdmission {
             if pair[0].key == pair[1].key && (pair[0].holder != pair[1].holder || pair[0].fence != pair[1].fence) { return Err(Failure::new(FailureTag::Permanent, "conflicting lease expectations")); }
         }
         leases.dedup_by(|a, b| a.key == b.key);
-        Ok(Self { owners, leases, publication })
+        Ok(Self { owners, leases, publication, effect: None })
+    }
+    /// Name the effect the callback sends and its destination's deduplication window.
+    pub fn with_effect(mut self, entry: crate::run::journal::EntryKey, window_secs: Option<u64>) -> Self {
+        self.effect = Some(GuardedEffect { entry, window_secs });
+        self
     }
     pub fn owners(&self) -> &[ExecutionExpectation] { &self.owners }
     pub fn leases(&self) -> &[Lease] { &self.leases }
+    pub fn effect(&self) -> Option<&GuardedEffect> { self.effect.as_ref() }
 }
 
 /// The guard remains on its acquiring thread through the bounded callback. Callbacks

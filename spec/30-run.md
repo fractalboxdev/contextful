@@ -199,6 +199,8 @@ A D1 callback guard under {{run.journal.d1-guard}}: the rows it protects, the ef
   *because an operator checks the destination for the guard's key before supplying evidence*
 - `blocked` — A transfer a guard blocks answers retryable, naming the guard's token and evidence class, and `contextful storage reconcile-guard` unless the class is `replay-safe`.
   *because a generic transient failure leaves an operator retrying a guard that only reconciliation releases*
+- `legacy-guard` — A schema-3 database holding a `global` guard row stays at schema 3 under {{run.journal.execution-schema}}, its refusal naming the token and the step: reconcile it with the release that wrote it, then run `contextful storage initialize`.
+  *because a `global` row records no idempotency key, so no evidence {{run.callback-guard.evidence}} accepts ties to its effect*
 
 #### Scenarios
 
