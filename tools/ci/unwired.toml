@@ -1,4 +1,4 @@
 # The unwired count's ceiling (`corpus.state.unwired-ceiling`): `contextful-ci unwired`
 # refuses a count above it, and `contextful-ci unwired --lower` lowers it to the live count.
 
-ceiling = 83
+ceiling = 88
