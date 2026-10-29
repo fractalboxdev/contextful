@@ -542,8 +542,9 @@ pub struct PullReport {
     /// Tombstones the pull applied nothing for, each a `SyncTombstoneUnverified` refusal
     /// (`store.merge.tombstone-unverified`).
     pub unverified: Vec<String>,
-    /// Run states whose bucket object differs from its entry, each discarded with a warning
-    /// (`store.pull.run-state-torn`).
+    /// Warnings: each run state whose bucket object differs from its entry, discarded
+    /// (`store.pull.run-state-torn`), and each local pointer the bucket's replaced
+    /// (`store.pull.pointer-adopt`).
     pub discarded: Vec<String>,
     /// Bytes of local copies the pull read to compare against manifest entries.
     pub bytes_read: u64,
@@ -1675,15 +1676,26 @@ impl Syncer {
             let held: Option<Pointer> = std::fs::read(&pointer_path).ok()
                 .and_then(|b| self.store.open_metadata_bytes(&pointer_path, &b).ok())
                 .and_then(|b| serde_json::from_slice(&b).ok());
-            // The bucket's pointer advances a local one only when its fence, then its snapshot,
-            // is newer; a restore writes the generation's pointer whatever its fence.
+            let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
+            // The bucket's pointer advances a local one when its fence, then its snapshot, is newer;
+            // a restore writes the generation's pointer whatever its fence.
+            let mut adopting: Option<String> = None;
             if let Some(h) = &held {
-                let ahead = (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id);
-                if (generation.is_none() && ahead) || (h.fence == Some(pointer.fence) && h.snapshot_id == snapshot_id) {
+                if h.fence == Some(pointer.fence) && h.snapshot_id == snapshot_id {
                     continue;
                 }
+                let ahead = (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id);
+                if generation.is_none() && ahead {
+                    // A local pointer ahead of the bucket's stays only on a snapshot descending from
+                    // the bucket's; any other misses the runs the bucket's head folded
+                    // (`store.pull.pointer-adopt`).
+                    let local = h.snapshot_id.to_string();
+                    if h.snapshot_id == snapshot_id || matches!(ancestry(&self.store, &table_dir, &local, &snapshot), Ancestry::Descends) {
+                        continue;
+                    }
+                    adopting = Some(local);
+                }
             }
-            let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
             // A lazy store advances a pointer once its snapshot manifest is home; its parts follow on first read.
             let missing = match lazy {
                 true => (!table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(&snapshot).join(MANIFEST_FILE).exists()).then(|| MANIFEST_FILE.to_string()),
@@ -1697,6 +1709,30 @@ impl Syncer {
                     .into());
                 }
                 return Err(StoreError::SyncPullDidNotConverge(format!("snapshot `{snapshot}` lacks `{missing}`; no pointer is written")).into());
+            }
+            // A replaced local snapshot's runs fold again only while each is on disk, listed in the
+            // bucket or folded on the bucket's chain (`store.pull.local-fold-unrecoverable`).
+            if let Some(local) = adopting {
+                let table = project_table(&self.project, &rel_key).unwrap_or_default();
+                let remedy = format!("the local pointer stays: land those rows again as new runs, then delete `{}` and pull", pointer_path.display());
+                match self.unrecoverable_runs(&table, &table_dir, &local, &snapshot, &manifest) {
+                    Err(absent) => {
+                        return Err(StoreError::SyncLocalFoldUnrecoverable(format!(
+                            "`{rel_key}` names snapshot `{local}`, off the bucket's chain at `{snapshot}`, and its branch reaches snapshot `{absent}`, whose manifest is not on disk, so the runs it folds are unknown; {remedy}"
+                        ))
+                        .into())
+                    }
+                    Ok(runs) if !runs.is_empty() => {
+                        return Err(StoreError::SyncLocalFoldUnrecoverable(format!(
+                            "`{rel_key}` names snapshot `{local}`, off the bucket's chain at `{snapshot}`, and folds runs neither this store nor the bucket holds: {}; their rows live only in `{local}`'s parts, selectable by `_run_id`; {remedy}",
+                            runs.join(", ")
+                        ))
+                        .into())
+                    }
+                    Ok(_) => report.discarded.push(format!(
+                        "`{rel_key}` named snapshot `{local}`, which does not descend from the bucket's `{snapshot}`; the pointer moves to `{snapshot}` and the runs `{local}` alone folded fold again"
+                    )),
+                }
             }
             advancing.push((rel_key, pointer_path, Pointer { snapshot_id, fence: Some(pointer.fence) }));
         }
@@ -1723,6 +1759,49 @@ impl Syncer {
         // A replica advertises what it now holds (`store.replicate.descriptor`).
         contextful_context::replica::advertise(&self.store)?;
         Ok(report)
+    }
+
+    /// The runs a local branch folds that neither this store nor the bucket brings back
+    /// (`store.pull.local-fold-unrecoverable`). The branch runs from `local` back to the first
+    /// snapshot on the chain of the bucket's `head`, or to a root; a run is recoverable while its
+    /// manifest is on disk, the bucket lists it or the head's chain folds it. `Err` names a branch
+    /// snapshot whose manifest is not on disk.
+    fn unrecoverable_runs(&self, table: &str, table_dir: &Path, local: &str, head: &str, manifest: &BucketManifest) -> std::result::Result<Vec<String>, String> {
+        let read = |id: &str| -> Option<SnapshotManifest> {
+            let path = table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(id).join(MANIFEST_FILE);
+            std::fs::read(&path).ok().and_then(|b| self.store.open_metadata_bytes(&path, &b).ok()).and_then(|b| serde_json::from_slice(&b).ok())
+        };
+        // The head's chain as this store holds it: the snapshots it names and the runs it folds.
+        let (mut on_chain, mut folded, mut walked) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+        let mut at = Some(head.to_string());
+        while let Some(id) = at.take() {
+            if !walked.insert(id.clone()) {
+                break;
+            }
+            on_chain.insert(id.clone());
+            let Some(m) = read(&id) else { break };
+            on_chain.extend(m.ancestors.iter().flatten().map(ToString::to_string));
+            folded.extend(m.includes_runs);
+            at = m.parent.map(|p| p.to_string());
+        }
+        let (mut branch, mut seen) = (Vec::new(), BTreeSet::new());
+        let mut at = Some(local.to_string());
+        while let Some(id) = at.take() {
+            if on_chain.contains(&id) || !seen.insert(id.clone()) {
+                break;
+            }
+            let m = read(&id).ok_or_else(|| id.clone())?;
+            branch.extend(m.includes_runs);
+            at = m.parent.map(|p| p.to_string());
+        }
+        let runs_dir = table_dir.join(contextful_core::store::lay_out::RUNS_DIR);
+        Ok(branch
+            .into_iter()
+            .filter(|run| {
+                let listed = format!("{}/tables/{table}/{}/{run}/{MANIFEST_FILE}", self.project, contextful_core::store::lay_out::RUNS_DIR);
+                !runs_dir.join(run).join(MANIFEST_FILE).exists() && !manifest.entries.contains_key(&listed) && !folded.contains(run)
+            })
+            .collect())
     }
 
     /// Each run manifest, keyed under the project, that the snapshot chain of one of

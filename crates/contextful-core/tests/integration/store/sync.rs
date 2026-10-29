@@ -511,3 +511,10 @@ fn a_manifest_carries_its_commit_stamp_and_a_legacy_one_reads_none() {
     assert!(text.contains("\"committed_at\":\"2030-01-01T01:00:00Z\"") && text.contains("\"committed_by\":\"ingest-a\""), "{text}");
     assert_eq!(serde_json::from_str::<BucketManifest>(&text).unwrap(), stamped);
 }
+
+/// A pull refusing to replace a local branch names its identifier before the runs it lists.
+#[test]
+fn a_local_fold_refusal_leads_with_its_identifier() {
+    let e = StoreError::SyncLocalFoldUnrecoverable("run-3/ingest-b".into());
+    assert_eq!(e.to_string(), "SyncLocalFoldUnrecoverable: run-3/ingest-b");
+}

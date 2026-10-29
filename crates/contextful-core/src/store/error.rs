@@ -211,6 +211,9 @@ pub enum StoreError {
     /// A pull exhausted its retries against keys moving beneath it. (`store.pull.unconverged`)
     #[error("SyncPullDidNotConverge: {0}")]
     SyncPullDidNotConverge(String),
+    /// A local pointer off the bucket's chain folds runs neither the store nor the bucket holds. (`store.pull.local-fold-unrecoverable`)
+    #[error("SyncLocalFoldUnrecoverable: {0}")]
+    SyncLocalFoldUnrecoverable(String),
     /// A push of one store waited past its bound for the push guard another push on the machine holds. (`store.push.in-flight`)
     #[error("SyncPushInFlight: {0}")]
     SyncPushInFlight(String),
