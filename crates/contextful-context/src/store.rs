@@ -31,6 +31,8 @@ pub struct Store {
     project: crate::project::Project,
     config_node_id: Option<String>,
     replica_of: Option<String>,
+    /// The store's `config.toml` declares `[sync]` (`store.fold.manifest-kept`).
+    synced: bool,
     require_connector_pin: bool,
     encryption: Option<Arc<ProjectEncryption>>,
     writer: crate::redaction::Writer,
@@ -123,6 +125,7 @@ impl Store {
             project: crate::project::Project { dir:project_dir.to_path_buf(), name:project.into() },
             config_node_id: config.node.and_then(|n| n.id),
             replica_of: config.replica.map(|r| r.of),
+            synced: config.sync.is_some(),
             require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
             encryption,
             frontier: None,
@@ -375,6 +378,27 @@ impl Store {
 
     pub(crate) fn parquet_schema(&self, path: &Path) -> Result<Vec<contextful_core::store::reconcile::Column>> {
         crate::parquet_io::schema_with_key(path, self.parquet_key())
+    }
+
+    /// Whether the store's `config.toml` declares `[sync]`, so a collection keeps each
+    /// superseded snapshot's `_manifest.json` (`store.fold.manifest-kept`).
+    pub fn synced(&self) -> bool {
+        self.synced
+    }
+
+    /// Whether a collection reduced snapshot `m` of `table` to its `_manifest.json`
+    /// (`store.fold.manifest-kept`): the bucket's `_collected.json` stands beside it, or, on a
+    /// store reading through no part source, a part it names is absent. A pull bringing the
+    /// parts home answers `false` again.
+    pub fn snapshot_collected(&self, table: &str, m: &SnapshotManifest) -> Result<bool> {
+        if self.snapshot_dir(table, &m.snapshot_id)?.join(contextful_core::store::lay_out::COLLECTED_FILE).exists() {
+            return Ok(true);
+        }
+        if self.part_source.is_some() {
+            return Ok(false);
+        }
+        let table_dir = self.table_dir(table)?;
+        Ok(m.part_files().iter().any(|p| !table_dir.join(p).exists()))
     }
 
     /// The canonical store this store replicates, if it is a replica.
@@ -684,8 +708,9 @@ impl Store {
     /// Bring home each folded run manifest of `table` a lazy pull left in the bucket, those
     /// of `run_id` alone where given, through the part source (`store.pull.folded-runs-fetched`).
     /// Without a source the read refuses (`store.pull.folded-runs-unreachable`), and a manifest
-    /// the source leaves absent refuses as collected (`store.pull.folded-run-collected`).
-    fn fetch_skipped(&self, table: &str, run_id: Option<&str>) -> Result<()> {
+    /// the source leaves absent refuses as collected (`store.pull.folded-run-collected`), save
+    /// under an unbounded `listing`, which leaves out each the source answers as collected.
+    fn fetch_skipped(&self, table: &str, run_id: Option<&str>, leave: Leave) -> Result<()> {
         let path = self.root.join(SKIPPED_RUNS_FILE);
         let skipped: SkippedRuns = match fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", path.display())))?,
@@ -706,8 +731,40 @@ impl Store {
             ))
             .into());
         };
-        let _hold = source.hold(&absent)?;
-        if let Some(gone) = absent.iter().find(|rel| !self.root.join(rel.as_str()).exists()) {
+        // An unbounded listing leaves out a manifest a collection took; a bounded read leaves out one
+        // whose run a kept snapshot folds, and the resolution refuses a bound that needs it
+        // (`store.pull.folded-run-collected`, `store.bound-time.as-of-unretained`).
+        let folded: BTreeSet<String> = match leave {
+            Leave::Folded => self.chain(table)?.0.into_iter().flat_map(|s| s.includes_runs).collect(),
+            _ => BTreeSet::new(),
+        };
+        let leaves = |rel: &str| match leave {
+            Leave::Collected => true,
+            Leave::Folded => {
+                // `tables/<t>/data/runs/<run>/<node>/_manifest.json` names run `<run>/<node>`.
+                let segs: Vec<&str> = rel.split('/').collect();
+                segs.len() >= 3 && folded.contains(&format!("{}/{}", segs[segs.len() - 3], segs[segs.len() - 2]))
+            }
+            Leave::Nothing => false,
+        };
+        let mut collected: BTreeSet<&str> = BTreeSet::new();
+        let _hold = match source.hold(&absent) {
+            Ok(hold) => Some(hold),
+            Err(StoreError::SyncPartCollected(_)) if leave != Leave::Nothing => {
+                for rel in absent.iter().filter(|rel| !self.root.join(rel.as_str()).exists()) {
+                    match source.hold(std::slice::from_ref(rel)) {
+                        Ok(_) => {}
+                        Err(StoreError::SyncPartCollected(_)) if leaves(rel) => {
+                            collected.insert(rel.as_str());
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                None
+            }
+            Err(e) => return Err(e.into()),
+        };
+        if let Some(gone) = absent.iter().find(|rel| !collected.contains(rel.as_str()) && !self.root.join(rel.as_str()).exists()) {
             return Err(StoreError::SyncPartCollected(format!("folded run manifest `{gone}` is gone from the bucket; the next pull stops naming it")).into());
         }
         Ok(())
@@ -718,7 +775,7 @@ impl Store {
     /// below it, so a reader following commit order holds back from there
     /// (`read.subscribe.commit-order`).
     pub fn committed_runs_held(&self, table: &str) -> Result<(Vec<RunManifest>, Option<i64>)> {
-        self.fetch_skipped(table, None)?;
+        self.fetch_skipped(table, None, Leave::Collected)?;
         self.local_runs_held(table)
     }
 
@@ -745,7 +802,7 @@ impl Store {
         if run_id.is_empty() || run_id.contains(['/', '\\']) || run_id == "." || run_id == ".." {
             return Err(ContextError::Invalid(format!("run id `{run_id}` names no run directory")));
         }
-        self.fetch_skipped(table, Some(run_id))?;
+        self.fetch_skipped(table, Some(run_id), Leave::Nothing)?;
         let run_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id);
         let (mut logs, mut held) = (CommitLogs::new(), None);
         let mut rows: Option<u64> = None;
@@ -894,6 +951,7 @@ impl Store {
             runs,
             chain,
             history_collected: parent_collected || run_collected,
+            collected: BTreeSet::new(),
         })
     }
 
@@ -903,8 +961,17 @@ impl Store {
         let state = self.state(decl)?;
         match as_of {
             Some(b) if state.chain.first().is_none_or(|s| !b.admits(s.created_at)) => {
-                self.fetch_skipped(&decl.name, None)?;
-                self.state(decl)
+                self.fetch_skipped(&decl.name, None, Leave::Folded)?;
+                let mut state = self.state(decl)?;
+                // Collected snapshots sit behind every retained one: from the first, the rest are.
+                let mut beyond = false;
+                for s in state.chain.iter().skip(1) {
+                    beyond = beyond || self.snapshot_collected(&decl.name, s)?;
+                    if beyond {
+                        state.collected.insert(s.snapshot_id.to_string());
+                    }
+                }
+                Ok(state)
             }
             _ => Ok(state),
         }
@@ -912,6 +979,17 @@ impl Store {
 }
 
 pub const ABSENT_ETAG: &str = "absent";
+
+/// Which skipped run manifests a fetch leaves out when the part source answers them collected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Leave {
+    /// Every one: an unbounded listing.
+    Collected,
+    /// Those whose run a kept snapshot of the chain folds: a bounded read.
+    Folded,
+    /// None: a read of one run.
+    Nothing,
+}
 
 /// The lock a table's commits serialize on, beside `schema.json`.
 const COMMIT_LOCK_FILE: &str = "commit.lock";

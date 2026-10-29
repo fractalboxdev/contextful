@@ -23,7 +23,7 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
   *because filtering current files by ingest stamp returns different rows before and after a fold*
 - `row-age-cutoff` — A read of a table with {{store.declare.retain-rows}} excludes rows older than its wall-clock cutoff, `as_of` reads of retained snapshots included, and the result cache reuses no such statement.
   *because a historical snapshot does not restore a row after its declared age passes*
-- `as-of-unretained` — An `as_of` before the oldest snapshot retention kept raises `StoreAsOfUnretained`, naming the oldest answerable instant.
+- `as-of-unretained` — An `as_of` before the oldest snapshot retention kept, or selecting a snapshot {{store.fold.collected-snapshot}} counts or whose successors fold a run absent here, raises `StoreAsOfUnretained`, naming the oldest answerable instant.
   *P4*
 - `valid-as-of` — `valid_as_of` filters the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair.
 - `valid-time-undeclared` — A `valid_as_of` read against a table declaring no pair raises `StoreValidTimeUndeclared`, naming the table.
@@ -36,6 +36,8 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
 - `interval-rows` — A keyed table declaring `valid_time` stores one row per key and valid-time interval, deduplicating on its primary key and `from`, so a fold keeps every interval.
   *A-store#validity-interval-row*
 - `echo` — A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant RFC 3339 UTC with nine fractional digits and a `Z`; an unbounded read omits it.
+
+unsettled: Does an `as_of` read selecting a held snapshot older than a collected one read that snapshot, rather than refuse under {{store.bound-time.as-of-unretained}}? owner: store affects: store.bound-time
 
 ## available-time
 

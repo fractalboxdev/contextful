@@ -348,6 +348,139 @@ fn build_hold_prints_held_then_renewed() {
     assert!(!bad.status.success() && String::from_utf8_lossy(&bad.stderr).contains("7w"));
 }
 
+/// On a store declaring `[sync]`, a hold naming a build whose parts the bucket records as collected raises
+/// `ModelBuildCollected` and commits nothing, a renewal included.
+// spec: run.model.hold-collected@e8145d8b
+#[test]
+fn build_hold_refuses_a_build_the_bucket_collected() {
+    let dir = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    let config = p.join(".contextful/context/research/config.toml");
+    let existing = std::fs::read_to_string(&config).unwrap_or_default();
+    std::fs::write(&config, format!("{existing}\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display())).unwrap();
+    let build_id = build(p, "2030-01-01T01:00:00Z")["build_id"].as_str().unwrap().to_string();
+    let hold = |now: &str| run(p, &["build", "hold", "--for", "30d", "daily", build_id.as_str(), "--by", "ops", "--now", now]);
+    assert!(stdout(&hold("2030-01-01T02:00:00Z")).starts_with("Held"));
+    stdout(&run(p, &["sync", "push", "--project", "research", "--now", "2030-01-01T03:00:00Z"]));
+    assert!(stdout(&hold("2030-01-26T00:00:00Z")).starts_with("Renewed"), "a renewal inside the hold succeeds");
+
+    // Another node's collect records the build's parts as collected.
+    let path = bucket.path().join("context-team/team/manifest.json");
+    let mut manifest: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let parts: Vec<String> = manifest["entries"].as_object().unwrap().keys().filter(|k| k.contains(&format!("/snapshots/{build_id}/")) && k.ends_with(".parquet")).cloned().collect();
+    assert!(!parts.is_empty());
+    for k in &parts {
+        manifest["entries"].as_object_mut().unwrap().remove(k);
+        manifest["collected"][k] = serde_json::json!({ "collected_at": "2030-02-28T00:00:00Z", "collected_by": "ingest-z" });
+    }
+    manifest["format"] = serde_json::json!(2);
+    std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let holds = p.join(".contextful/context/research/tables/daily/holds").join(format!("{build_id}.json"));
+    let before = std::fs::read(&holds).unwrap();
+    let e = refused(&hold("2030-01-27T00:00:00Z"), "ModelBuildCollected");
+    assert!(e.contains(&build_id), "{e}");
+    assert_eq!(std::fs::read(&holds).unwrap(), before, "the refused hold commits nothing");
+}
+
+/// On a store declaring `[sync]` a hold reaches the bucket before it is reported, so a collect keeps the held build
+/// and its renewal on day 25 succeeds; once the bucket's hold lapses and a collect records the parts, a renewal
+/// refuses.
+// spec: run.model.hold-bucket-first@a6eb40f1
+#[test]
+fn a_bucket_first_hold_keeps_its_build_through_a_collect() {
+    let dir = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    let config = p.join(".contextful/context/research/config.toml");
+    let existing = std::fs::read_to_string(&config).unwrap_or_default();
+    std::fs::write(&config, format!("{existing}\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\nretain_generations = 1\n", bucket.path().display())).unwrap();
+    let mut builds = Vec::new();
+    for (i, now) in ["2030-01-01T01:00:00Z", "2030-01-01T02:00:00Z", "2030-01-10T01:00:00Z"].into_iter().enumerate() {
+        std::fs::write(p.join("more.jsonl"), format!("{{\"day\":\"e{i}\"}}\n")).unwrap();
+        stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", &format!("r{}", i + 2), "--site-id", "site-a", "--now", now]));
+        builds.push(build(p, now)["build_id"].as_str().unwrap().to_string());
+        if i == 1 {
+            stdout(&run(p, &["sync", "push", "--project", "research", "--now", now]));
+            let held = stdout(&run(p, &["build", "hold", "--for", "30d", "daily", &builds[0], "--by", "ops", "--now", "2030-01-01T03:00:00Z"]));
+            assert!(held.starts_with("Held"), "{held}");
+        }
+    }
+    let manifest = || -> Value { serde_json::from_slice(&std::fs::read(bucket.path().join("context-team/team/manifest.json")).unwrap()).unwrap() };
+    assert!(manifest()["entries"].get(format!("research/tables/daily/holds/{}.json", builds[0])).is_some(), "the hold is in the bucket");
+    let marker = format!("research/tables/daily/data/snapshots/{}/_collected.json", builds[0]);
+    let collect = |now: &str| stdout(&run(p, &["sync", "collect", "--project", "research", "--now", now]));
+    collect("2030-01-11T00:00:00Z");
+    assert!(manifest()["entries"].get(&marker).is_none(), "the held build stays");
+    let renewed = stdout(&run(p, &["build", "hold", "--for", "30d", "daily", &builds[0], "--by", "ops", "--now", "2030-01-26T00:00:00Z"]));
+    assert!(renewed.starts_with("Renewed"), "{renewed}");
+    // The renewal lapses on day 56; a later collect records the build's parts.
+    collect("2030-03-01T00:00:00Z");
+    assert!(manifest()["entries"].get(&marker).is_some(), "the collect reclaims the build once its hold lapsed");
+    refused(&run(p, &["build", "hold", "--for", "30d", "daily", &builds[0], "--by", "ops", "--now", "2030-03-02T00:00:00Z"]), "ModelBuildCollected");
+}
+
+/// On a store declaring `[sync]`, a hold the bucket refuses to take is undone locally and the command fails, so no
+/// hold exists only on the local disk.
+#[test]
+fn a_hold_the_bucket_refuses_is_undone() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    let config = p.join(".contextful/context/research/config.toml");
+    let existing = std::fs::read_to_string(&config).unwrap_or_default();
+    std::fs::write(&config, format!("{existing}\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display())).unwrap();
+    let build_id = build(p, "2030-01-01T01:00:00Z")["build_id"].as_str().unwrap().to_string();
+    stdout(&run(p, &["sync", "push", "--project", "research", "--now", "2030-01-01T02:00:00Z"]));
+    let team = bucket.path().join("context-team/team");
+    let lock = |mode: u32| {
+        for entry in walk(&team) {
+            std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(if entry.is_dir() { mode } else { mode & 0o444 })).unwrap();
+        }
+    };
+    lock(0o555);
+    let out = run(p, &["build", "hold", "--for", "7d", "daily", &build_id, "--by", "ops", "--now", "2030-01-01T03:00:00Z"]);
+    lock(0o755);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("undone"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(!p.join(".contextful/context/research/tables/daily/holds").join(format!("{build_id}.json")).exists());
+}
+
+/// Every directory and file under `dir`, the directory included.
+fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = vec![dir.to_path_buf()];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() { out.extend(walk(&path)) } else { out.push(path) }
+    }
+    out
+}
+
+/// `sync collect` reclaims a model's superseded builds under the window a build's own retention reads, so a declared
+/// model is never `undeclared`, and the bucket then lists the first build's directory as collected.
+#[test]
+fn sync_collect_reclaims_a_models_superseded_builds() {
+    let dir = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    let config = p.join(".contextful/context/research/config.toml");
+    let existing = std::fs::read_to_string(&config).unwrap_or_default();
+    std::fs::write(&config, format!("{existing}\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\nretain_generations = 1\n", bucket.path().display())).unwrap();
+    let mut builds = Vec::new();
+    for (i, now) in ["2030-01-01T01:00:00Z", "2030-01-01T02:00:00Z", "2030-01-10T01:00:00Z"].into_iter().enumerate() {
+        std::fs::write(p.join("more.jsonl"), format!("{{\"day\":\"e{i}\"}}\n")).unwrap();
+        stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", &format!("r{}", i + 2), "--site-id", "site-a", "--now", now]));
+        builds.push(build(p, now)["build_id"].as_str().unwrap().to_string());
+    }
+    stdout(&run(p, &["sync", "push", "--project", "research", "--now", "2030-01-10T02:00:00Z"]));
+    let report: Value = serde_json::from_str(&stdout(&run(p, &["sync", "collect", "--project", "research", "--now", "2030-01-11T00:00:00Z"]))).unwrap();
+    assert_eq!(report["undeclared"], serde_json::json!([]), "both the landed table and the model are declared");
+    let manifest: Value = serde_json::from_slice(&std::fs::read(bucket.path().join("context-team/team/manifest.json")).unwrap()).unwrap();
+    let marker = format!("research/tables/daily/data/snapshots/{}/_collected.json", builds[0]);
+    assert!(manifest["entries"].get(&marker).is_some(), "{marker}");
+}
+
 /// `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to `run.model.restricted-input`, and raises the error the build raises.
 // spec: run.model.validate-statements@a705bcc8
 #[test]

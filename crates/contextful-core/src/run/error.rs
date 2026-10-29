@@ -210,6 +210,9 @@ pub enum RunError {
     /// A hold naming a build no committed manifest records. (`run.model.hold-unknown-build`)
     #[error("ModelBuildUnknown: {0}")]
     ModelBuildUnknown(String),
+    /// A hold naming a build whose parts a collection removed. (`run.model.hold-collected`)
+    #[error("ModelBuildCollected: {0}")]
+    ModelBuildCollected(String),
     /// A build reading a table that declares a disclosure key. (`run.model.restricted-input`)
     #[error("ModelInputRestricted: {0}")]
     ModelInputRestricted(String),

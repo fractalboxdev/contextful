@@ -408,7 +408,7 @@ Resolution of a named published-model build at read time, and the state each res
 - `pin-parameter` — Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.
 - `pinned-schema` — A pinned table registers the columns stored in that build's parts. Later builds neither add, remove nor retype columns in the pinned read or description.
 - `null-pin` — A `pin` entry with value `null` resolves as an unnamed table. Pin maps differing only in null entries are equivalent.
-- `unknown-build` — An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.
+- `unknown-build` — An unknown or collected build identifier, one {{store.fold.collected-snapshot}} counts included, raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.
   *because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states*
 - `unregistered-pin` — Pins on absent or ungranted tables raise {{read.resolve-pin.unknown-build}} as for a table publishing no build. Both cases return identical text.
   *because an answer differing between an absent and an ungranted table discloses the ungranted table's existence*

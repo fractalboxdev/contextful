@@ -120,6 +120,87 @@ fn folded_runs_and_superseded_snapshots_are_collected_after_seven_days() {
     }
 }
 
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let dest = to.join(path.file_name().unwrap());
+        if path.is_dir() { copy_tree(&path, &dest) } else { fs::copy(&path, &dest).map(|_| ()).unwrap() }
+    }
+}
+
+#[cfg(feature = "read")]
+/// On a store declaring `[sync]`, collection keeps a collected snapshot's `_manifest.json` and writes no
+/// `_collected.json`, so its chain stays whole: a folded run listed again reads once, no `as_of` read resolves to it
+/// while its parts are gone, and one resolves again once they are home.
+// spec: store.fold.manifest-kept@6ce8a3c3
+#[test]
+fn a_synced_store_keeps_a_collected_snapshots_manifest() {
+    let f = Fixture::synced();
+    // Each run replaces key `a`, so each pass rewrites its parent's part; read unkeyed, a run read twice shows.
+    let keyed = decl("name = \"events\"\nprimary_key = [\"k\"]");
+    let unkeyed = decl("name = \"events\"");
+    let land = |i: i64, now: &str| f.land(&keyed, &format!("run-{i}"), json!([{"k": "a", "e": i}, {"k": format!("u{i}"), "e": 0}]), now).unwrap();
+    land(1, "2030-01-01T00:00:00Z");
+    fold(&f.store, &keyed, at("2030-01-01T01:00:00Z")).unwrap();
+    let (first, _) = f.store.chain("events").unwrap();
+    let first_dir = f.store.snapshot_dir("events", &first[0].snapshot_id).unwrap();
+    let (saved_run, saved_parts) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    copy_tree(&f.table_dir("events").join("data/runs/run-1"), saved_run.path());
+    copy_tree(&first_dir, saved_parts.path());
+    land(2, "2030-01-02T00:00:00Z");
+    fold(&f.store, &keyed, at("2030-01-02T01:00:00Z")).unwrap();
+    land(3, "2030-01-09T00:00:00Z");
+    fold(&f.store, &keyed, at("2030-01-09T00:00:00Z")).unwrap();
+    land(4, "2030-01-09T01:00:00Z");
+    fold(&f.store, &keyed, at("2030-01-09T01:00:00Z")).unwrap();
+
+    let left: Vec<String> = fs::read_dir(&first_dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(left, ["_manifest.json"], "local retention writes no marker");
+    assert!(f.store.snapshot_collected("events", &first[0]).unwrap());
+    assert_eq!(f.store.chain("events").unwrap().0.len(), 4, "the chain reaches its root");
+    assert_eq!(f.query(&unkeyed, Bounds::default(), "SELECT count(*) FROM t"), [[s("5")]]);
+    let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
+    match f.scan(&keyed, bound).unwrap_err().store() {
+        Some(StoreError::StoreAsOfUnretained(m)) => assert!(m.contains("2030-01-02T01:00:00"), "{m}"),
+        other => panic!("expected StoreAsOfUnretained, got {other:?}"),
+    }
+    // A restored copy of run-1 is folded by the kept manifest and reads once.
+    copy_tree(saved_run.path(), &f.table_dir("events").join("data/runs/run-1"));
+    assert_eq!(f.query(&unkeyed, Bounds::default(), "SELECT count(*) FROM t"), [[s("5")]]);
+    // Parts a pull brings home again stop the snapshot counting as collected; the bound still refuses while the runs
+    // its successors fold stay gone.
+    copy_tree(saved_parts.path(), &first_dir);
+    assert!(!f.store.snapshot_collected("events", &first[0]).unwrap());
+    match f.scan(&keyed, bound).unwrap_err().store() {
+        Some(StoreError::StoreAsOfUnretained(_)) => {}
+        other => panic!("expected StoreAsOfUnretained, got {other:?}"),
+    }
+}
+
+#[cfg(feature = "read")]
+/// On a synced store, an `as_of` bound inside a span whose folded run retention removed refuses rather than reading
+/// the older snapshot, whose carried parts survive, without that run.
+// spec: store.bound-time.as-of-unretained@3a23145e
+#[test]
+fn an_as_of_inside_a_span_retention_emptied_refuses() {
+    let f = Fixture::synced();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T01:15:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap();
+    f.land(&d, "run-3", json!([{"e": 3}]), "2030-01-09T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-09T00:00:00Z")).unwrap();
+    assert!(!f.table_dir("events").join("data/runs/run-2").exists(), "retention removed run-2");
+    let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T01:30:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
+    match f.scan(&d, bound).unwrap_err().store() {
+        Some(StoreError::StoreAsOfUnretained(_)) => {}
+        other => panic!("expected StoreAsOfUnretained, got {other:?}"),
+    }
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("3")]]);
+}
+
 #[test]
 fn a_pass_reports_folded_or_nothing_landed() {
     let f = Fixture::new();
@@ -570,7 +651,7 @@ fn a_renamed_lock_does_not_remove_the_file_that_replaces_it() {
 
 /// Collection keeps a folded run's `_group.json` while a member table's copy of the run stays unfolded, and removes
 /// it once every member has folded that run.
-// spec: store.fold.group-marker@4bbf754b
+// spec: store.fold.group-marker@e37a70b2
 #[test]
 fn collection_keeps_a_group_marker_while_a_member_run_is_unfolded() {
     let f = Fixture::new();
@@ -586,6 +667,9 @@ fn collection_keeps_a_group_marker_while_a_member_run_is_unfolded() {
     assert!(!node.join("_manifest.json").exists(), "the folded root run leaves");
     assert!(marker.exists(), "the marker stays while the member's copy of the run is unfolded");
     assert!(matches!(fold(&f.store, &pages, at("2030-01-10T00:00:00Z")).unwrap(), FoldOutcome::Folded { .. }));
+    // Inside the window an `as_of` read before the member's fold still reads its copy beside the marker.
     fold(&f.store, &filings, at("2030-01-11T00:00:00Z")).unwrap();
-    assert!(!marker.exists(), "the marker leaves once every member folded the run");
+    assert!(marker.exists(), "the marker stays while the member's fold is younger than the window");
+    fold(&f.store, &filings, at("2030-01-18T00:00:00Z")).unwrap();
+    assert!(!marker.exists(), "the marker leaves once every member folded the run a window ago");
 }

@@ -66,7 +66,7 @@ Exclusive pipeline and compaction writer leases, their commit fences, and cursor
   *A-store#coordination-probed-compare*
 - `stale-fence` — If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
   *A-store#coordination-probed-compare*
-- `not-held` — Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.
+- `not-held` — Releasing a lease another node holds, or one a later acquisition of the same node fenced past, raises `LeaseNotHeld` and leaves the object untouched.
   *A-store#coordination-probed-compare*
 - `cursor-kind` — A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.
   *A-run#incremental-position-bound*

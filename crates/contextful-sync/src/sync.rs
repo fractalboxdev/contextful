@@ -8,7 +8,7 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, 
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, HeldKeys,
+    admit_format, confine, generation_key, generation_of, is_commit_log, merge_verified, owner_of, run_state_node, reclaimed_by_marker, BucketManifest, ControlHead, Coordination, Entry, HeldKeys,
     SyncConfig, Tombstone, GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE, PUSH_ROUND_CEILING,
 };
 use crate::transfer::{each, DigestRecord};
@@ -1013,6 +1013,8 @@ impl Syncer {
         self.check_left_behind()?;
         self.check_root_objects(&plan, &remote)?;
         let mut report = PushReport::default();
+        // A key a collect reclaimed structurally stays off the bucket (`store.merge.collected-directory`).
+        let folded_out = self.folded_out_keys(&remote, plan.mine.keys())?;
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
         let differing: Vec<(&String, &Entry)> = plan
             .mine
@@ -1021,22 +1023,12 @@ impl Syncer {
                 // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.push.run-state-upload`).
                 let run_state = run_state_node(key).is_some_and(|n| **key == format!("{}/nodes/{n}/run-state.json", self.project));
                 // A key a standing collected record names stays off the bucket (`store.push.collected`).
-                let collected = remote.collected.get(*key).is_some_and(|c| c.stands(now));
+                let collected = remote.collected.get(*key).is_some_and(|c| c.stands(now)) || reclaimed_by_marker(&remote, key) || folded_out.contains(*key);
                 !collected && (run_state || remote.entries.get(*key).is_none_or(|e| e.sha256 != entry.sha256))
             })
             .collect();
         // Uploads run up to the transfer width at once, every one returned before the commit (`store.push.transfer-width`).
-        let uploaded = each(self.config.transfers(), &differing, |(key, entry)| {
-            let bytes = plan.read(key)?;
-            // The manifest lists the digest of the bytes sent, whatever the plan read (`store.push.upload-digest`).
-            let sent = sha256_hex(&bytes);
-            let moved = (sent != entry.sha256).then(|| Entry { sha256: sent.clone(), size: bytes.len() as u64, owner: entry.owner.clone() });
-            let up = match class(key, &self.node) {
-                KeyClass::Owned => self.put_owned(key, &bytes).map(|()| true)?,
-                _ => self.put_immutable(key, &bytes, &sent)?,
-            };
-            Ok((up, moved))
-        })?;
+        let uploaded = each(self.config.transfers(), &differing, |(key, entry)| self.upload_planned(&plan, key, entry))?;
         let mut moved = Vec::new();
         for ((key, _), (up, entry)) in differing.iter().zip(uploaded) {
             if up {
@@ -1168,11 +1160,28 @@ impl Syncer {
         .into())
     }
 
+    /// Upload one planned key, returning whether bytes went up and, where the bytes sent differ
+    /// from the plan's, the entry they make (`store.push.upload-digest`).
+    fn upload_planned(&self, plan: &ManifestPlan, key: &str, entry: &Entry) -> Result<(bool, Option<Entry>)> {
+        let bytes = plan.read(key)?;
+        // The manifest lists the digest of the bytes sent, whatever the plan read (`store.push.upload-digest`).
+        let sent = sha256_hex(&bytes);
+        let moved = (sent != entry.sha256).then(|| Entry { sha256: sent.clone(), size: bytes.len() as u64, owner: entry.owner.clone() });
+        let up = match class(key, &self.node) {
+            KeyClass::Owned => self.put_owned(key, &bytes).map(|()| true)?,
+            _ => self.put_immutable(key, &bytes, &sent)?,
+        };
+        Ok((up, moved))
+    }
+
     /// Commit the bucket manifest listing `plan` and the project's table pointers as read
     /// before the commit, then write its generation (`store.push.manifest-commit`,
     /// `store.push.generation`).
     fn commit(&self, plan: &ManifestPlan, now: Instant, uploaded: &[String], held: &HeldKeys) -> Result<Commit> {
         let retries = self.config.push_retries().max(1);
+        // Keys this push sent, and the entries bytes sent later than the plan make.
+        let mut sent: BTreeSet<String> = uploaded.iter().cloned().collect();
+        let mut moved: BTreeMap<String, Entry> = BTreeMap::new();
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         // Consecutive rounds meeting no newer generation than the round before count against the retry
         // bound; every round counts against the ceiling (`store.merge.retries`, `store.merge.round-ceiling`).
@@ -1188,7 +1197,26 @@ impl Syncer {
             self.admit_control_head(plan, &remote)?;
             // Pointers read before the commit name snapshots whose files earlier commits listed.
             let pointers: BTreeMap<String, BucketPointer> = self.project_pointers(&remote)?.into_iter().filter(|(k, _)| !self.redistribution.withholds(&self.project, k)).collect();
+            // A planned key the plan's manifest kept off the bucket uploads before a round whose
+            // manifest neither lists nor records it commits the key (`store.push.collected`).
+            let folded_out = self.folded_out_keys(&remote, plan.mine.keys())?;
+            let pending: Vec<(&String, &Entry)> = plan
+                .mine
+                .iter()
+                .filter(|(k, e)| {
+                    let kept_out = remote.collected.get(*k).is_some_and(|c| c.stands(now)) || reclaimed_by_marker(&remote, k) || folded_out.contains(*k);
+                    !sent.contains(*k) && !kept_out && remote.entries.get(*k).is_none_or(|r| r.sha256 != e.sha256)
+                })
+                .collect();
+            for ((key, _), (_, entry)) in pending.iter().zip(each(self.config.transfers(), &pending, |(key, entry)| self.upload_planned(plan, key, entry))?) {
+                sent.insert((*key).clone());
+                if let Some(entry) = entry {
+                    moved.insert((*key).clone(), entry);
+                }
+            }
             let mut entries = plan.mine.clone();
+            entries.extend(moved.iter().map(|(k, e)| (k.clone(), e.clone())));
+            entries.retain(|k, _| !folded_out.contains(k));
             // A shared key lists the object the bucket holds now, whoever merged it last.
             for key in plan.shared.keys() {
                 if let Some((bytes, _)) = self.bucket.get(&self.key(key)?)? {
@@ -1332,7 +1360,7 @@ impl Syncer {
 
     /// Merge a shared key into the bucket's copy by its merge rule, replacing on the ETag
     /// read; a lost condition re-reads and re-merges. Returns whether the object changed.
-    fn put_merged(&self, key: &str, local: &[u8]) -> Result<bool> {
+    pub(crate) fn put_merged(&self, key: &str, local: &[u8]) -> Result<bool> {
         let k = self.key(key)?;
         for _ in 0..PUT_ROUNDS {
             let (merged, condition) = match self.bucket.get(&k)? {
@@ -1848,7 +1876,11 @@ impl Syncer {
         let mut keep: BTreeSet<String> = skipped.iter().filter_map(|k| self.local_rel(k)).map(str::to_string).collect();
         for rel in held.manifests {
             let key = format!("{}/{rel}", self.project);
-            if !self.store.root().join(&rel).exists() && (!reaches(&key) || manifest.entries.contains_key(&key)) {
+            // An entry stays while the bucket lists it, inside the pull's scope or outside it: a
+            // manifest the bucket stopped listing was collected or tombstoned (`store.pull.skipped-record`).
+            let _ = reaches;
+            let kept = manifest.entries.contains_key(&key);
+            if !self.store.root().join(&rel).exists() && kept {
                 keep.insert(rel);
             }
         }
@@ -1988,7 +2020,8 @@ impl Syncer {
                 return Err(StoreError::LeaseNotHeld(format!("no lease `{key}` exists")).into());
             };
             let current: BucketLease = serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
-            let (released, condition) = BucketLease::release(&current, &etag, &self.node)?;
+            let fence = self.held(table)?.map(|h| h.lease.fence);
+            let (released, condition) = BucketLease::release(&current, &etag, &self.node, fence)?;
             let bytes = serde_json::to_vec_pretty(&released).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 let _ = std::fs::remove_file(self.held_path(table));

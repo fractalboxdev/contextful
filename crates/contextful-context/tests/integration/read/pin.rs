@@ -120,7 +120,7 @@ fn a_null_pin_reads_the_latest_build_under_the_unpinned_key() {
 }
 
 /// An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.
-// spec: read.resolve-pin.unknown-build@dca75dfd
+// spec: read.resolve-pin.unknown-build@bd2317f7
 #[test]
 fn an_unknown_or_collected_build_is_refused_naming_the_oldest_pinnable() {
     let p = Pinned::new();
@@ -140,6 +140,22 @@ fn an_unknown_or_collected_build_is_refused_naming_the_oldest_pinnable() {
 
     // A landed table publishes no build to pin.
     refused_with(session(&Pins::default().with(EVENTS, &last.build_id)), "PinnedBuildUnavailable");
+}
+
+/// A build a collection reduced to its `_manifest.json` refuses a pin as collected, and the oldest pinnable build
+/// named is the oldest whose parts stay.
+// spec: read.resolve-pin.unknown-build@bd2317f7
+#[test]
+fn a_pin_to_a_build_reduced_to_its_manifest_is_refused() {
+    let p = Pinned::new();
+    let first = p.build(DAILY, "2030-01-11T00:00:00Z");
+    let second = p.build(DAILY, "2030-01-11T01:00:00Z");
+    let dir = p.r.store.table_dir(DAILY).unwrap().join("data/snapshots").join(&first.build_id);
+    std::fs::write(dir.join("_collected.json"), br#"{"collected_at":"2030-01-20T00:00:00Z"}"#).unwrap();
+    let session = |pins: &Pins| p.r.face.session_pinned(&p.authority, &Request::default(), Bounds::default(), pins);
+    let collected = refused_with(session(&Pins::default().with(DAILY, &first.build_id)), "PinnedBuildUnavailable");
+    assert!(collected.contains(&format!("build `{}` is unknown or collected", first.build_id)), "{collected}");
+    assert!(collected.contains(&format!("the oldest pinnable build is `{}`", second.build_id)), "{collected}");
 }
 
 /// A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.

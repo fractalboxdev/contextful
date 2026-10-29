@@ -85,7 +85,7 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and commit fence; readers reach only snapshots reachable from it directly or through `parent` links.
   *A-store#manifest-carries-format*
 - `schema-file` — A table's schema is `schema.json` in Arrow JSON form, which each arriving batch's schema merges into and the merged result replaces.
-- `immutable-files` — The store writes each run file once and edits none; snapshot directories are immutable, so a fold writes a new snapshot.
+- `immutable-files` — The store writes each run file once and edits none; snapshot directories are immutable save the `_collected.json` {{store.collect.manifest-kept}} lists, so a fold writes a new snapshot.
 - `landed-blob` — A body landed by reference occupies `blobs/<sha256>` under the store root, named by its bytes' SHA-256 and written whole through a rename before the referencing run commits.
   *because a committed row naming no stored body answers for content nobody can retrieve*
 - `derived-catalog` — `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from pointers, reachable manifests, committed run manifests and every `schema.json`, and sync excludes it.
@@ -320,7 +320,7 @@ Compaction passes, their triggers and retention, and snapshot publication throug
 - `job-pass-synced` — On a store declaring `[sync]`, a fold job's pass takes each table's compaction lease, pulls, folds, pushes and publishes as `contextful sync compact <table>` does; on any other store it folds locally as `contextful context compact <table>` does.
   *because a node publishing a snapshot outside the lease races every other node's pass on the bucket pointer*
 - `retention` — `retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older than the window.
-- `reference-retention` — Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the collected snapshot's directory, manifest included.
+- `reference-retention` — Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the collected snapshot's directory, its manifest included save under {{store.fold.manifest-kept}}.
   *A-store#pass-carries-untouched*
 - `cached-inputs` — Under {{store.pull.lazy-parts}}, a fold fetches input parts through {{store.pull.part-cache}}; inputs exceeding the cache raise `FoldInputsExceedCache`, naming both byte counts, and publish nothing.
   *A-store#cold-store-boots*
@@ -337,11 +337,15 @@ Compaction passes, their triggers and retention, and snapshot publication throug
 - `partial-snapshot` — A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.
   *P4*
 - `lost-pointer` — If a pointer replacement loses its condition, the pass publishes nothing. Collection removes the staged snapshot.
-- `group-marker` — Collection keeps a folded run's `_group.json` while a member table's copy of that run stays unfolded, and removes it once every member folds the run.
-  *because a member run reads as committed only beside its group root's marker*
+- `group-marker` — Collection keeps a folded run's `_group.json` while a member table holding a copy of that run folds it in no snapshot created `retain_runs` ago, and removes it once every member does.
+  *because a member run reads as committed only beside its group root's marker, an `as_of` read inside the window included*
 - `staging-collected` — The next pass collects staging directories and snapshot directories unreachable through any pointer chain. Reads exclude these directories.
 - `non-blocking` — A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.
 - `supersedes` — A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.
+- `manifest-kept` — On a store declaring `[sync]`, collection keeps a collected snapshot's `_manifest.json` and writes no `_collected.json`, so its `includes_runs` still folds.
+  *because the bucket keeps every chain manifest, and a copy of a folded run beside a chain lacking its folding manifest reads twice*
+- `collected-snapshot` — A snapshot counts as collected while the bucket's `_collected.json` stands beside it or, on a store reading through no part source, a part it names is absent; no `as_of` read, pin or hold resolves to it.
+  *because local retention removes parts the bucket still holds, and a pull bringing them home makes the snapshot readable again*
 
 A fold pass under the compaction lease, from run selection to the pointer commit.
 
@@ -503,7 +507,7 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *A-store#bucket-collect*
 - `format-unsupported` — A bucket or generation manifest with `format` above 2 raises `SyncManifestFormatUnsupported`, naming the key and format, before the push commit or any pull file write.
   *because a reader rewriting a manifest it parses in part drops a newer writer's fields*
-- `collected` — A push uploads no key a standing collected record names in the manifest it reads, and {{store.merge.collected}} keeps that key out of its commit.
+- `collected` — A push uploads no key a standing collected record names in the manifest it reads, and {{store.merge.collected}} keeps that key out of its commit; each commit round first uploads each key of its plan its manifest neither lists nor records.
   *A-store#bucket-collect*
 - `hold-renewal` — A hold record `holds/<build-id>.json` and a table's `holds.jsonl` commit as `schema.json` does, merged into the bucket's copy, a hold record keeping the later `expires_at`; a pull merges a hold record alike.
   *because a renewal rewrites a hold in place, and an immutable key refuses the rewrite*
@@ -668,11 +672,11 @@ A lazy store pulls metadata and fetches each data part and folded run manifest w
   *A-store#folded-runs-on-demand*
 - `lazy-folded-runs` — Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.
   *A-store#folded-runs-on-demand*
-- `skipped-record` — Each pull rewrites `.skipped-runs.json` to the listed manifests still absent locally, keeping entries of tables outside its scope; an empty record leaves no file.
+- `skipped-record` — Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it; an empty record leaves no file.
   *because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone*
 - `folded-runs-fetched` — Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.
   *A-store#folded-runs-on-demand*
-- `folded-run-collected` — A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, naming the manifest.
+- `folded-run-collected` — A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, save where the source answers it collected: an unbounded listing leaves it out, and a bounded read does when a kept snapshot folds its run.
   *A-store#folded-runs-on-demand*
 - `folded-runs-unreachable` — A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.
   *A-store#folded-runs-on-demand*
@@ -742,6 +746,8 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
   *A-store#bucket-index-commits*
 - `held-unreadable` — An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.
   *because corruption establishes no ownership and a replacement discards other nodes' entries*
+- `collected-directory` — A merge keeps out each key under a snapshot directory whose `_collected.json` the bucket lists, save its `_manifest.json`, and each run file {{store.collect.folded-runs}} reclaims, whatever any record says.
+  *because a lapsed record otherwise lets a node holding a copy list a reclaimed key again*
 - `collected` — A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.
   *A-store#bucket-collect*
 - `ownership` — A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.

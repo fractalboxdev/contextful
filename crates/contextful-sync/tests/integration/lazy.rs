@@ -623,7 +623,7 @@ fn an_as_of_read_on_a_cold_lazy_store_resolves_the_folded_runs_an_eager_store_do
 
 /// A folded run manifest the bucket lost after a lazy pull skipped it refuses the read that
 /// needs it, rather than resolving without the run.
-// spec: store.pull.folded-run-collected@5cbfc1d8
+// spec: store.pull.folded-run-collected@64b3b1b8
 #[test]
 fn a_skipped_manifest_gone_from_the_bucket_refuses_the_read_that_needs_it() {
     use contextful_core::store::bound_time::{Bound, Bounds};
@@ -636,7 +636,8 @@ fn a_skipped_manifest_gone_from_the_bucket_refuses_the_read_that_needs_it() {
     let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
     let bounds = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), ..Bounds::default() };
     let err = contextful_context::scan::scan(&store, &TableDecl::named("filings"), bounds).unwrap_err().to_string();
-    assert!(err.starts_with("SyncPartCollected") && err.contains("run-1"), "{err}");
+    // The run a kept snapshot folds is left out, and the bound that needs it refuses.
+    assert!(err.starts_with("StoreAsOfUnretained"), "{err}");
 }
 
 /// A lazy pull still brings home a folded run's `_group.json`, so a grouped member run
@@ -674,7 +675,7 @@ fn a_lazy_pull_skips_no_manifest_its_own_node_wrote() {
 }
 
 /// An eager pull after a lazy one brings every skipped manifest home and leaves no record.
-// spec: store.pull.skipped-record@8200c1bc
+// spec: store.pull.skipped-record@cd5a2cd0
 #[test]
 fn an_eager_pull_clears_the_skipped_runs_record() {
     let dir = tempfile::tempdir().unwrap();
@@ -687,4 +688,82 @@ fn an_eager_pull_clears_the_skipped_runs_record() {
     cold.syncer.pull(&PullScope::default()).unwrap();
     assert!(!cold.root().join(contextful_core::store::lay_out::SKIPPED_RUNS_FILE).exists());
     assert_eq!(cold.syncer.store.committed_runs("filings").unwrap().len(), 4);
+}
+
+/// Once a collect takes a folded run a lazy pull skipped, an unbounded listing leaves it out, an `as_of` read
+/// needing it refuses, and a pull scoped to another table drops it from the record.
+// spec: store.pull.folded-run-collected@64b3b1b8
+// spec: store.pull.skipped-record@cd5a2cd0
+#[test]
+fn a_listing_leaves_out_skipped_runs_a_collect_took() {
+    use contextful_core::store::bound_time::{Bound, Bounds};
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = folded_then_landed(b.clone());
+    // A second fold folds run-9 on top of the first, which collect then reclaims.
+    contextful_context::fold::fold(&a.syncer.store, &TableDecl::named("filings"), at("2030-01-02T02:00:00Z")).unwrap();
+    a.land_into("orders", "run-1", json!([{ "id": 1 }]), "2030-01-02T00:00:00Z");
+    a.syncer.push(at("2030-01-02T02:00:00Z")).unwrap();
+    let cold = lazy(b.clone(), None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let record = cold.root().join(SKIPPED_RUNS_FILE);
+    let skipped: SkippedRuns = serde_json::from_slice(&std::fs::read(&record).unwrap()).unwrap();
+    assert!(skipped.manifests.iter().any(|m| m.contains("/run-9/")), "{:?}", skipped.manifests);
+
+    a.syncer.config.retain_generations = std::num::NonZeroU64::new(1);
+    let report = a.syncer.collect_declared(at("2030-01-20T00:00:00Z"), false, &[TableDecl::named("filings"), TableDecl::named("orders")]).unwrap();
+    assert!(report.folded_runs.deleted > 0, "{report:?}");
+    let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
+    let runs: Vec<String> = store.committed_runs("filings").unwrap().iter().map(|r| r.run_id.clone()).collect();
+    assert!(!runs.is_empty());
+    assert!(!runs.contains(&"run-9".to_string()), "{runs:?}");
+    let bounds = Bounds { as_of: Some(Bound::parse("2030-01-02T01:00:00Z").unwrap()), ..Bounds::default() };
+    let err = contextful_context::scan::scan(&store, &TableDecl::named("filings"), bounds).unwrap_err().to_string();
+    assert!(err.starts_with("SyncPartCollected") || err.starts_with("StoreAsOfUnretained"), "{err}");
+
+    let scope = PullScope { tables: vec![contextful_core::grant::TablePattern::parse("orders").unwrap()], ..PullScope::default() };
+    cold.syncer.pull(&scope).unwrap();
+    let kept: SkippedRuns = std::fs::read(&record).ok().map(|b| serde_json::from_slice(&b).unwrap()).unwrap_or_default();
+    assert_eq!(kept.manifests.iter().filter(|m| m.contains("/run-9/")).count(), 0, "the record names no manifest a collect took");
+}
+
+/// On a lazy store, a bounded read inside the window leaves out a skipped manifest a collect reclaimed whose run a
+/// kept snapshot folds, while a bound needing that run refuses; once the records lapse, a pull scoped to another
+/// table still drops the entry.
+// spec: store.pull.folded-run-collected@64b3b1b8
+#[test]
+fn a_bounded_lazy_read_inside_the_window_reads_past_a_reclaimed_manifest() {
+    use contextful_core::store::bound_time::{Bound, Bounds};
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = folded_then_landed(b.clone());
+    let decl = TableDecl::named("filings");
+    contextful_context::fold::fold(&a.syncer.store, &decl, at("2030-01-02T02:00:00Z")).unwrap();
+    a.land("run-10", json!([{ "id": 10, "title": "t10" }]), "2030-01-15T00:00:00Z");
+    contextful_context::fold::fold(&a.syncer.store, &decl, at("2030-01-15T01:00:00Z")).unwrap();
+    a.land_into("orders", "run-1", json!([{ "id": 1 }]), "2030-01-15T00:00:00Z");
+    a.syncer.push(at("2030-01-15T02:00:00Z")).unwrap();
+    let cold = lazy(b.clone(), None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    a.syncer.config.retain_generations = std::num::NonZeroU64::new(1);
+    let report = a.syncer.collect_declared(at("2030-01-20T00:00:00Z"), false, &[decl.clone(), TableDecl::named("orders")]).unwrap();
+    assert!(report.folded_runs.deleted > 0, "{report:?}");
+
+    let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
+    let inside = Bounds { as_of: Some(Bound::parse("2030-01-14T00:00:00Z").unwrap()), ..Bounds::default() };
+    assert!(contextful_context::scan::scan(&store, &decl, inside).is_ok(), "a bound inside the window reads");
+    let before = Bounds { as_of: Some(Bound::parse("2030-01-02T01:00:00Z").unwrap()), ..Bounds::default() };
+    let err = contextful_context::scan::scan(&store, &decl, before).unwrap_err().to_string();
+    assert!(err.starts_with("StoreAsOfUnretained"), "{err}");
+
+    // The records lapse and a push prunes them; a pull scoped to another table still drops run-9's entry.
+    a.syncer.push(at("2030-03-01T00:00:00Z")).unwrap();
+    assert_eq!(listed(&b).collected.keys().filter(|k| k.contains("/run-9/")).count(), 0);
+    let scope = PullScope { tables: vec![contextful_core::grant::TablePattern::parse("orders").unwrap()], ..PullScope::default() };
+    cold.syncer.pull(&scope).unwrap();
+    let record = cold.root().join(SKIPPED_RUNS_FILE);
+    let kept: SkippedRuns = std::fs::read(&record).ok().map(|b| serde_json::from_slice(&b).unwrap()).unwrap_or_default();
+    assert_eq!(kept.manifests.iter().filter(|m| m.contains("/run-9/")).count(), 0, "{:?}", kept.manifests);
 }

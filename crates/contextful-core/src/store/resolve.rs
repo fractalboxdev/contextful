@@ -20,6 +20,9 @@ pub struct TableState {
     /// Retention has collected history: the chain ends at a parent no longer on disk,
     /// or a run the chain folded is gone.
     pub history_collected: bool,
+    /// Chain snapshots a collection reduced to their `_manifest.json`, by id: the chain still
+    /// names their folded runs, and no read resolves to them (`store.fold.manifest-kept`).
+    pub collected: BTreeSet<String>,
 }
 
 /// The snapshot and runs one read covers.
@@ -60,8 +63,19 @@ impl TableState {
     pub fn resolve(&self, as_of: Option<Bound>) -> Result<Resolution<'_>, StoreError> {
         let admits = |t| as_of.is_none_or(|b| b.admits(t));
         let at = self.chain.iter().position(|s| admits(s.created_at));
-        if at.is_none() && self.history_collected {
-            if let (Some(b), Some(oldest)) = (as_of, self.chain.last()) {
+        // Collected snapshots sit behind every retained one, superseded longest ago.
+        let collected = self.chain.iter().take_while(|s| !self.collected.contains(&s.snapshot_id.to_string())).count();
+        // A snapshot whose successors fold a run absent here answers no bound before them: the
+        // run may have committed inside the bound (`store.bound-time.as-of-unretained`).
+        let present: BTreeSet<String> = self.runs.iter().map(RunManifest::key).collect();
+        let gapped = self.chain.iter().position(|s| s.includes_runs.iter().any(|r| !present.contains(r))).map_or(self.chain.len(), |j| j + 1);
+        let retained = collected.min(gapped);
+        let unretained = match at {
+            Some(i) => i >= retained,
+            None => self.history_collected,
+        };
+        if unretained {
+            if let (Some(b), Some(oldest)) = (as_of, self.chain[..retained.max(1).min(self.chain.len())].last()) {
                 return Err(StoreError::StoreAsOfUnretained(format!(
                     "table `{}`: as_of {} precedes the oldest retained snapshot; the oldest answerable instant is {}",
                     self.table,
