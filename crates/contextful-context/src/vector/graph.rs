@@ -4,8 +4,8 @@
 //! Layout, little-endian throughout:
 //!
 //! ```text
-//! header      magic[8] dim count m max_level entry reserved      (u32 each, 32 B)
-//! vectors     count * dim f32, unit length
+//! header      magic[8] dim count m max_level entry element       (u32 each, 32 B)
+//! vectors     count * dim f32 or f16, unit length; `element` is its byte width, 4 or 2
 //! available   count i64: Unix nanoseconds, i64::MIN when unstamped
 //! levels      count u8, padded to 4 B
 //! layer 0     count * (1 + 2m) u32: a neighbour count, then the slots
@@ -13,11 +13,13 @@
 //! ids         (count + 1) u64 offsets into a UTF-8 blob, then the blob
 //! ```
 
+use contextful_core::store::index::VectorStorage;
+use std::borrow::Cow;
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 
 /// The format's magic and version.
-pub const MAGIC: &[u8; 8] = b"CFHNSW\x00\x02";
+pub const MAGIC: &[u8; 8] = b"CFHNSW\x00\x03";
 
 /// The `available` of a node carrying no availability instant.
 pub const UNSTAMPED: i64 = i64::MIN;
@@ -167,9 +169,11 @@ fn search_layer_admitting(
     out
 }
 
-/// A graph under construction over `count` unit vectors of `dim`, held flat.
+/// A graph under construction over `count` unit vectors of `dim`, held flat at the values
+/// its element type stores.
 struct Builder<'a> {
-    vectors: &'a [f32],
+    vectors: Cow<'a, [f32]>,
+    storage: VectorStorage,
     dim: usize,
     m: usize,
     ef_construction: usize,
@@ -320,14 +324,30 @@ impl Builder<'_> {
     }
 }
 
+/// How [`build`] stores a graph: its element type and layer parameters.
+#[derive(Debug, Clone, Copy)]
+pub struct Params {
+    pub storage: VectorStorage,
+    pub m: usize,
+    pub ef_construction: usize,
+    pub seed: u64,
+}
+
 /// Build the graph over `vectors` (`count * dim` unit-length floats, row-major) and lay it
-/// out with `ids` and `available`, one each per vector.
-pub fn build(vectors: &[f32], dim: usize, ids: &[String], available: &[i64], m: usize, ef_construction: usize, seed: u64) -> Vec<u8> {
+/// out with `ids` and `available`, one each per vector. An `f16` graph rounds each element
+/// to half precision first, so construction measures the distances a probe reads.
+pub fn build(vectors: &[f32], dim: usize, ids: &[String], available: &[i64], params: Params) -> Vec<u8> {
+    let Params { storage, m, ef_construction, seed } = params;
     let count = ids.len();
     debug_assert_eq!(vectors.len(), count * dim);
     debug_assert_eq!(available.len(), count);
+    let vectors = match storage {
+        VectorStorage::F32 => Cow::Borrowed(vectors),
+        VectorStorage::F16 => Cow::Owned(vectors.iter().map(|&x| half::f16::from_f32(x).to_f32()).collect()),
+    };
     let mut b = Builder {
         vectors,
+        storage,
         dim,
         m,
         ef_construction,
@@ -352,13 +372,15 @@ fn put(out: &mut Vec<u8>, v: u32) {
 
 fn lay_out(b: &Builder<'_>, ids: &[String], available: &[i64]) -> Vec<u8> {
     let count = ids.len();
-    let mut out = Vec::with_capacity(HEADER_LEN + b.vectors.len() * 4 + count * (1 + 2 * b.m) * 4);
+    let element = b.storage.element_bytes() as usize;
+    let mut out = Vec::with_capacity(HEADER_LEN + b.vectors.len() * element + count * (1 + 2 * b.m) * 4);
     out.extend_from_slice(MAGIC);
-    for v in [b.dim as u32, count as u32, b.m as u32, b.max_level as u32, b.entry.unwrap_or(u32::MAX), 0] {
+    for v in [b.dim as u32, count as u32, b.m as u32, b.max_level as u32, b.entry.unwrap_or(u32::MAX), element as u32] {
         put(&mut out, v);
     }
-    for f in b.vectors {
-        out.extend_from_slice(&f.to_le_bytes());
+    match b.storage {
+        VectorStorage::F32 => b.vectors.iter().for_each(|f| out.extend_from_slice(&f.to_le_bytes())),
+        VectorStorage::F16 => b.vectors.iter().for_each(|&f| out.extend_from_slice(&half::f16::from_f32(f).to_le_bytes())),
     }
     for at in available {
         out.extend_from_slice(&at.to_le_bytes());
@@ -400,6 +422,7 @@ fn lay_out(b: &Builder<'_>, ids: &[String], available: &[i64]) -> Vec<u8> {
 pub struct Layout {
     pub dim: usize,
     pub count: usize,
+    pub storage: VectorStorage,
     m: usize,
     max_level: usize,
     entry: u32,
@@ -428,11 +451,16 @@ impl Layout {
         }
         let field = |i: usize| u32_at(bytes, 8 + 4 * i).map(|v| v as usize);
         let (dim, count, m, max_level, entry) = (field(0)?, field(1)?, field(2)?, field(3)?, u32_at(bytes, 24)?);
+        let storage = match field(5)? {
+            4 => VectorStorage::F32,
+            2 => VectorStorage::F16,
+            _ => return None,
+        };
         if dim == 0 || m < 2 || max_level > MAX_LEVEL || (count > 0 && entry as usize >= count) {
             return None;
         }
         let vectors = HEADER_LEN;
-        let available = vectors.checked_add(count.checked_mul(dim)?.checked_mul(4)?)?;
+        let available = vectors.checked_add(count.checked_mul(dim)?.checked_mul(storage.element_bytes() as usize)?)?;
         let levels = available.checked_add(count.checked_mul(8)?)?;
         let layer0 = levels.checked_add(count)?.next_multiple_of(4);
         let mut at = layer0.checked_add(count.checked_mul(1 + 2 * m)?.checked_mul(4)?)?;
@@ -450,7 +478,7 @@ impl Layout {
         if blob.checked_add(blob_len)? != bytes.len() {
             return None;
         }
-        Some(Layout { dim, count, m, max_level, entry, vectors, available, layer0, upper, id_offsets, blob })
+        Some(Layout { dim, count, storage, m, max_level, entry, vectors, available, layer0, upper, id_offsets, blob })
     }
 
     pub fn m(&self) -> usize {
@@ -458,9 +486,14 @@ impl Layout {
     }
 
     fn distance(&self, bytes: &[u8], query: &[f32], n: u32) -> f32 {
-        let at = self.vectors + n as usize * self.dim * 4;
-        let row = &bytes[at..at + self.dim * 4];
-        1.0 - row.chunks_exact(4).zip(query).map(|(c, q)| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) * q).sum::<f32>()
+        let width = self.storage.element_bytes() as usize;
+        let at = self.vectors + n as usize * self.dim * width;
+        let row = &bytes[at..at + self.dim * width];
+        let dot: f32 = match self.storage {
+            VectorStorage::F32 => row.chunks_exact(4).zip(query).map(|(c, q)| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) * q).sum(),
+            VectorStorage::F16 => row.chunks_exact(2).zip(query).map(|(c, q)| half::f16::from_le_bytes([c[0], c[1]]).to_f32() * q).sum(),
+        };
+        1.0 - dot
     }
 
     fn neighbours(&self, bytes: &[u8], n: u32, layer: usize, out: &mut Vec<u32>) {

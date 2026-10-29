@@ -4097,7 +4097,7 @@
       "operation": "index",
       "subject": "graph",
       "kind": "behavior",
-      "statement": "A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.",
+      "statement": "A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.",
       "why": "because a recall figure then replays from its snapshot",
       "file": "spec/10-store.md",
       "line": 430,
@@ -39129,6 +39129,9 @@
           "name": "ef_construction"
         },
         {
+          "name": "storage"
+        },
+        {
           "name": "tokenizer"
         }
       ],
@@ -67964,6 +67967,13 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/index.rs",
         "name": "one_staged_row_set_builds_one_byte_identical_graph",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/index.rs",
+        "name": "an_f16_sidecar_stores_its_vectors_in_half_the_bytes_of_its_f32_twin",
         "verdict": "performed",
         "proved": false
       }

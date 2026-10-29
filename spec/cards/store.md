@@ -233,6 +233,7 @@ The struct at `crates/contextful-core/src/store/index.rs`, named by `store.index
 | `metric` |  |
 | `m` |  |
 | `ef_construction` |  |
+| `storage` |  |
 | `tokenizer` |  |
 
 ### `contextful_core::store::sync::Tombstone`

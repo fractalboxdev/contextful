@@ -179,15 +179,13 @@ fn write(
         kept_ids.push(id);
         kept_available.push(available.as_ref().and_then(|a| a[i]).unwrap_or(graph::UNSTAMPED));
     }
-    let bytes = graph::build(
-        &kept,
-        dim,
-        &kept_ids,
-        &kept_available,
-        index.m() as usize,
-        index.ef_construction() as usize,
-        seed(snapshot_id, &index.column),
-    );
+    let params = graph::Params {
+        storage: index.storage(),
+        m: index.m() as usize,
+        ef_construction: index.ef_construction() as usize,
+        seed: seed(snapshot_id, &index.column),
+    };
+    let bytes = graph::build(&kept, dim, &kept_ids, &kept_available, params);
 
     let path = index.path(crate::fold::escape);
     let dir = snapshot_dir.join(&path);
@@ -216,6 +214,7 @@ fn write(
         metric: index.metric(),
         m: index.m(),
         ef_construction: index.ef_construction(),
+        storage: index.storage(),
         builder: VECTOR_BUILDER.to_string(),
         builder_version: VECTOR_BUILDER_VERSION,
         // A full build lays the graph out whole from the staged rows and records 0; an
@@ -363,7 +362,7 @@ impl VectorSidecar {
                 _ => return Err(Fallback::Unreadable),
             };
             let layout = graph::Layout::parse(backing.bytes()).ok_or(Fallback::Unreadable)?;
-            if layout.dim != entry.dim as usize || layout.count as u64 != *rows || layout.m() != entry.m as usize {
+            if layout.dim != entry.dim as usize || layout.count as u64 != *rows || layout.m() != entry.m as usize || layout.storage != entry.storage {
                 return Err(Fallback::ManifestMismatch);
             }
             segments.push(GraphSegment { backing, layout });

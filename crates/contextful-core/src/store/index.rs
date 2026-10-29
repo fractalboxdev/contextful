@@ -29,8 +29,9 @@ pub const DEFAULT_EF_CONSTRUCTION: u32 = 200;
 pub const VECTOR_BUILDER: &str = "contextful-hnsw";
 
 /// The on-disk graph format version the builder writes and the reader accepts; the layout
-/// is no committed format (`store.index.graph-format`).
-pub const VECTOR_BUILDER_VERSION: u32 = 2;
+/// is no committed format (`store.index.graph-format`). Version 3 records each graph's
+/// element type, so a version-2 sidecar, `Float32` alone, rebuilds (`store.index.rebuild`).
+pub const VECTOR_BUILDER_VERSION: u32 = 3;
 
 /// Segment extensions after which a pass rebuilds a vector graph or full-text postings in
 /// full: 16, the `store-graph-extensions` bound of `store.index.graph-extensions`.
@@ -159,8 +160,34 @@ pub enum Metric {
     Cosine,
 }
 
+/// The element type a vector sidecar's graph stores its unit vectors in (`store.index.graph`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum VectorStorage {
+    /// Four bytes per element.
+    #[default]
+    F32,
+    /// Two bytes per element, IEEE 754 half precision.
+    F16,
+}
+
+impl VectorStorage {
+    /// Bytes one stored element takes.
+    pub fn element_bytes(self) -> u64 {
+        match self {
+            VectorStorage::F32 => 4,
+            VectorStorage::F16 => 2,
+        }
+    }
+
+    fn is_f32(&self) -> bool {
+        *self == VectorStorage::F32
+    }
+}
+
 /// One `[[pipeline.tables.indexes]]` block (`store.index.declaration`): a `vector` block
-/// takes `model`, `dim`, `metric`, `m` and `ef_construction`, a `fulltext` block a
+/// takes `model`, `dim`, `metric`, `m`, `ef_construction` and `storage`, a `fulltext` block a
 /// `tokenizer`, and a key of the other kind refuses the block.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -180,6 +207,8 @@ pub struct IndexDecl {
     pub m: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ef_construction: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage: Option<VectorStorage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokenizer: Option<Tokenizer>,
 }
@@ -203,6 +232,8 @@ struct IndexBlock {
     m: Option<u32>,
     #[serde(default)]
     ef_construction: Option<u32>,
+    #[serde(default)]
+    storage: Option<VectorStorage>,
     #[serde(default)]
     tokenizer: Option<Tokenizer>,
 }
@@ -228,6 +259,7 @@ impl TryFrom<IndexBlock> for IndexDecl {
                     ("metric", b.metric.is_some()),
                     ("m", b.m.is_some()),
                     ("ef_construction", b.ef_construction.is_some()),
+                    ("storage", b.storage.is_some()),
                 ];
                 if let Some((key, _)) = vector_keys.iter().find(|(_, set)| *set) {
                     return Err(format!("the full-text sidecar over `{column}` declares `{key}`, which only a vector sidecar takes"));
@@ -243,6 +275,7 @@ impl TryFrom<IndexBlock> for IndexDecl {
             metric: b.metric,
             m: b.m,
             ef_construction: b.ef_construction,
+            storage: b.storage,
             tokenizer: b.tokenizer,
         })
     }
@@ -275,6 +308,11 @@ impl IndexDecl {
 
     pub fn ef_construction(&self) -> u32 {
         self.ef_construction.unwrap_or(DEFAULT_EF_CONSTRUCTION).max(self.m())
+    }
+
+    /// A vector sidecar's element type, `f32` unless declared.
+    pub fn storage(&self) -> VectorStorage {
+        self.storage.unwrap_or_default()
     }
 
     /// The sidecar's directory relative to its snapshot directory, `escape` rendering the
@@ -356,6 +394,9 @@ pub struct VectorEntry {
     pub metric: Metric,
     pub m: u32,
     pub ef_construction: u32,
+    /// The element type the graph stores; omitted for `f32`.
+    #[serde(default, skip_serializing_if = "VectorStorage::is_f32")]
+    pub storage: VectorStorage,
     pub builder: String,
     pub builder_version: u32,
     /// Passes since the last full build that extended the graph by a segment
@@ -478,7 +519,8 @@ impl IndexEntry {
             IndexEntry::Vector(e) => {
                 decl.kind == IndexKind::Vector
                     && e.id_column == id_column
-                    && (e.dim, e.metric, e.m, e.ef_construction) == (decl.dim(), decl.metric(), decl.m(), decl.ef_construction())
+                    && (e.dim, e.metric, e.m, e.ef_construction, e.storage)
+                        == (decl.dim(), decl.metric(), decl.m(), decl.ef_construction(), decl.storage())
             }
             IndexEntry::Fulltext(e) => decl.kind == IndexKind::Fulltext && e.id_column == id_column && e.tokenizer == decl.tokenizer(),
             IndexEntry::Unrecognized(_) => true,
@@ -558,9 +600,9 @@ impl<'de> Deserialize<'de> for IndexEntry {
 }
 
 impl VectorEntry {
-    /// The bytes of stored vectors the graph holds.
+    /// The bytes of stored vectors the graph holds, at its element type's width.
     pub fn stored_vector_bytes(&self) -> u64 {
-        self.row_count.saturating_mul(u64::from(self.dim)).saturating_mul(4)
+        self.row_count.saturating_mul(u64::from(self.dim)).saturating_mul(self.storage.element_bytes())
     }
 
     /// The resident bytes the read path's size cap compares: the probe marks, one per node,

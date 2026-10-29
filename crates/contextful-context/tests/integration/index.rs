@@ -379,7 +379,8 @@ fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
     // A pass under this build's own builder, with nothing landed, publishes nothing.
     assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
 
-    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder", json!("another-hnsw"))] {
+    // Builder version 2 laid out `Float32` vectors alone; this build rebuilds its sidecars.
+    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder_version", json!(2)), ("builder", json!("another-hnsw"))] {
         restamp(&f, "passages", key, value);
         let (before, before_dir) = current(&f, "passages");
         // Until the pass publishes, readers resolve the snapshot the old builder wrote.
@@ -548,9 +549,10 @@ fn collecting_a_snapshot_collects_its_sidecars() {
     assert!(!first_dir.exists() && !sidecar.exists());
 }
 
-/// A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and
-/// column, so one staged row set yields a byte-identical graph.
-// spec: store.index.graph@7b7b97d1
+/// A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its
+/// declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set
+/// yields a byte-identical graph.
+// spec: store.index.graph@fd35f83e
 #[test]
 fn one_staged_row_set_builds_one_byte_identical_graph() {
     let rows: Vec<Value> = (0..300)
@@ -587,6 +589,100 @@ fn one_staged_row_set_builds_one_byte_identical_graph() {
         let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 1e-5, "{v:?}");
     }
+}
+
+/// `n` vectors of `dim` drawn from `seed`, each element in [-1, 1).
+fn seeded(n: usize, dim: usize, seed: u64) -> Vec<Vec<f32>> {
+    let mut state = seed;
+    let mut draw = move || {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((state >> 33) as f32 / (1u64 << 31) as f32) * 2.0 - 1.0
+    };
+    (0..n).map(|_| (0..dim).map(|_| draw()).collect()).collect()
+}
+
+/// Fold `vectors` into a keyed table whose one vector block carries `extra`, returning the
+/// fixture, the current manifest and its directory.
+fn fold_vectors(vectors: &[Vec<f32>], extra: &str) -> (Fixture, SnapshotManifest, PathBuf) {
+    let dim = vectors[0].len();
+    let rows: Vec<Value> = vectors.iter().enumerate().map(|(i, v)| json!({"passage_id": format!("p{i}"), "embedding": v})).collect();
+    let f = Fixture::new();
+    let d = decl(&format!(
+        "name = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = {dim}\n{extra}"
+    ));
+    f.land_typed(&d, "run-1", Value::Array(rows), "2030-01-01T00:00:00Z", &[("embedding", ColumnType::FixedSizeList(FloatItem::Float32, dim as u32))]).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    (f, m, dir)
+}
+
+/// A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its
+/// declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set
+/// yields a byte-identical graph.
+// spec: store.index.graph@fd35f83e
+#[test]
+fn an_f16_sidecar_stores_its_vectors_in_half_the_bytes_of_its_f32_twin() {
+    use contextful_core::store::index::VectorStorage;
+    const N: usize = 500;
+    const DIM: usize = 32;
+    let vectors = seeded(N, DIM, 0x5eed_f016);
+    let (_wide_fixture, wide_m, wide_dir) = fold_vectors(&vectors, "");
+    let (_half_fixture, half_m, half_dir) = fold_vectors(&vectors, "storage = \"f16\"\n");
+    let (wide, half) = (entry(&wide_m), entry(&half_m));
+    assert_eq!((wide.storage, half.storage), (VectorStorage::F32, VectorStorage::F16));
+    assert_eq!((wide.stored_vector_bytes(), half.stored_vector_bytes()), ((N * DIM * 4) as u64, (N * DIM * 2) as u64));
+    let wide_bytes = std::fs::read(wide_dir.join(&wide.path).join(GRAPH_FILE)).unwrap();
+    let half_bytes = std::fs::read(half_dir.join(&half.path).join(GRAPH_FILE)).unwrap();
+    // One snapshot id seeds both, so the layers match and only the vector section narrows.
+    assert_eq!(wide_bytes.len() - half_bytes.len(), N * DIM * 2);
+    let own: Value = serde_json::from_slice(&std::fs::read(half_dir.join(&half.path).join("_manifest.json")).unwrap()).unwrap();
+    assert_eq!(own["storage"], "f16");
+
+    // Every stored half-width vector is unit length to f16 precision: N rows of DIM halves
+    // follow the 32-byte header.
+    let section = &half_bytes[32..32 + N * DIM * 2];
+    assert_eq!(section.chunks_exact(DIM * 2).count(), N);
+    for row in section.chunks_exact(DIM * 2) {
+        let v: Vec<f32> = row.chunks_exact(2).map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32()).collect();
+        let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!((norm - 1.0).abs() < 2e-3, "{v:?}");
+    }
+    // Each row, probed with its own vector, is the nearest node of the half-width graph.
+    let sidecar = VectorSidecar::open(&half_dir, "passages", &half_m.indexes[0], &Sealing::Plaintext).unwrap();
+    for (i, v) in vectors.iter().enumerate() {
+        let near = sidecar.probe(v, 1).unwrap();
+        assert_eq!(near.first().map(|c| c.id.clone()), Some(format!("p{i}")));
+    }
+    // One staged row set builds one byte-identical half-width graph.
+    let (_again_fixture, again_m, again_dir) = fold_vectors(&vectors, "storage = \"f16\"\n");
+    assert!(std::fs::read(again_dir.join(&entry(&again_m).path).join(GRAPH_FILE)).unwrap() == half_bytes);
+}
+
+/// A vector block declaring no `storage` stores `Float32`, byte for byte as `storage = "f32"`
+/// does, and a declaration changed to `f16` rebuilds the sidecar with no landed run
+/// (`store.index.declared-unbuilt`).
+#[test]
+fn a_vector_sidecar_stores_f32_unless_its_declaration_says_f16() {
+    use contextful_core::store::fold::FoldOutcome;
+    use contextful_core::store::index::VectorStorage;
+    let vectors = seeded(64, 8, 0x5eed_0f32);
+    let (f, m, dir) = fold_vectors(&vectors, "");
+    let (_explicit_fixture, explicit_m, explicit_dir) = fold_vectors(&vectors, "storage = \"f32\"\n");
+    let e = entry(&m);
+    assert_eq!(e.storage, VectorStorage::F32);
+    let own: Value = serde_json::from_slice(&std::fs::read(dir.join(&e.path).join("_manifest.json")).unwrap()).unwrap();
+    assert!(own.get("storage").is_none(), "{own}");
+    let bytes = std::fs::read(dir.join(&e.path).join(GRAPH_FILE)).unwrap();
+    assert!(bytes == std::fs::read(explicit_dir.join(&entry(&explicit_m).path).join(GRAPH_FILE)).unwrap());
+    assert_eq!(e.stored_vector_bytes(), 64 * 8 * 4);
+
+    let half = decl("name = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = 8\nstorage = \"f16\"\n");
+    let outcome = fold(&f.store, &half, at("2030-01-01T02:00:00Z")).unwrap();
+    assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, rows: 64, .. }), "{outcome:?}");
+    let (after, after_dir) = current(&f, "passages");
+    assert_eq!((entry(&after).storage, entry(&after).row_count), (VectorStorage::F16, 64));
+    let sidecar = VectorSidecar::open(&after_dir, "passages", &after.indexes[0], &Sealing::Plaintext).unwrap();
+    assert_eq!(sidecar.probe(&vectors[7], 1).unwrap()[0].id, "p7");
 }
 
 /// Two staged snapshot rows sharing an `id_column` value make fold raise `StoreIndexIdNotUnique`, naming the
@@ -651,43 +747,47 @@ fn a_valid_time_table_folds_its_sidecar_over_a_declared_identifier() {
     assert_eq!((e.id_column.as_str(), e.row_count), ("rate_id", 2));
 }
 
-/// Sidecar recall@10 against exact search over seeded vectors (ledger `vector-recall`).
-#[test]
-fn vector_recall_at_10_holds_against_exact_search() {
-    const N: usize = 2000;
-    const DIM: usize = 32;
-    const QUERIES: usize = 200;
-    const SEED: u64 = 0x5eed_0043;
-    let mut state = SEED;
-    let mut draw = move || {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        ((state >> 33) as f32 / (1u64 << 31) as f32) * 2.0 - 1.0
-    };
-    let vectors: Vec<Vec<f32>> = (0..N).map(|_| (0..DIM).map(|_| draw()).collect()).collect();
-    let rows: Vec<Value> = vectors.iter().enumerate().map(|(i, v)| json!({"passage_id": format!("p{i}"), "embedding": v})).collect();
-    let f = Fixture::new();
-    let d = decl(&format!(
-        "name = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = {DIM}\n"
-    ));
-    f.land_typed(&d, "run-1", Value::Array(rows), "2030-01-01T00:00:00Z", &[("embedding", ColumnType::FixedSizeList(FloatItem::Float32, DIM as u32))]).unwrap();
-    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
-    let (m, dir) = current(&f, "passages");
+const RECALL_N: usize = 2000;
+const RECALL_DIM: usize = 32;
+const RECALL_QUERIES: usize = 200;
+const RECALL_SEED: u64 = 0x5eed_0043;
+
+/// Recall@10 of a sidecar over 2,000 seeded vectors of dim 32, its vector block carrying
+/// `extra`, against exact search for 200 seeded queries.
+fn recall_at_10(extra: &str) -> f64 {
+    let mut drawn = seeded(RECALL_N + RECALL_QUERIES, RECALL_DIM, RECALL_SEED);
+    let queries = drawn.split_off(RECALL_N);
+    let vectors = drawn;
+    let (_f, m, dir) = fold_vectors(&vectors, extra);
     let sidecar = VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
     let cosine = |a: &[f32], b: &[f32]| {
         let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
         dot / (a.iter().map(|x| x * x).sum::<f32>().sqrt() * b.iter().map(|x| x * x).sum::<f32>().sqrt())
     };
     let mut hits = 0usize;
-    for _ in 0..QUERIES {
-        let q: Vec<f32> = (0..DIM).map(|_| draw()).collect();
-        let mut exact: Vec<(f32, usize)> = vectors.iter().enumerate().map(|(i, v)| (cosine(&q, v), i)).collect();
+    for q in &queries {
+        let mut exact: Vec<(f32, usize)> = vectors.iter().enumerate().map(|(i, v)| (cosine(q, v), i)).collect();
         exact.sort_by(|a, b| b.0.total_cmp(&a.0));
         let truth: std::collections::HashSet<String> = exact[..10].iter().map(|(_, i)| format!("p{i}")).collect();
-        hits += sidecar.probe(&q, 10).unwrap().iter().filter(|c| truth.contains(&c.id)).count();
+        hits += sidecar.probe(q, 10).unwrap().iter().filter(|c| truth.contains(&c.id)).count();
     }
-    let recall = hits as f64 / (QUERIES * 10) as f64;
-    contextful_eval::record::emit("vector-recall", recall, QUERIES as u64, SEED);
+    hits as f64 / (RECALL_QUERIES * 10) as f64
+}
+
+/// Sidecar recall@10 against exact search over seeded vectors (ledger `vector-recall`).
+#[test]
+fn vector_recall_at_10_holds_against_exact_search() {
+    let recall = recall_at_10("");
+    contextful_eval::record::emit("vector-recall", recall, RECALL_QUERIES as u64, RECALL_SEED);
     assert!(recall >= 0.95, "recall@10 {recall}");
+}
+
+/// A half-width graph keeps recall@10 against exact `Float32` search on the same fixture
+/// (`store.index.graph`).
+#[test]
+fn vector_recall_at_10_holds_on_f16_storage() {
+    let recall = recall_at_10("storage = \"f16\"\n");
+    assert!(recall >= 0.95, "f16 recall@10 {recall}");
 }
 
 pub const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";

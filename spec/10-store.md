@@ -427,7 +427,7 @@ Fold passes build, extend and rebuild each declared sidecar.
   *A-store#sidecar-s-builder*
 - `vector-by-fold` — Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the declared model where `embedding_model` exists, and records it in the snapshot manifest.
   *A-store#sidecar-names-id*
-- `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.
+- `graph` — A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.
   *because a recall figure then replays from its snapshot*
 - `fulltext-by-fold` — Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term, recording it in the snapshot manifest.
   *A-store#sidecar-names-id*
@@ -834,7 +834,7 @@ A run manifest, a snapshot manifest and a table pointer, `lay_out::RunManifest`,
                 "table": "documents", "snapshot_id": "snapshot-01742054400000000000",
                 "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
                 "metric": "cosine", "m": 16, "ef_construction": 200,
-                "builder": "contextful-hnsw", "builder_version": 2, "row_count": 128400,
+                "builder": "contextful-hnsw", "builder_version": 3, "row_count": 128400,
                 "key_version": 3 },
               { "kind": "fulltext", "path": "indexes/fts-body-cjk",
                 "table": "documents", "snapshot_id": "snapshot-01742054400000000000", "column": "body",
