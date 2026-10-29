@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 6 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 15 | 292 | 0 | 0 | 292 |
-| `run` | 3 | 31 | 619 | 137 | 52 | 21 | 613 | 4 | 0 | 613 |
+| `run` | 3 | 31 | 620 | 137 | 52 | 20 | 614 | 4 | 0 | 614 |
 | `store` | 7 | 21 | 336 | 68 | 26 | 12 | 336 | 13 | 0 | 336 |
 | `surface` | 2 | 22 | 197 | 70 | 24 | 2 | 194 | 0 | 0 | 194 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 28 | 182 | 2854 | 711 | 242 | 85 | 2793 | 24 | 0 | |
+| **total** | 28 | 182 | 2855 | 711 | 242 | 84 | 2794 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -52,6 +52,6 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
 | 24 — Iceberg export | 1 | 30 | 30 | passing | closed |
-| 25 — Scoped callback guards | 1 | 15 | 15 | passing | closed |
+| 25 — Scoped callback guards | 1 | 16 | 16 | passing | closed |
 
 Unscheduled operations: 15.
