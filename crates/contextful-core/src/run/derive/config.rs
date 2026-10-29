@@ -4,6 +4,7 @@
 use super::task::{Tasks, BUILT_IN_TASKS};
 use crate::connector::meter::LimiterDeclaration;
 use crate::run::RunError;
+use crate::time::Instant;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
@@ -18,8 +19,12 @@ pub const LINK_SECONDS_PER_RUN: u64 = 300;
 pub const PARENT_SCAN_ROWS: u64 = 1_000_000;
 
 /// The keys a derive source reads.
-pub const KEYS: [&str; 10] =
-    ["engine", "source_table", "media_column", "parent_id_column", "task", "max_rows_per_run", "max_attempts", "max_seconds_per_run", "journal", "grant"];
+pub const KEYS: [&str; 12] = [
+    "engine", "source_table", "media_column", "parent_id_column", "task", "max_rows_per_run", "max_attempts", "max_seconds_per_run", "journal", "grant",
+    "sample_rate", "since",
+];
+/// The keys only a host task reads: which of its units a pass selects (`run.select.sample`, `run.select.since`).
+pub const HOST_KEYS: [&str; 2] = ["sample_rate", "since"];
 /// Keys that belong to the machine's binding, never to the manifest (`run.bind.command-in-manifest`).
 pub const MACHINE_KEYS: [&str; 4] = ["command", "preprocess", "env", "allow_hosts"];
 
@@ -46,6 +51,36 @@ impl Task {
     }
 }
 
+/// The share of a host task's units a pass selects, in `(0, 1]` (`run.select.sample`).
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct SampleRate(f64);
+
+/// [`SampleRate::new`] constructs no NaN, so equality is reflexive.
+impl Eq for SampleRate {}
+
+impl SampleRate {
+    /// The rate `r`, when `0 < r <= 1`.
+    pub fn new(r: f64) -> Option<SampleRate> {
+        (r > 0.0 && r <= 1.0).then_some(SampleRate(r))
+    }
+
+    pub fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Whether a pass keeps unit `key` of task `task`: the first 8 bytes of
+    /// SHA-256(`key` ‖ `task`), read as a big-endian integer `h`, satisfy `h / 2^64 < r`.
+    /// The comparison is exact: for an integer `h` it holds when `h < ceil(r × 2^64)`.
+    pub fn keeps(self, key: &str, task: &str) -> bool {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::new().chain_update(key.as_bytes()).chain_update(task.as_bytes()).finalize();
+        let mut head = [0u8; 8];
+        head.copy_from_slice(&digest[..8]);
+        let threshold = (self.0 * 18_446_744_073_709_551_616.0).ceil() as u128;
+        u128::from(u64::from_be_bytes(head)) < threshold
+    }
+}
+
 /// A derive source's configuration, from `[pipeline.source.config]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeriveConfig {
@@ -59,6 +94,10 @@ pub struct DeriveConfig {
     pub max_rows_per_run: i64,
     pub max_attempts: i64,
     pub max_seconds_per_run: Option<u64>,
+    /// The share of a host task's units each pass selects; absent, every unit (`run.select.sample`).
+    pub sample_rate: Option<SampleRate>,
+    /// The earliest `_ingested_at` at which a host task selects a parent row (`run.select.since`).
+    pub since: Option<Instant>,
 }
 
 fn int(cfg: &Map<String, Value>, key: &str) -> Option<i64> {
@@ -108,6 +147,28 @@ impl DeriveConfig {
                 )));
             }
         };
+        if let Some(k) = cfg.keys().find(|k| !task.is_host() && HOST_KEYS.contains(&k.as_str())) {
+            return Err(RunError::PipelineUnknownConfigKey(format!(
+                "task `{}` reads no key `{k}`; `sample_rate` and `since` select a host task's units",
+                task.name()
+            )));
+        }
+        let sample_rate = cfg
+            .get("sample_rate")
+            .map(|v| {
+                v.as_f64().and_then(SampleRate::new).ok_or_else(|| {
+                    RunError::PipelineSpecInvalid(format!("pipeline `{pipeline_id}` declares `sample_rate = {v}`; a sample rate is a number in (0, 1]"))
+                })
+            })
+            .transpose()?;
+        let since = cfg
+            .get("since")
+            .map(|v| {
+                v.as_str().and_then(|s| Instant::parse(s).ok()).ok_or_else(|| {
+                    RunError::PipelineSpecInvalid(format!("pipeline `{pipeline_id}` declares `since = {v}`; `since` is an RFC 3339 instant"))
+                })
+            })
+            .transpose()?;
         if task != Task::LinkPreview && cfg.contains_key("grant") {
             return Err(RunError::DeriveUnmeteredGrant(format!(
                 "pipeline `{pipeline_id}` declares `grant` for {}, which does not use the shared-quota client", task.name()
@@ -166,6 +227,8 @@ impl DeriveConfig {
                 Task::LinkPreview => Some(LINK_SECONDS_PER_RUN),
                 Task::Transcribe | Task::Host(_) => None,
             }),
+            sample_rate,
+            since,
         })
     }
 }

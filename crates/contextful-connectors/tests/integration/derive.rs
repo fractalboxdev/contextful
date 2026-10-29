@@ -1022,3 +1022,48 @@ fn a_host_unit_carries_its_joined_rows_read_once_before_it_derives() {
     let joined = &landing.iter().find(|(t, _)| t == "joined").unwrap().1;
     assert_eq!(joined.len(), 2, "{landing:?}");
 }
+
+/// `since`, an RFC 3339 instant, keeps a host task's parent rows whose `_ingested_at` falls at or after it, before the
+/// anti-join; a row without a readable `_ingested_at` is dropped, and another `since` refuses as {{run.declare.spec-invalid}}.
+// spec: run.select.since@3c276278
+#[test]
+fn a_since_selects_the_parents_landed_at_or_after_it() {
+    use contextful_connectors::derive::HostDerive;
+    use contextful_core::run::derive::task::Tasks;
+    let task = Arc::new(Joined(Default::default()));
+    let mut tasks = Tasks::default();
+    tasks.register("join", task.clone()).unwrap();
+    let config = DeriveConfig::parse_with(
+        "docs",
+        &json!({"task": "join", "source_table": "documents", "parent_id_column": "doc_id", "since": "2030-06-01T00:00:00Z"}),
+        &tasks,
+    )
+    .unwrap();
+    let parents: Vec<Row> = json!([
+        {"doc_id": "before", "body": "a", "_ingested_at": "2030-05-31T23:59:59.999999Z"},
+        {"doc_id": "at", "body": "b", "_ingested_at": "2030-06-01T00:00:00.000000Z"},
+        {"doc_id": "offset", "body": "c", "_ingested_at": "2030-06-01T02:00:00+02:00"},
+        {"doc_id": "after", "body": "d", "_ingested_at": "2030-07-01T08:00:00.000000Z"},
+        {"doc_id": "unstamped", "body": "e"},
+    ])
+    .as_array()
+    .unwrap()
+    .iter()
+    .map(|r| r.as_object().unwrap().clone())
+    .collect();
+    let derive = HostDerive {
+        pipeline_id: "docs".into(),
+        config,
+        task: task.clone(),
+        tables: Default::default(),
+        retention_columns: Default::default(),
+        reader: Box::new(Rows(vec![("documents".into(), parents)])),
+        available: None,
+    };
+    assert_eq!(derive.plan().unwrap().eligible, 3, "a parent landed before `since`, or unstamped, is no eligible unit");
+    derive.stage(&Never).unwrap();
+    let mut seen: Vec<String> = task.0.lock().unwrap().iter().map(|(key, _, _)| key.clone()).collect();
+    assert!(!seen.is_empty(), "the pass derives units");
+    seen.sort();
+    assert_eq!(seen, ["after", "at", "offset"], "instants compare, not their spelling");
+}

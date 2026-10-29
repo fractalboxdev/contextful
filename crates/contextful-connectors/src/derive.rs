@@ -16,7 +16,7 @@ use contextful_core::run::derive::engine::{bound_confidence, check_advisory_zone
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, vendor_deadline, ChainAudit, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
-use contextful_core::run::derive::task::{host_revived, host_rows, join_units, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit};
+use contextful_core::run::derive::task::{host_revived, host_rows, ingested_since, join_units, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit, INGESTED_AT};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -838,12 +838,19 @@ impl HostDerive {
         if let Some(available) = self.available.as_ref().filter(|a| !columns.contains(&a.parent_column.as_str())) {
             columns.push(available.parent_column.as_str());
         }
+        if self.config.since.is_some() && !columns.contains(&INGESTED_AT) {
+            columns.push(INGESTED_AT);
+        }
         let mut instants = Instants::new();
         scan_parents(self.reader.as_ref(), &self.config.source_table, &columns, &mut |parents| {
-            let parents = match &self.available {
+            let mut parents = match &self.available {
                 Some(available) => available.admit(parents, &self.config.parent_id_column, &mut instants),
                 None => parents,
             };
+            // A parent landed before `since` is no unit of this pass (`run.select.since`).
+            if let Some(since) = self.config.since {
+                parents.retain(|r| ingested_since(r, since));
+            }
             let fresh: Vec<Row> = parents
                 .into_iter()
                 .filter(|r| r.get(&self.config.parent_id_column).map(|k| seen.insert(k.to_string())).unwrap_or(true))

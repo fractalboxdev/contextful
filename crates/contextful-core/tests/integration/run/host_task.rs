@@ -11,6 +11,7 @@ use contextful_core::run::derive::task::{
 use contextful_core::run::ports::Row;
 use contextful_core::store::declare::TableDecl;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 struct Split {
@@ -527,4 +528,95 @@ fn a_task_joining_one_table_twice_refuses_at_registration() {
         other => panic!("{other:?}"),
     }
     assert!(t.names().is_empty());
+}
+
+fn sampling(rate: Value, budget: i64) -> DeriveConfig {
+    DeriveConfig::parse_with(
+        "docs",
+        &json!({"task": "split", "source_table": "documents", "parent_id_column": "doc_id", "sample_rate": rate, "max_rows_per_run": budget}),
+        &tasks("1"),
+    )
+    .unwrap()
+}
+
+fn selected(sel: &contextful_core::run::derive::task::HostSelection) -> BTreeSet<String> {
+    sel.outstanding.iter().map(|u| u.key.clone()).collect()
+}
+
+/// `sample_rate` r keeps a host unit before the anti-join when the first eight bytes of SHA-256 over its key then task
+/// name, read big-endian and divided by 2^64, fall below r; r outside `(0, 1]` refuses as {{run.declare.spec-invalid}}.
+// spec: run.select.sample@6ccfb5a4
+#[test]
+fn a_sample_rate_selects_one_hashed_set_on_every_pass_and_on_resume() {
+    use sha2::{Digest, Sha256};
+    let parents: Vec<Row> = (0..10_000).map(|i| row(json!({"doc_id": format!("d{i}"), "body": "a"}))).collect();
+    let task = Split { version: "1" };
+    let first = select_host(&parents, &[], &sampling(json!(0.25), 10_000), &task);
+    let set = selected(&first);
+    assert!(!set.is_empty(), "the sample holds units");
+    assert!((2_450..=2_550).contains(&set.len()), "a quarter of 10,000 within 2%: {}", set.len());
+    assert_eq!(first.counts.eligible, set.len() as u64, "a unit the rate drops is no eligible unit");
+    let hashed: BTreeSet<String> = (0..10_000)
+        .map(|i| format!("d{i}"))
+        .filter(|key| {
+            let digest = Sha256::digest(format!("{key}split").as_bytes());
+            let head = u64::from_be_bytes(digest[..8].try_into().unwrap());
+            (head as f64) / 18_446_744_073_709_551_616.0 < 0.25
+        })
+        .collect();
+    assert_eq!(set, hashed, "membership is the hash of unit key then task name");
+    assert_eq!(
+        selected(&select_host(&parents, &[], &sampling(json!(0.25), 10_000), &task)),
+        set,
+        "a second pass selects the same set"
+    );
+
+    // A resumed pass: 500 units per tick, each tick landing its markers before the next selects.
+    let mut markers: Vec<Row> = Vec::new();
+    let mut resumed = BTreeSet::new();
+    for _ in 0..10 {
+        let sel = select_host(&parents, &markers, &sampling(json!(0.25), 500), &task);
+        assert!(sel.outstanding.len() <= 500);
+        for unit in &sel.outstanding {
+            assert!(resumed.insert(unit.key.clone()), "a settled unit is selected once");
+            markers.extend(host_rows(unit, "split", &task, Ok(Derived::new()))["units"].clone());
+        }
+    }
+    assert_eq!(resumed, set, "ticks resumed over landed markers select the same set");
+    assert!(select_host(&parents, &markers, &sampling(json!(0.25), 500), &task).outstanding.is_empty());
+
+    let whole = select_host(&parents, &[], &sampling(json!(1), 10_000), &task);
+    assert_eq!(selected(&whole).len(), 10_000, "a rate of 1 keeps every unit");
+}
+
+/// A `sample_rate` outside `(0, 1]` and a `since` that is no RFC 3339 instant refuse as `PipelineSpecInvalid`; a
+/// built-in task reads neither key.
+// spec: run.select.sample@6ccfb5a4
+// spec: run.select.since@3c276278
+#[test]
+fn a_rate_outside_the_unit_interval_and_an_unreadable_since_refuse() {
+    let t = tasks("1");
+    let parse = |extra: Value| {
+        let mut cfg = json!({"task": "split", "source_table": "documents", "parent_id_column": "doc_id"});
+        cfg.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        DeriveConfig::parse_with("docs", &cfg, &t)
+    };
+    for rate in [json!(0), json!(0.0), json!(-0.25), json!(1.5), json!("0.5"), json!(true)] {
+        match parse(json!({"sample_rate": rate})) {
+            Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("sample_rate") && m.contains("(0, 1]"), "{m}"),
+            other => panic!("{rate}: {other:?}"),
+        }
+    }
+    for since in [json!("yesterday"), json!("2030-01-01 00:00:00Z"), json!(1_700_000_000)] {
+        match parse(json!({"since": since})) {
+            Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("since"), "{m}"),
+            other => panic!("{since}: {other:?}"),
+        }
+    }
+    assert!(parse(json!({"sample_rate": 1, "since": "2030-01-01T00:00:00Z"})).is_ok());
+    let built_in = json!({"engine": "w", "source_table": "documents", "media_column": "path", "parent_id_column": "doc_id", "sample_rate": 0.5});
+    assert!(matches!(
+        DeriveConfig::parse("docs", &built_in),
+        Err(RunError::PipelineUnknownConfigKey(m)) if m.contains("sample_rate")
+    ));
 }
