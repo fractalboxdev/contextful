@@ -160,7 +160,8 @@ fn erasure_refuses_a_missing_canonical_audit_key_before_signed_intent() {
 
 #[cfg(feature = "read")]
 fn canonical_audit_key_refusal(missing: bool) {
-    use contextful_context::erase::{erase_subject, EraseRequest, EraseSelector};
+    use contextful_context::erase::{erase_declared, EraseRequest, EraseSelector};
+    use contextful_core::store::declare::DeclarationSet;
     use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
     use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
     {
@@ -181,7 +182,7 @@ fn canonical_audit_key_refusal(missing: bool) {
         let declarations = [table.clone()]; let tables = ["notes".to_string()]; let audit_dir = project.audit_dir();
         let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
         let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
-        let result = erase_subject(&store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("victim"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&requested, boundary:&boundary, clock:&FixedClock(now) });
+        let result = erase_declared(&store, &DeclarationSet::from_tables(&declarations), EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("victim"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&requested, boundary:&boundary, clock:&FixedClock(now) });
         assert!(result.is_err(), "caller-supplied audit key admits erasure: missing={missing}");
         assert!(contextful_policy::audit::entries(&audit_dir).unwrap().is_empty());
         assert!(!fixture.store.root().join("_erasure_frontier.json").exists());
@@ -810,8 +811,9 @@ fn normal_publication_waits_for_the_erasure_frontier_before_mutating_working_fil
 #[test]
 #[cfg(feature = "read")]
 fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
-    use contextful_context::erase::{erase_subject, EraseRequest, EraseSelector};
+    use contextful_context::erase::{erase_declared, EraseRequest, EraseSelector};
     use contextful_core::grant::Action;
+    use contextful_core::store::declare::DeclarationSet;
     use contextful_core::issue::SignatureAlgorithm;
     use contextful_core::ports::FixedClock;
     use contextful_policy::enforce::erase::ForgetAdmission;
@@ -842,7 +844,8 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     let request = EraseRequest { declarations: &declarations, tables: &tables, selector: EraseSelector::Subject("alice"), admission: &admission,
         signer: Some(signer.clone()), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &FixedClock(now) };
     let configured = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
-    let erased = erase_subject(&configured, request).unwrap();
+    let pack = DeclarationSet::from_tables(&declarations);
+    let erased = erase_declared(&configured, &pack, request).unwrap();
     let rows = contextful_context::rows::table_rows(&erased.store, &table, &["id", "subject", "text"]).unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["id"], "b");
@@ -883,7 +886,7 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     assert!(!encoded.contains("alice") && !encoded.contains("private"));
     let request = EraseRequest { declarations: &declarations, tables: &tables, selector: EraseSelector::Subject("bob"), admission: &admission,
         signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &FixedClock(now) };
-    let again = erase_subject(&erased.store, request).unwrap();
+    let again = erase_declared(&erased.store, &pack, request).unwrap();
     assert!(contextful_context::rows::table_rows(&again.store, &table, &["subject"]).unwrap().is_empty());
     let face = contextful_context::read::Face::open(again.store.clone(), "[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]", crate::read::pepper()).unwrap();
     let session = face.session(&reader, &contextful_policy::enforce::session::Request { zone:None }, Default::default()).unwrap();
