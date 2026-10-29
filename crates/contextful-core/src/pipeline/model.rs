@@ -551,8 +551,9 @@ pub fn waiting_runs(included: &BTreeSet<String>, runs: &[RunManifest], folded: &
 }
 
 /// The commit instants one input waits on (`run.publish.staleness`). `included` holds the
-/// keys the watermark snapshot's chain folded, `runs` the input's committed runs and
-/// `chain` its current snapshot chain. A run outside `included` waits when its
+/// keys the watermark snapshot's chain folded, `folded` every key the input's current chain
+/// folds, `runs` the input's committed runs and `chain` its current snapshot chain down to the
+/// watermark snapshot, or whole where that snapshot is not in it. A run outside `included` waits when its
 /// `commit_seq` exceeds `through` (`run.publish.staleness-unsequenced` places a run
 /// carrying none by `at`); the runs at or below it must match `omitted`, or the input
 /// waits on `None` (`run.publish.staleness-omitted-check`). A collected run a current
@@ -563,14 +564,14 @@ pub fn input_waiting(
     frontier: &InputFrontier,
     at: Option<Instant>,
     included: &BTreeSet<String>,
+    folded: &BTreeSet<String>,
     runs: &[RunManifest],
     chain: &[SnapshotManifest],
 ) -> Vec<Option<Instant>> {
-    let folded: BTreeSet<String> = chain.iter().flat_map(|m| m.includes_runs.iter().cloned()).collect();
     let Some(omitted) = &frontier.omitted else {
         let mut listed = included.clone();
         listed.extend(frontier.runs.iter().cloned());
-        return waiting_runs(&listed, runs, &folded);
+        return waiting_runs(&listed, runs, folded);
     };
     let through = frontier.through;
     let mut covered: BTreeSet<String> = BTreeSet::new();

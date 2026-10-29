@@ -385,21 +385,35 @@ fn an_input_waits_on_runs_past_through_and_on_a_broken_omitted_set() {
     let r1 = sequenced("r1", "2030-01-01T00:00:00Z", Some(1));
     let r2 = sequenced("r2", "2030-01-01T00:10:00Z", Some(2));
     let f = InputFrontier::read(None, &[&r1, &r2]);
-    assert!(input_waiting(&f, Some(at("2030-01-01T00:10:00Z")), &none, &[r1.clone(), r2.clone()], &[]).is_empty());
+    assert!(input_waiting(&f, Some(at("2030-01-01T00:10:00Z")), &none, &none, &[r1.clone(), r2.clone()], &[]).is_empty());
     // A landing after the build waits with its commit instant.
     let r3 = sequenced("r3", "2030-01-01T01:00:00Z", Some(3));
-    assert_eq!(input_waiting(&f, None, &none, &[r1.clone(), r2.clone(), r3.clone()], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
+    assert_eq!(input_waiting(&f, None, &none, &none, &[r1.clone(), r2.clone(), r3.clone()], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
     // A run merged in at or below `through`, which the build never read, breaks `omitted`.
     let merged = RunManifest { node_id: "other".into(), ..sequenced("m", "2030-01-01T00:05:00Z", Some(2)) };
-    assert_eq!(input_waiting(&f, None, &none, &[r1.clone(), r2.clone(), merged], &[]), vec![None]);
+    assert_eq!(input_waiting(&f, None, &none, &none, &[r1.clone(), r2.clone(), merged], &[]), vec![None]);
     // Runs a later fold moved into the chain still count once their manifests are collected,
     // when the folding snapshot sits at or below `through`.
     let mut folded = snapshot("2030-01-02T00:00:00Z", None, None);
     folded.includes_runs = vec![r1.key(), r2.key()];
     folded.commit_seq = Some(2);
-    assert!(input_waiting(&f, None, &none, &[], std::slice::from_ref(&folded)).is_empty());
+    assert!(input_waiting(&f, None, &none, &none, &[], std::slice::from_ref(&folded)).is_empty());
     folded.commit_seq = Some(3);
-    assert_eq!(input_waiting(&f, None, &none, &[], std::slice::from_ref(&folded)), vec![None, None, None]);
+    assert_eq!(input_waiting(&f, None, &none, &none, &[], std::slice::from_ref(&folded)), vec![None, None, None]);
+}
+
+/// The folded set an input's current chain holds arrives beside the chain, which holds the snapshots above the
+/// watermark snapshot alone: a run the set names, outside `included` and with its manifest gone, waits on `None`
+/// though no snapshot passed folds it, and a set naming nothing beyond `included` leaves the input fresh.
+#[test]
+fn an_input_reads_its_folded_runs_from_the_set_it_is_given() {
+    let f: InputFrontier = serde_json::from_value(serde_json::json!({"snapshot_id": null, "runs": ["r1/n"]})).unwrap();
+    let r1 = sequenced("r1", "2030-01-01T00:00:00Z", Some(1));
+    let included: BTreeSet<String> = ["r0/n".to_string()].into();
+    let folded: BTreeSet<String> = ["r0/n".to_string(), "gone/n".to_string()].into();
+    assert!(!folded.is_empty());
+    assert_eq!(input_waiting(&f, None, &included, &folded, std::slice::from_ref(&r1), &[]), vec![None]);
+    assert!(input_waiting(&f, None, &included, &included, std::slice::from_ref(&r1), &[]).is_empty());
 }
 
 /// A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.
@@ -410,12 +424,12 @@ fn an_unsequenced_run_counts_by_the_watermark_instant() {
     let old = sequenced("old", "2030-01-01T00:00:00Z", None);
     let f = InputFrontier::read(None, &[&old]);
     let wm = Some(at("2030-01-01T00:00:00Z"));
-    assert!(input_waiting(&f, wm, &none, std::slice::from_ref(&old), &[]).is_empty());
+    assert!(input_waiting(&f, wm, &none, &none, std::slice::from_ref(&old), &[]).is_empty());
     let later = sequenced("later", "2030-01-01T02:00:00Z", None);
-    assert_eq!(input_waiting(&f, wm, &none, &[old.clone(), later], &[]), vec![Some(at("2030-01-01T02:00:00Z"))]);
+    assert_eq!(input_waiting(&f, wm, &none, &none, &[old.clone(), later], &[]), vec![Some(at("2030-01-01T02:00:00Z"))]);
     // One the build never read, committed before `at`, breaks `omitted`.
     let unread = sequenced("unread", "2029-12-31T00:00:00Z", None);
-    assert_eq!(input_waiting(&f, wm, &none, &[old, unread], &[]), vec![None]);
+    assert_eq!(input_waiting(&f, wm, &none, &none, &[old, unread], &[]), vec![None]);
 }
 
 /// A watermark input carrying a `runs` list and no `omitted` reads with those runs included; no build writes `runs`, and a listed frontier keeps them through a round trip.
@@ -427,8 +441,8 @@ fn a_listed_runs_frontier_still_reads_and_survives_a_round_trip() {
     assert!(f.omitted.is_none());
     let r1 = sequenced("r1", "2030-01-01T00:00:00Z", Some(1));
     let r2 = sequenced("r2", "2030-01-01T01:00:00Z", Some(2));
-    assert!(input_waiting(&f, None, &none, std::slice::from_ref(&r1), &[]).is_empty());
-    assert_eq!(input_waiting(&f, None, &none, &[r1, r2], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
+    assert!(input_waiting(&f, None, &none, &none, std::slice::from_ref(&r1), &[]).is_empty());
+    assert_eq!(input_waiting(&f, None, &none, &none, &[r1, r2], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
     let echoed: InputFrontier = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
     assert_eq!(echoed, f, "an echo of a listed watermark keeps its runs");
     let built = InputFrontier::read(None, &[]);

@@ -5214,6 +5214,18 @@
       "group": "lazy parts"
     },
     {
+      "id": "store.pull.husks-staleness",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "husks-staleness",
+      "kind": "behavior",
+      "statement": "A model's staleness check reads its head snapshot, each input's snapshots from the pointer down to the watermark snapshot, and the runs folded beneath through {{store.lay-out.folded-index-walk}}, fetching a skipped manifest only on that path.",
+      "why": "A-store#index-walk",
+      "file": "spec/10-store.md",
+      "line": 694,
+      "group": "lazy parts"
+    },
+    {
       "id": "store.pull.skipped-record",
       "contract": "store",
       "operation": "pull",
@@ -5222,7 +5234,7 @@
       "statement": "Each pull clearing its refusals rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
-      "line": 694,
+      "line": 696,
       "group": "lazy parts"
     },
     {
@@ -5234,7 +5246,7 @@
       "statement": "Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 696,
+      "line": 698,
       "group": "lazy parts"
     },
     {
@@ -5246,7 +5258,7 @@
       "statement": "A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, save where the source answers it collected: an unbounded listing leaves it out, and a bounded read does when a kept snapshot folds its run.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 698,
+      "line": 700,
       "group": "lazy parts"
     },
     {
@@ -5258,7 +5270,7 @@
       "statement": "A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} or {{store.pull.husks-fetched}} fetches, naming the table and a manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 700,
+      "line": 702,
       "group": "lazy parts"
     },
     {
@@ -5270,7 +5282,7 @@
       "statement": "Every command opening a store whose `[sync]` declares `lazy_parts` registers the bucket's part source once per process, whether or not the command pulls.",
       "why": "because a command reading runs without pulling otherwise meets {{store.pull.folded-runs-unreachable}}",
       "file": "spec/10-store.md",
-      "line": 702,
+      "line": 704,
       "group": "lazy parts"
     },
     {
@@ -5282,7 +5294,7 @@
       "statement": "`[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 704,
+      "line": 706,
       "group": "lazy parts"
     },
     {
@@ -5294,7 +5306,7 @@
       "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.",
       "why": "because a partial acquisition and a lost index leave completed downloads subject to eviction",
       "file": "spec/10-store.md",
-      "line": 706,
+      "line": 708,
       "group": "lazy parts"
     },
     {
@@ -5306,7 +5318,7 @@
       "statement": "A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.",
       "why": "because `sync collect` deletes a tombstoned run's parts while a container whose pointer predates the tombstone reads them",
       "file": "spec/10-store.md",
-      "line": 708,
+      "line": 710,
       "group": "lazy parts"
     },
     {
@@ -34662,6 +34674,7 @@
     "A-store#index-walk": [
       "store.pull.husks-skipped",
       "store.pull.husks-fetched",
+      "store.pull.husks-staleness",
       "store.collect.index-walk",
       "store.merge.collected-index"
     ],
@@ -35403,6 +35416,10 @@
     [
       "store.pull.husks-skipped",
       "store.pull.lazy-parts"
+    ],
+    [
+      "store.pull.husks-staleness",
+      "store.lay-out.folded-index-walk"
     ],
     [
       "store.pull.folded-runs-fetched",
@@ -70178,6 +70195,22 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/husks.rs",
         "name": "a_warm_lazy_pull_after_a_gap_adopts_the_head",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.pull.husks-staleness": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/build.rs",
+        "name": "a_staleness_check_on_a_lazy_store_fetches_no_husk",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/build.rs",
+        "name": "a_watermark_snapshot_below_the_head_index_answers_through_the_walk",
         "verdict": "performed",
         "proved": false
       }

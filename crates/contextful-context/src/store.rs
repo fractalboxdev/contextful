@@ -954,7 +954,14 @@ impl Store {
     /// A collected snapshot's manifest a lazy pull skipped comes home through the part source
     /// first; without a source the walk refuses (`store.pull.husks-fetched`).
     pub fn chain_from(&self, table: &str, start: SnapshotId) -> Result<(Vec<SnapshotManifest>, bool)> {
-        self.chain_walk(table, start, true)
+        self.chain_walk(table, start, true, None)
+    }
+
+    /// The pointer's chain read as [`Store::chain`] reads it, ending at snapshot `stop` where the
+    /// walk reaches it: a skipped manifest below `stop` stays in the bucket (`store.pull.husks-staleness`).
+    pub fn chain_down_to(&self, table: &str, stop: Option<&SnapshotId>) -> Result<(Vec<SnapshotManifest>, bool)> {
+        let Some((ptr, _)) = self.pointer(table)? else { return Ok((Vec::new(), false)) };
+        self.chain_walk(table, ptr.snapshot_id, true, stop)
     }
 
     /// The pointer's chain as far as its manifests are on disk, fetching none a lazy pull
@@ -962,7 +969,7 @@ impl Store {
     /// skipped snapshot holds nothing on this disk (`store.pull.husks-fetched`).
     pub fn chain_on_disk(&self, table: &str) -> Result<(Vec<SnapshotManifest>, bool)> {
         let Some((ptr, _)) = self.pointer(table)? else { return Ok((Vec::new(), false)) };
-        self.chain_walk(table, ptr.snapshot_id, false)
+        self.chain_walk(table, ptr.snapshot_id, false, None)
     }
 
     /// The ids of `table`'s collected snapshots whose manifests a lazy pull skipped
@@ -983,7 +990,7 @@ impl Store {
             .collect())
     }
 
-    fn chain_walk(&self, table: &str, start: SnapshotId, fetch: bool) -> Result<(Vec<SnapshotManifest>, bool)> {
+    fn chain_walk(&self, table: &str, start: SnapshotId, fetch: bool, stop: Option<&SnapshotId>) -> Result<(Vec<SnapshotManifest>, bool)> {
         let mut chain = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
         let mut fetched = None;
@@ -1010,7 +1017,7 @@ impl Store {
             let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| {
                 StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
             })?;
-            next = m.parent.clone();
+            next = if stop == Some(&id) { None } else { m.parent.clone() };
             chain.push(m);
         }
         Ok((chain, false))
