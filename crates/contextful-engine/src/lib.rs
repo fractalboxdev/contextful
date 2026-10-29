@@ -19,6 +19,7 @@ pub mod rewind;
 pub mod runner;
 pub mod scheduler;
 pub mod seed;
+pub mod stages;
 pub mod stores;
 pub mod worker;
 

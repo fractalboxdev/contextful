@@ -219,7 +219,7 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let catalog: Arc<dyn Catalog + Send + Sync> = Arc::new(if disposable { recorded.marking_unpushed() } else { recorded });
     let journal = Journal::over(rows, blobs);
     let registry = Registry::over(awakeables.clone(), journal.clone());
-    Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
+    Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds(), stages: None }, registry, clock })
 }
 
 fn remote_run_stores(remote: &crate::storage::Remote) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {
@@ -620,7 +620,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
             let mut dest = StoreDestination { store, decls, node, author, normalize: None, relational_parts: BTreeMap::new(), schema_diffs: Vec::new() };
-            let ran = w.engine.run(&spec, &mut source, &mut dest);
+            let ran = trace.engine(&w.engine).run(&spec, &mut source, &mut dest);
             if let Ok(row) = &ran {
                 trace.close(row);
             }

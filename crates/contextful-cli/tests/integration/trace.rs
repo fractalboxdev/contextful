@@ -143,9 +143,9 @@ fn a_run_records_the_callers_trace_or_a_fresh_one() {
     assert_eq!(trace_of(dir.path(), &run), Value::from(TRACE));
 }
 
-/// With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table,
-/// status, row and byte counts, and the failure tag.
-// spec: run.record.run-span@fa339f1b
+/// With an exporter configured, a run exports one `contextful.run` span, child of the caller's span, carrying run id,
+/// pipeline, table, status, row and byte counts, and the failure tag.
+// spec: run.record.run-span@10f15139
 #[test]
 fn a_run_exports_its_span_under_the_callers_span() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"},{\"id\":\"b\"}]".into()));
@@ -155,11 +155,10 @@ fn a_run_exports_its_span_under_the_callers_span() {
     let out = fire(dir.path(), "exported", &[("TRACEPARENT", &parent), ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.url), ("OTEL_SERVICE_NAME", "substrate")]);
     ok(&out);
 
-    let spans = collector.spans();
+    let spans = named(&collector.spans(), "contextful.run");
     assert_eq!(spans.len(), 1, "{spans:?}");
     let span = &spans[0];
     assert_eq!((span["traceId"].as_str(), span["parentSpanId"].as_str()), (Some(TRACE), Some(PARENT)));
-    assert_eq!(span["name"], "contextful.run");
     let attr = |key: &str| span["attributes"].as_array().unwrap().iter().find(|a| a["key"] == key).map(|a| a["value"].clone());
     assert_eq!(attr("contextful.run.id"), Some(serde_json::json!({ "stringValue": "exported" })));
     assert_eq!(attr("contextful.pipeline"), Some(serde_json::json!({ "stringValue": "shop" })));
@@ -174,11 +173,150 @@ fn a_run_exports_its_span_under_the_callers_span() {
     let dir = project(&manifest(&failing));
     let failed = fire(dir.path(), "failing", &[("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.url)]);
     assert!(!failed.status.success());
-    let spans = collector.spans();
+    let spans = named(&collector.spans(), "contextful.run");
     let span = spans.iter().find(|s| s["attributes"].as_array().unwrap().iter().any(|a| a["value"]["stringValue"] == "failing")).expect("the failed run exports its span");
     assert!(span.get("parentSpanId").is_none(), "an untraced run roots its own trace");
     assert!(span["attributes"].as_array().unwrap().iter().any(|a| a["key"] == "error.type"), "{span}");
     assert_eq!(span["status"]["code"], 2);
+}
+
+/// The spans named `name`.
+fn named(spans: &[Value], name: &str) -> Vec<Value> {
+    spans.iter().filter(|s| s["name"] == name).cloned().collect()
+}
+
+/// The value of `span`'s attribute `key`.
+fn attribute(span: &Value, key: &str) -> Option<Value> {
+    span["attributes"].as_array().and_then(|a| a.iter().find(|a| a["key"] == key)).map(|a| a["value"].clone())
+}
+
+/// The spans the collector holds once `done` holds of them, waiting at most 30 s.
+fn awaited_until(collector: &Collector, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let spans = collector.spans();
+        if done(&spans) || std::time::Instant::now() > deadline {
+            return spans;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// A run exports one child span of its run span per pull, landing, commit and journaled step, each carrying its
+/// stage, its table or step label, its outcome and the rows or bytes it counts, and no row value.
+// spec: disclosure.record.stage-span@eb9dfee1
+// spec: disclosure.record.stage-attributes@32230807
+// spec: disclosure.record.stage-content@2b811f08
+#[test]
+fn a_run_exports_one_child_span_per_stage_under_its_run_span() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"zebra-canary\"},{\"id\":\"yak-canary\"}]".into()));
+    let collector = Collector::start();
+    let dir = project(&manifest(&vendor));
+    let parent = format!("00-{TRACE}-{PARENT}-01");
+    ok(&fire(dir.path(), "staged", &[("TRACEPARENT", &parent), ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.url)]));
+
+    let spans = collector.spans();
+    assert!(!spans.is_empty(), "the run exports spans");
+    let runs = named(&spans, "contextful.run");
+    assert_eq!(runs.len(), 1, "{spans:?}");
+    let run = runs[0]["spanId"].as_str().unwrap().to_string();
+    let children: Vec<&Value> = spans.iter().filter(|s| s["name"] != "contextful.run").collect();
+    assert!(!children.is_empty(), "the run exports its stage spans");
+    for child in &children {
+        assert_eq!((child["traceId"].as_str(), child["parentSpanId"].as_str()), (Some(TRACE), Some(run.as_str())), "{child}");
+    }
+    for (stage, name) in [("pull", "contextful.pull"), ("land", "contextful.land"), ("commit", "contextful.commit"), ("step", "contextful.step")] {
+        let of = named(&spans, name);
+        assert!(!of.is_empty(), "the run exports a `{name}` span: {spans:?}");
+        for span in &of {
+            assert_eq!(attribute(span, "contextful.stage"), Some(serde_json::json!({ "stringValue": stage })), "{span}");
+            assert_eq!(attribute(span, "contextful.table"), Some(serde_json::json!({ "stringValue": "shop_orders" })), "{span}");
+            assert!(attribute(span, "contextful.outcome").is_some() && attribute(span, "error.type").is_none(), "{span}");
+        }
+    }
+    for name in ["contextful.pull", "contextful.step"] {
+        let of = named(&spans, name);
+        assert!(!of.is_empty());
+        assert!(of.iter().all(|s| attribute(s, "contextful.step") == Some(serde_json::json!({ "stringValue": "pull-0" }))), "{spans:?}");
+    }
+    let pulls = named(&spans, "contextful.pull");
+    assert!(!pulls.is_empty());
+    assert!(pulls.iter().all(|s| attribute(s, "contextful.bytes").is_some()), "{pulls:?}");
+    assert_eq!(attribute(&named(&spans, "contextful.commit")[0], "contextful.rows"), Some(serde_json::json!({ "intValue": "2" })));
+    assert_eq!(attribute(&named(&spans, "contextful.land")[0], "contextful.rows"), Some(serde_json::json!({ "intValue": "2" })));
+    let payload = collector.seen.lock().unwrap().iter().map(|(_, body)| String::from_utf8_lossy(body).into_owned()).collect::<String>();
+    for value in ["zebra-canary", "yak-canary"] {
+        assert!(!payload.contains(value), "the exported payload discloses `{value}`");
+    }
+}
+
+/// A delivery to the served receive route under a `traceparent` header exports one server span under the caller's
+/// span, and each run it lands continues that trace with its run span a child of the route span.
+// spec: disclosure.record.route-carrier@6d61a8b7
+// spec: disclosure.record.route-span@bbc5bbe4
+// spec: disclosure.record.route-parent@feca35a5
+#[test]
+fn a_served_delivery_continues_the_callers_trace_through_its_route_span() {
+    let (dir, public) = crate::serve::receiving_face_with(2, 4096);
+    let root = dir.path();
+    let token = crate::serve::mint_write(root, "otel_*");
+    let collector = Collector::start();
+    let mut env = vec![("OTEL_EXPORTER_OTLP_ENDPOINT", collector.url.as_str())];
+    env.extend(PROXIES.iter().map(|k| (*k, "")));
+    let (_listener, addr) = serve_env(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public], &env);
+    let ack = deliver_traced(&addr, &token);
+    assert_eq!(ack["committed"], true, "{ack}");
+
+    let spans = awaited_until(&collector, |spans| !named(spans, "POST /receive/:pipeline").is_empty() && named(spans, "contextful.run").len() >= 2);
+    let routes = named(&spans, "POST /receive/:pipeline");
+    assert_eq!(routes.len(), 1, "{spans:?}");
+    let route = &routes[0];
+    assert_eq!((route["traceId"].as_str(), route["parentSpanId"].as_str()), (Some(TRACE), Some(PARENT)));
+    assert_eq!(attribute(route, "http.route"), Some(serde_json::json!({ "stringValue": "/receive/:pipeline" })));
+    assert_eq!(attribute(route, "http.response.status_code"), Some(serde_json::json!({ "intValue": "200" })));
+    let runs = named(&spans, "contextful.run");
+    assert_eq!(runs.len(), 2, "{spans:?}");
+    for run in &runs {
+        assert_eq!((run["traceId"].as_str(), run["parentSpanId"].as_str()), (Some(TRACE), route["spanId"].as_str()), "{run}");
+    }
+}
+
+/// With no exporter configured the face hands the receive route the caller's own `traceparent`, so each run it lands
+/// records the caller's trace, and no span leaves the process.
+// spec: disclosure.record.stage-unconfigured@682fe4bd
+// spec: disclosure.record.route-carrier@6d61a8b7
+#[test]
+fn without_an_exporter_a_served_delivery_records_the_callers_trace_and_exports_nothing() {
+    let (dir, public) = crate::serve::receiving_face_with(2, 4096);
+    let root = dir.path();
+    let token = crate::serve::mint_write(root, "otel_*");
+    let collector = Collector::start();
+    let env: Vec<(&str, &str)> = PROXIES.iter().map(|k| (*k, "")).collect();
+    let (_listener, addr) = serve_env(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public], &env);
+    let ack = deliver_traced(&addr, &token);
+    let tables = ack["tables"].as_array().cloned().unwrap_or_default();
+    assert!(!tables.is_empty(), "the delivery lands its tables: {ack}");
+    for table in &tables {
+        assert_eq!(trace_of(root, table["run_id"].as_str().unwrap()), Value::from(TRACE), "{ack}");
+    }
+    assert!(collector.seen.lock().unwrap().is_empty(), "no span leaves the process");
+}
+
+/// `POST /receive/otel` of one row per table under a `traceparent` naming `PARENT`; the JSON answer.
+fn deliver_traced(addr: &str, token: &str) -> Value {
+    let body = format!("{}{}", crate::serve::delivered("spans", serde_json::json!({ "id": "s1" })), crate::serve::delivered("events", serde_json::json!({ "id": "e1" })));
+    let mut stream = TcpStream::connect(addr).unwrap();
+    write!(
+        stream,
+        "POST /receive/otel HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContextful-Batch-Key: traced-1\r\ntraceparent: 00-{TRACE}-{PARENT}-01\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, answer) = raw.split_once("\r\n\r\n").unwrap_or_else(|| panic!("no answer head: {raw:?}"));
+    assert!(head.starts_with("HTTP/1.1 200"), "{raw}");
+    serde_json::from_str(answer).unwrap()
 }
 
 const SQL: &str = r#"SELECT note_id, title FROM "research/notes" ORDER BY note_id"#;

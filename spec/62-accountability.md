@@ -141,6 +141,24 @@ Spans leave the process over OTLP only when an endpoint is configured.
   *because egress reachable under a default configuration is telemetry the operator never chose*
 - `span-queue` — Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.
   *because an unreachable collector must add no latency to the read or run that made the span*
+- `stage-span` — With an exporter configured, a run exports one child span of its {{run.record.run-span}} per pull, landing, commit and journaled step, named `contextful.pull`, `contextful.land`, `contextful.commit` or `contextful.step`.
+  *because a slow or failed run shows the stage that held it on the trace its caller already reads*
+- `stage-attributes` — A stage span carries `contextful.stage`, the run's `contextful.table`, a pull's or step's `contextful.step` label, `contextful.outcome`, a failed stage's error identifier as `error.type`, and the `contextful.rows` or `contextful.bytes` the stage counts.
+  *because the stage, its outcome and its count locate a failure without opening the store*
+- `stage-outcome` — A pull, landing or commit records `ok` or `failed` as its outcome; a journaled step records `recorded`, `replayed`, `unrecorded`, `waiting` or `failed`.
+  *because a replayed step made no source call, and a trace reading it as a pull misstates the run's egress*
+- `stage-content` — A stage span carries no row value and no statement text.
+  *because a collector sits outside the store's custody, so a stage span discloses only names, counts and identifiers*
+- `stage-unconfigured` — With no exporter configured, a run times no stage and builds no stage span.
+  *because span work no collector receives is cost the operator never chose*
+- `route-carrier` — Every HTTP route but `/mcp`, `/health` and `/auth/exchange` — receive, receive outcome, run stop, run stream, awake, control, claim write and connection routes — takes {{disclosure.record.trace-carrier}} from its request's `traceparent` and `tracestate` headers.
+  *because a run or read a request starts belongs to its caller's trace whichever route carries it*
+- `route-span` — With an exporter configured, each such request exports one server span named by its method and route template, carrying `http.request.method`, `http.route`, `http.response.status_code`, and for a 4xx or 5xx answer its error identifier, else its status, as `error.type`.
+  *because the route a request took and its answer join the caller's trace as the tool call's read span does*
+- `route-parent` — A route's handler receives a `traceparent` naming the route span, so a run the receive route lands takes the request's trace and parents its run span under the route span.
+  *because the landing is the request's work, and a run rooted apart from it hides that delivery's cost*
+- `route-content` — A route span records the route template and never a path segment's value, the query or the body.
+  *because a path segment can hold an awakeable token or a batch key, which no collector is granted*
 
 ## explain
 

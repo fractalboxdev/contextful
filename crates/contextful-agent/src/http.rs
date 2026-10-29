@@ -17,7 +17,7 @@ use contextful_context::read::Face;
 use contextful_core::grant::{Action, TablePattern};
 use contextful_core::ports::Clock;
 use contextful_core::read::{ReadError, Refusal};
-use contextful_core::trace::{TRACEPARENT, TRACESTATE};
+use contextful_core::trace::{Span, SpanKind, TraceContext, TRACEPARENT, TRACESTATE};
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::refuse::payload;
 use contextful_policy::keyset::KeyCheckpoint;
@@ -328,6 +328,9 @@ pub struct HttpFace<'a, C> {
     receive: Option<&'a ReceiveHandler<'a>>,
     receive_outcome: Option<&'a OutcomeHandler<'a>>,
     hydration: Option<&'a Hydration>,
+    /// Where each routed request's server span goes, when an exporter is configured
+    /// (`disclosure.record.route-span`).
+    spans: Option<ReadSpans>,
 }
 
 /// What the run routes answer from, both called only under an admitted credential: a
@@ -382,7 +385,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), draining: AtomicBool::new(false), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, receive_outcome: None, hydration: None })
+        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), draining: AtomicBool::new(false), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, receive_outcome: None, hydration: None, spans: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -395,6 +398,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Record each read tool call's span through `spans`, under the caller's span its
     /// `traceparent` header or `_meta` names (`disclosure.record.face-carrier`).
     pub fn with_spans(mut self, spans: ReadSpans) -> Self {
+        self.spans = Some(spans.clone());
         self.tools = self.tools.with_spans(spans);
         self
     }
@@ -511,18 +515,29 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let response = match read_head(&mut stream) {
             Err(response) => response,
             Ok((head, _)) if self.exchange_unconfigured && head.path() == "/auth/exchange" => self.answer(&head),
-            Ok((head, rest)) => match receive_route(head.path()).filter(|_| self.receive.is_some()) {
-                Some(pipeline) => {
-                    let pipeline = pipeline.to_string();
-                    let (response, read) = self.receive_request(&head, rest, &mut stream, &pipeline);
-                    unread = !read;
-                    response
+            Ok((head, rest)) => {
+                let route = self.open_route(&head);
+                let head = match &route {
+                    Some(route) => route.carried(head),
+                    None => head,
+                };
+                let response = match receive_route(head.path()).filter(|_| self.receive.is_some()) {
+                    Some(pipeline) => {
+                        let pipeline = pipeline.to_string();
+                        let (response, read) = self.receive_request(&head, rest, &mut stream, &pipeline);
+                        unread = !read;
+                        response
+                    }
+                    None => match read_body(&mut stream, head, rest, REQUEST_BODY_BYTES) {
+                        Ok(request) => self.answer(&request),
+                        Err(response) => response,
+                    },
+                };
+                if let (Some(route), Some(spans)) = (route, self.spans.as_ref()) {
+                    spans.sink.record(route.close(&response, (spans.now)()));
                 }
-                None => match read_body(&mut stream, head, rest, REQUEST_BODY_BYTES) {
-                    Ok(request) => self.answer(&request),
-                    Err(response) => response,
-                },
-            },
+                response
+            }
         };
         let written = response.write_to(&mut stream);
         drop(slot);
@@ -534,6 +549,20 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             discard(&mut stream)?;
         }
         Ok(())
+    }
+
+    /// The server span of a request to a route doing read or run work, a child of the span
+    /// its `traceparent` header names, else a fresh trace's root; `None` with no exporter
+    /// configured or for `/mcp`, `/health` and `/auth/exchange` (`disclosure.record.route-carrier`).
+    fn open_route(&self, head: &HttpRequest) -> Option<RouteSpan> {
+        let spans = self.spans.as_ref()?;
+        let route = route_template(head.path())?;
+        let fresh = (spans.fresh)();
+        let (context, parent) = match head.header(TRACEPARENT).and_then(|p| TraceContext::parse(p, head.header(TRACESTATE))) {
+            Some(caller) => (caller.child(fresh.span_id), Some(caller.span_id)),
+            None => (fresh, None),
+        };
+        Some(RouteSpan { context, parent, route, method: head.method.clone(), start: (spans.now)() })
     }
 
     /// The receive route: admit the credential on the head, then hand the handler a reader
@@ -812,6 +841,68 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             Err(ProofRefusal::Refused(e)) => Err(unadmitted(&e)),
         }
     }
+}
+
+/// A routed request's server span while its handler runs (`disclosure.record.route-span`).
+struct RouteSpan {
+    context: TraceContext,
+    parent: Option<[u8; 8]>,
+    route: &'static str,
+    method: String,
+    start: i128,
+}
+
+impl RouteSpan {
+    /// `head` with its `traceparent` naming this span, so the handler's work parents under it
+    /// (`disclosure.record.route-parent`).
+    fn carried(&self, mut head: HttpRequest) -> HttpRequest {
+        head.headers.retain(|(k, _)| !k.eq_ignore_ascii_case(TRACEPARENT));
+        head.headers.push((TRACEPARENT.to_string(), self.context.traceparent()));
+        head
+    }
+
+    /// The span over `response`: the route template, never a path segment's value, the
+    /// query or the body (`disclosure.record.route-content`).
+    fn close(self, response: &HttpResponse, now: i128) -> Span {
+        let mut span = Span::at(&self.context, self.parent, &format!("{} {}", self.method, self.route), SpanKind::Server)
+            .with("http.request.method", self.method.as_str())
+            .with("http.route", self.route)
+            .with("http.response.status_code", u64::from(response.status));
+        if response.status >= 400 {
+            let named = serde_json::from_slice::<Value>(&response.body).ok().and_then(|b| b["error"]["identifier"].as_str().map(str::to_string));
+            let error = named.unwrap_or_else(|| response.status.to_string());
+            span = span.with("error.type", error.as_str());
+            span.error = Some(error);
+        }
+        span.start_unix_nanos = self.start;
+        span.end_unix_nanos = now;
+        span
+    }
+}
+
+/// The template of a route doing read or run work: every route but `/mcp`, `/health` and
+/// `/auth/exchange` (`disclosure.record.route-carrier`).
+fn route_template(path: &str) -> Option<&'static str> {
+    if receive_route(path).is_some() {
+        return Some("/receive/:pipeline");
+    }
+    if outcome_route(path).is_some() {
+        return Some("/receive/:pipeline/:key");
+    }
+    if let Some((_, stream)) = run_route(path) {
+        return Some(if stream { "/runs/:run_id/stream" } else { "/runs/:run_id/stop" });
+    }
+    if awake_route(path).is_some() {
+        return Some("/awake/:token");
+    }
+    if connection_method(path).is_some() {
+        return Some(match path {
+            "/connections" => "/connections",
+            p if p.ends_with("/pause") => "/connections/:id/pause",
+            _ => "/connections/:id",
+        });
+    }
+    [WORKFLOWS_PATH, RECORD_PATH, EDIT_PATH, APPLY_PATH, "/memory/claims"].into_iter().find(|route| *route == path)
 }
 
 fn connection_method(path: &str) -> Option<&'static str> {
