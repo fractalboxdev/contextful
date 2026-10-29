@@ -67,6 +67,10 @@ pub fn run(args: McpArgs) -> Result<()> {
     let clock = SystemClock;
     let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> { effect_boundary(a, &Admission::new(clock.now(), &revocation)) };
     let server = Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?.with_build(crate::build_identity());
+    let server = match crate::telemetry::read_spans() {
+        Some(spans) => server.with_spans(spans),
+        None => server,
+    };
     server.serve(std::io::stdin().lock(), std::io::stdout().lock())?;
     Ok(())
 }

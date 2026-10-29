@@ -43,6 +43,12 @@ pub fn sink() -> Option<Arc<dyn SpanSink>> {
     telemetry().exporter.clone().map(|e| e as Arc<dyn SpanSink>)
 }
 
+/// Where the read face records each read tool call's span, when an exporter is configured;
+/// with none, the face records no span and parses no carrier (`disclosure.record.read-span`).
+pub fn read_spans() -> Option<contextful_agent::mcp::ReadSpans> {
+    sink().map(|sink| contextful_agent::mcp::ReadSpans { sink, fresh: fresh_trace, now: contextful_outbound::telemetry::now_unix_nanos })
+}
+
 /// The trace a model call joins and the span it parents under: the caller's, or the
 /// process's one fresh trace as a root when only an exporter is configured; `None` when
 /// neither is (`connector.infer.model-span`).

@@ -61,3 +61,15 @@ fn a_span_becomes_one_otlp_json_span_under_its_service() {
     let root = Span::at(&caller, None, "root", SpanKind::Server);
     assert!(otlp_traces("svc", &[root])["resourceSpans"][0]["scopeSpans"][0]["spans"][0].get("parentSpanId").is_none());
 }
+
+#[test]
+fn a_list_attribute_becomes_one_otlp_array_of_strings() {
+    let caller = TraceContext::parse(&format!("00-{TRACE}-{PARENT}-01"), None).unwrap();
+    let tables = vec!["a/b".to_string(), "c,d".to_string()];
+    let span = Span::at(&caller.child([2; 8]), Some(caller.span_id), "contextful.read", SpanKind::Server).with("contextful.tables", tables);
+    let body = otlp_traces("svc", &[span]);
+    let attributes = body["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["attributes"].clone();
+    assert_eq!(attributes, json!([
+        { "key": "contextful.tables", "value": { "arrayValue": { "values": [{ "stringValue": "a/b" }, { "stringValue": "c,d" }] } } },
+    ]));
+}

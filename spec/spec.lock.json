@@ -25696,6 +25696,42 @@
       "group": "telemetry"
     },
     {
+      "id": "disclosure.record.face-carrier",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "face-carrier",
+      "kind": "behavior",
+      "statement": "A read tool call takes {{disclosure.record.trace-carrier}} from its HTTP request's `traceparent` and `tracestate` headers, or from `params._meta.traceparent` and `params._meta.tracestate`; a `_meta` `traceparent` wins over the header.",
+      "why": "because `_meta` travels with the one message it traces, while a header can belong to a proxy's connection",
+      "file": "spec/62-accountability.md",
+      "line": 133,
+      "group": "telemetry"
+    },
+    {
+      "id": "disclosure.record.read-span",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "read-span",
+      "kind": "behavior",
+      "statement": "With an exporter configured, each read tool call exports one `contextful.read` span carrying `contextful.tool`, `contextful.tables`, `contextful.result.rows`, `contextful.read.outcome`, a refused or failed read's error identifier as `error.type`, and the statement's SHA-256 as `contextful.query.hash`.",
+      "why": "because a host tracing its own requests sees the substrate's read as a child of its span, and the digest joins it to the audit entry",
+      "file": "spec/62-accountability.md",
+      "line": 135,
+      "group": "telemetry"
+    },
+    {
+      "id": "disclosure.record.read-span-content",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "read-span-content",
+      "kind": "behavior",
+      "statement": "A read span carries no statement text, subject member or row value.",
+      "why": "because a collector sits outside the audit chain's custody, so a span discloses only digests, counts and identifiers",
+      "file": "spec/62-accountability.md",
+      "line": 137,
+      "group": "telemetry"
+    },
+    {
       "id": "disclosure.record.span-export",
       "contract": "disclosure",
       "operation": "record",
@@ -25704,7 +25740,7 @@
       "statement": "With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave as OTLP/HTTP JSON to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 133,
+      "line": 139,
       "group": "telemetry"
     },
     {
@@ -25716,7 +25752,7 @@
       "statement": "With neither endpoint set, no exporter exists: no span leaves the process and telemetry opens no socket.",
       "why": "because egress reachable under a default configuration is telemetry the operator never chose",
       "file": "spec/62-accountability.md",
-      "line": 134,
+      "line": 140,
       "group": "telemetry"
     },
     {
@@ -25728,7 +25764,7 @@
       "statement": "Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.",
       "why": "because an unreachable collector must add no latency to the read or run that made the span",
       "file": "spec/62-accountability.md",
-      "line": 136,
+      "line": 142,
       "group": "telemetry"
     },
     {
@@ -25740,7 +25776,7 @@
       "statement": "`audit explain --table <t> --subject <principal>` answers `admit` when a grant the exchange policy issues for the `--role` names, else its `default_grants`, carries `read` over a pattern covering the table, and `deny` otherwise.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 143
+      "line": 149
     },
     {
       "id": "disclosure.explain.path",
@@ -25751,7 +25787,7 @@
       "statement": "A decision's path names the role or default set, the covering grant, then each step the table declares in {{authority.compose.relation-order}}; a deny's path ends at {{authority.filter-rows.default-deny}}.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 145
+      "line": 151
     },
     {
       "id": "disclosure.explain.replay",
@@ -25762,7 +25798,7 @@
       "statement": "`--window <from>..<to>` replays each chain entry naming the subject and the table whose read instant falls in the window: its seq, instant, outcome, agent and recorded `contextful.*` attributes.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 147
+      "line": 153
     },
     {
       "id": "disclosure.explain.coverage",
@@ -25773,7 +25809,7 @@
       "statement": "An explanation carries a coverage block: segments and entries verified, entries carrying no read instant, window spans the chain does not reach, and each visibility binding's source with its sweep watermark.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 149
+      "line": 155
     },
     {
       "id": "disclosure.explain.audience",
@@ -25784,7 +25820,7 @@
       "statement": "`audit explain --audience <t>` lists by name the roles whose grants read the table, whether `default_grants` do, and per `on_behalf_of` scheme the count of principals and served reads.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 151
+      "line": 157
     },
     {
       "id": "disclosure.explain.no-row",
@@ -25795,7 +25831,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about, a replayed `contextful.result.*` attribute beyond `contextful.result.rows` included, raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 153
+      "line": 159
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -25806,7 +25842,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 155
+      "line": 161
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -25817,7 +25853,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 157
+      "line": 163
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -25828,7 +25864,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 159
+      "line": 165
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -25839,7 +25875,7 @@
       "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 166
+      "line": 172
     },
     {
       "id": "disclosure.attest.merkle-root",
@@ -25850,7 +25886,7 @@
       "statement": "A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 168
+      "line": 174
     },
     {
       "id": "disclosure.attest.root-tag",
@@ -25861,7 +25897,7 @@
       "statement": "A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 170
+      "line": 176
     },
     {
       "id": "disclosure.attest.inclusion-proof",
@@ -25872,7 +25908,7 @@
       "statement": "`prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 172
+      "line": 178
     },
     {
       "id": "disclosure.attest.proof-invalid",
@@ -25883,7 +25919,7 @@
       "statement": "A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 174
+      "line": 180
     },
     {
       "id": "disclosure.attest.proof-unavailable",
@@ -25894,7 +25930,7 @@
       "statement": "Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.",
       "why": "because an open segment has no signed root yet, and a v0 root commits to no tree",
       "file": "spec/62-accountability.md",
-      "line": 176
+      "line": 182
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -25905,7 +25941,7 @@
       "statement": "`audit anchor` once it signs, and a held chain's replicator at start and every 10 min, copy each signed root the `[sync]` bucket lacks to `<prefix>/<project>/audit/roots/<segment>.json`; a failed copy waits for the next and fails no anchor, append or read.",
       "why": "A-disclosure#hash-chain-attestable",
       "file": "spec/62-accountability.md",
-      "line": 178
+      "line": 184
     },
     {
       "id": "disclosure.attest.replica-verify",
@@ -25916,7 +25952,7 @@
       "statement": "`audit verify --bucket` also holds the chain to each replicated root: a root failing its signature, closing a segment the chain does not reach, or absent or different locally breaks the chain as {{disclosure.attest.broken-chain}} does.",
       "why": "because deleting the roots, `chain.held` and the tip's signature leaves a chain no local check tells from an unanchored one",
       "file": "spec/62-accountability.md",
-      "line": 180
+      "line": 186
     },
     {
       "id": "disclosure.attest.replicate-verb",
@@ -25927,7 +25963,7 @@
       "statement": "`audit replicate` copies the roots {{disclosure.attest.root-replication}} copies, once, and prints the segments it sent.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 182
+      "line": 188
     },
     {
       "id": "disclosure.attest.lineage-elision",
@@ -25938,7 +25974,7 @@
       "statement": "A lineage attestation counts a claim's evidence references into tables the caller's session does not register as `withheld` in the `contextful.recall` block, and names no such table.",
       "why": "because naming a withheld table leaks its existence outside the caller's authority, while a count keeps the suppression explicable and never confirms a table exists",
       "file": "spec/62-accountability.md",
-      "line": 183
+      "line": 189
     },
     {
       "id": "disclosure.attest.verify-verb",
@@ -25949,7 +25985,7 @@
       "statement": "`audit verify` opens the chain read-only and prints its end when every check of {{disclosure.attest.broken-chain}} passes, each signature included under `--public-key`.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 185
+      "line": 191
     },
     {
       "id": "disclosure.attest.anchor-verb",
@@ -25960,7 +25996,7 @@
       "statement": "`audit anchor --issuer-key <seed>` signs the chain's missing roots and its tip as {{disclosure.record.unsigned-tip}} anchors them, and prints the chain end.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 186
+      "line": 192
     },
     {
       "id": "disclosure.attest.prove-verb",
@@ -25971,7 +26007,7 @@
       "statement": "`audit prove --seq <n>` prints the proof {{disclosure.attest.inclusion-proof}} returns, and `audit check-proof` verifies one under a public key, reading no store.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 187
+      "line": 193
     },
     {
       "id": "disclosure.attest.owner-only",
@@ -25982,7 +26018,7 @@
       "statement": "An audit verb reading a chain, presented with a capability credential, raises `AuditRequiresOwner` before it reads an audit file.",
       "why": "because the chain names every person's reads, and a credential scoped to some tables reaches no record of others",
       "file": "spec/62-accountability.md",
-      "line": 188
+      "line": 194
     },
     {
       "id": "disclosure.erase.privilege",
@@ -25993,7 +26029,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read#memory-access-follows",
       "file": "spec/62-accountability.md",
-      "line": 195
+      "line": 201
     },
     {
       "id": "disclosure.erase.unsupported-scope",
@@ -26004,7 +26040,7 @@
       "statement": "An empty target set or erasure admitted only by narrowed grants raises `ErasureScopeUnsupported` before store access; supported erasure admits every requested table explicitly.",
       "why": "because ignoring a grant constraint widens destructive authority",
       "file": "spec/62-accountability.md",
-      "line": 197
+      "line": 203
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -26015,7 +26051,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 199
+      "line": 205
     },
     {
       "id": "disclosure.erase.key-set",
@@ -26026,7 +26062,7 @@
       "statement": "A key-set request binds its selectors to the declared keys of {{store.declare.erasure-metadata}} and carries an opaque subject hash instead of a raw subject identity.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 201
+      "line": 207
     },
     {
       "id": "disclosure.erase.column-key-set",
@@ -26037,7 +26073,7 @@
       "statement": "A column-scoped {{disclosure.erase.key-set}} carries a declared column and non-null scalar keys; canonical declarations select every table naming that column, including tables without subject metadata. Caller table subsets and malformed selectors follow {{disclosure.erase.unsupported-scope}}.",
       "why": "because a caller table subset leaves declared copies of the erased key readable",
       "file": "spec/62-accountability.md",
-      "line": 203
+      "line": 209
     },
     {
       "id": "disclosure.erase.atomic-publication",
@@ -26048,7 +26084,7 @@
       "statement": "Subject and key-set erasure select one committed frontier across every affected table; a failed transaction exposes none of its staged replacements.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 205
+      "line": 211
     },
     {
       "id": "disclosure.erase.reader-frontier",
@@ -26059,7 +26095,7 @@
       "statement": "Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.",
       "why": "A-disclosure#re-synthesis-after, A-read#extraction-cache-keys",
       "file": "spec/62-accountability.md",
-      "line": 207
+      "line": 213
     },
     {
       "id": "disclosure.erase.shared-references",
@@ -26070,7 +26106,7 @@
       "statement": "A shared digest survives while any surviving declared reference names it; erasure collects a digest only after its last surviving reference disappears.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 209
+      "line": 215
     },
     {
       "id": "disclosure.erase.surviving-citations",
@@ -26081,7 +26117,7 @@
       "statement": "A citing table carrying the survival declaration of {{store.declare.erasure-metadata}} retains its rows; its references resolve through {{read.reference.erased-verdict}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 211
+      "line": 217
     },
     {
       "id": "disclosure.erase.subject-pseudonym",
@@ -26092,7 +26128,7 @@
       "statement": "Subject erasure computes its subject hash as a domain-separated HMAC-SHA-256 under the configured project audit key; no transaction or audit artifact carries raw subject identities or erased key values.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 213
+      "line": 219
     },
     {
       "id": "disclosure.erase.signer-binding",
@@ -26103,7 +26139,7 @@
       "statement": "Erasure signs through the configured issuer or node's {{authority.issue.signing-port}}; readers verify the canonical audit chain under configured public-key pins, independently of transaction artifacts. Missing signing or verifier configuration follows {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#audit-log-opens",
       "file": "spec/62-accountability.md",
-      "line": 215
+      "line": 221
     },
     {
       "id": "disclosure.erase.row-free-audit",
@@ -26114,7 +26150,7 @@
       "statement": "The signed audit chain binds the committed transaction, {{disclosure.erase.subject-pseudonym}} and affected counts to the exact replacement-file inventory.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 217
+      "line": 223
     },
     {
       "id": "disclosure.erase.store-binding",
@@ -26125,7 +26161,7 @@
       "statement": "The signed erasure entry binds {{store.init.store-identity}}; readers reject a frontier whose signed store identity differs from the receiving store, following {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 219
+      "line": 225
     },
     {
       "id": "disclosure.erase.working-publication",
@@ -26136,7 +26172,7 @@
       "statement": "Erasure preserves an immutable signed survivor baseline and selects independent working copies under the ordinary table layout; normal append and fold advance working publication without changing the baseline or requiring another erasure signature.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 221
+      "line": 227
     },
     {
       "id": "disclosure.erase.recovery",
@@ -26147,7 +26183,7 @@
       "statement": "Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 223
+      "line": 229
     },
     {
       "id": "disclosure.erase.recovery-verb",
@@ -26158,7 +26194,7 @@
       "statement": "`context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 225
+      "line": 231
     },
     {
       "id": "disclosure.erase.unsigned-recovery",
@@ -26169,7 +26205,7 @@
       "statement": "Uncommitted staging origins resolve against canonical stored tables and require Forget over the complete store scope; signed-only recovery admits the complete authenticated frontier. Uncommitted recovery returns no transaction identity.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 227
+      "line": 233
     },
     {
       "id": "disclosure.erase.retirement-inventory",
@@ -26180,7 +26216,7 @@
       "statement": "Signed retirement inventories bind regular paths through domain-separated HMAC under {{disclosure.record.audit-key}} and their file digests; recovery admits missing files as completed collection, validates all remaining files before deletion, and rejects changes through {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 229
+      "line": 235
     },
     {
       "id": "disclosure.erase.canonical-audit-key",
@@ -26191,7 +26227,7 @@
       "statement": "Erasure and keyed retirement recovery require the persisted canonical {{disclosure.record.audit-key}}; caller-supplied keys equal it, and absent or mismatched keys follow {{disclosure.erase.recovery}} before content access, signed intent, staging or collection.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 231
+      "line": 237
     },
     {
       "id": "disclosure.erase.survivor-names",
@@ -26202,7 +26238,7 @@
       "statement": "Erasure survivor snapshots use row-independent part names, preserve admitted surviving rows, record rewritten part key versions, and rebuild declared indexes through {{store.index.vector-by-fold}} and {{store.index.fulltext-by-fold}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 233
+      "line": 239
     },
     {
       "id": "disclosure.erase.cascade",
@@ -26213,7 +26249,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 235
+      "line": 241
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -26224,7 +26260,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 237
+      "line": 243
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -26235,7 +26271,7 @@
       "statement": "Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 239
+      "line": 245
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -26246,7 +26282,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 241
+      "line": 247
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -26257,7 +26293,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 243
+      "line": 249
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -26268,7 +26304,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 245
+      "line": 251
     },
     {
       "id": "disclosure.erase.tenant-rewrite",
@@ -26279,7 +26315,7 @@
       "statement": "`context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 247
+      "line": 253
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -26290,7 +26326,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 260
+      "line": 266
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -26301,7 +26337,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 262
+      "line": 268
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -26312,7 +26348,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 264
+      "line": 270
     },
     {
       "id": "disclosure.receipt.coverage",
@@ -26323,7 +26359,7 @@
       "statement": "A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.",
       "why": "because a purge deletes no bucket object, so a claim over the replication bucket names a removal that never ran",
       "file": "spec/62-accountability.md",
-      "line": 266
+      "line": 272
     },
     {
       "id": "disclosure.receipt.chain-record",
@@ -26334,7 +26370,7 @@
       "statement": "A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 268
+      "line": 274
     },
     {
       "id": "disclosure.receipt.prior-request",
@@ -26345,7 +26381,7 @@
       "statement": "A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.",
       "why": "because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record",
       "file": "spec/62-accountability.md",
-      "line": 270
+      "line": 276
     },
     {
       "id": "disclosure.receipt.zero-rows",
@@ -26356,7 +26392,7 @@
       "statement": "A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.",
       "why": "because an owner proves a tenant's absence with one artifact whether or not rows existed",
       "file": "spec/62-accountability.md",
-      "line": 272
+      "line": 278
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -37022,6 +37058,10 @@
     [
       "disclosure.record.signed-read",
       "disclosure.attest.anchor-verb"
+    ],
+    [
+      "disclosure.record.face-carrier",
+      "disclosure.record.trace-carrier"
     ],
     [
       "disclosure.explain.path",
@@ -57266,6 +57306,29 @@
         "proved": false
       }
     ],
+    "disclosure.record.face-carrier": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-agent/tests/integration/trace.rs",
+        "name": "a_read_takes_its_parent_from_the_header_or_from_meta_which_wins",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_served_read_under_a_traceparent_header_exports_one_child_span",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_stdio_read_under_a_meta_traceparent_exports_one_child_span",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.record.foreign-tail": [
       {
         "kind": "test",
@@ -57370,6 +57433,52 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "a_signed_read_whose_signing_key_the_pins_omit_is_refused_and_appends_nothing",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.record.read-span": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-agent/tests/integration/trace.rs",
+        "name": "a_read_records_one_span_with_its_digest_and_counts_and_no_statement",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_served_read_under_a_traceparent_header_exports_one_child_span",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_stdio_read_under_a_meta_traceparent_exports_one_child_span",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.record.read-span-content": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-agent/tests/integration/trace.rs",
+        "name": "a_read_records_one_span_with_its_digest_and_counts_and_no_statement",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_served_read_under_a_traceparent_header_exports_one_child_span",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_stdio_read_under_a_meta_traceparent_exports_one_child_span",
         "verdict": "performed",
         "proved": false
       }
