@@ -118,13 +118,13 @@ fn a_pull_through_the_edge_lands_only_granted_tables() {
 fn a_newer_manifest_through_the_edge_refuses_as_an_unsupported_format() {
     let (_dir, b) = pushed();
     let mut manifest: serde_json::Value = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
-    manifest["format"] = json!(2);
+    manifest["format"] = json!(3);
     manifest["entries"] = json!(["a newer shape"]);
     b.put("team/manifest.json", manifest.to_string().as_bytes(), Condition::None).unwrap();
     let edge: Arc<dyn ObjectStore> = Arc::new(ServingEdge::new(b.clone(), "team", "research", &[read(&["public"])]));
 
     let served: serde_json::Value = serde_json::from_slice(&edge.get("team/manifest.json").unwrap().unwrap().0).unwrap();
-    assert_eq!(served, json!({"format": 2}));
+    assert_eq!(served, json!({"format": 3}));
     let cold = node("reader", edge, "");
     let refused = cold.syncer.pull(&PullScope::default()).unwrap_err();
     assert!(matches!(refused, SyncError::Store(StoreError::SyncManifestFormatUnsupported(_))), "{refused:?}");

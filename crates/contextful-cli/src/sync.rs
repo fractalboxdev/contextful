@@ -83,6 +83,15 @@ pub enum SyncCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Delete the bucket objects no retained state reaches, printing per class the keys dropped
+    /// from the manifest and the objects and bytes deleted as JSON.
+    Collect {
+        #[command(flatten)]
+        args: SyncArgs,
+        /// Report what the collect deletes, and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Summarize, as JSON, the runs committed on a disposable disk that no committed push
     /// has carried, refusing while one is not lost.
     Status {
@@ -819,6 +828,12 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             for g in listed {
                 println!("{} {} {} {} {}", g.generation, dash(g.committed_at.map(|t| t.to_string())), dash(g.committed_by), g.entries, g.tombstones);
             }
+            Ok(())
+        }
+        SyncCmd::Collect { args, dry_run } => {
+            let (s, _) = open(&args)?;
+            let report = s.collect(now(&args.now)?, dry_run)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
         SyncCmd::Lease(LeaseCmd::Acquire { table, args }) => {

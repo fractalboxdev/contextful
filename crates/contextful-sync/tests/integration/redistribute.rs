@@ -172,7 +172,7 @@ fn clearing_the_flag_after_a_push_refuses_and_deletes_nothing() {
 
 /// An object the manifest does not name stays fetchable by its key, so the left-behind check
 /// finds it in the bucket's listing.
-// spec: authority.bound-redistribution.manifest-is-an-index@46792359
+// spec: authority.bound-redistribution.manifest-is-an-index@c3eefad8
 #[test]
 fn an_object_the_manifest_never_named_still_refuses() {
     let dir = tempfile::tempdir().unwrap();

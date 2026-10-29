@@ -146,7 +146,7 @@ Revisit: an external consumer needs a compatibility promise on a public surface,
 
 ## store-format-major — A store format major moves the release minor
 
-A consumer pinning `~0.16` takes every `v0.16.*` tag as a patch, yet a build reading format `1.x` refuses a table format `2.0` writes. The commit counter marker declares the same `format_version`, so it counts with the manifest major.
+A consumer pinning `~0.16` takes every `v0.16.*` tag as a patch, yet a build reading format `1.x` refuses a table format `2.0` writes. The commit counter marker declares the same `format_version`, so it counts with the manifest major. The bucket manifest's `MANIFEST_FORMAT` counts the same way, since a build parsing manifest format `1` refuses format `2`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

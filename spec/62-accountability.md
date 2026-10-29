@@ -264,7 +264,7 @@ The signed artifact a tenant purge returns: its claim, its coverage block, its p
 - `replayed` — Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.
   *A-disclosure#forced-rewrite-measured*
 - `coverage` — A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.
-  *because the object interface has no delete, so a claim over the replication bucket names a removal that never ran*
+  *because a purge deletes no bucket object, so a claim over the replication bucket names a removal that never ran*
 - `chain-record` — A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.
   *A-disclosure#forced-rewrite-measured*
 - `prior-request` — A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.

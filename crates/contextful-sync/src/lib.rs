@@ -4,6 +4,7 @@
 //! (`topology.package.s3-sync-optional`).
 
 pub mod clean_room;
+pub mod collect;
 pub mod edge;
 pub mod fs_bucket;
 pub mod lazy;
@@ -15,6 +16,7 @@ mod s3_retry;
 pub mod sync;
 pub mod transfer;
 
+pub use collect::{CollectClass, CollectReport};
 pub use edge::ServingEdge;
 pub use fs_bucket::{FsBucket, VolumeClass};
 pub use lazy::LazyParts;

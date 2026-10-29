@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 19 | 357 | 79 | 25 | 4 | 357 | 1 | 0 | 357 |
+| `assurance` | 4 | 19 | 358 | 80 | 25 | 4 | 358 | 1 | 0 | 358 |
 | `authority` | 2 | 16 | 291 | 79 | 28 | 8 | 291 | 4 | 0 | 291 |
 | `connector` | 3 | 19 | 347 | 83 | 23 | 14 | 318 | 2 | 0 | 318 |
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 6 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 15 | 292 | 0 | 0 | 292 |
 | `run` | 3 | 31 | 619 | 137 | 52 | 22 | 613 | 4 | 0 | 613 |
-| `store` | 6 | 20 | 325 | 68 | 25 | 11 | 325 | 13 | 0 | 325 |
+| `store` | 7 | 21 | 336 | 68 | 26 | 12 | 336 | 13 | 0 | 336 |
 | `surface` | 2 | 22 | 196 | 70 | 24 | 2 | 193 | 0 | 0 | 193 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 27 | 181 | 2840 | 710 | 241 | 85 | 2779 | 24 | 0 | |
+| **total** | 28 | 182 | 2852 | 711 | 242 | 86 | 2791 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -29,11 +29,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 22 | passing | closed |
 | 1 — The authority core | 14 | 260 | 260 | passing | closed |
-| 2 — The store | 9 | 179 | 179 | passing | closed |
+| 2 — The store | 9 | 180 | 180 | passing | closed |
 | 3 — The run path | 12 | 293 | 293 | passing | closed |
 | 4 — Ingest | 25 | 561 | 561 | passing | closed |
 | 5 — The read face under enforcement | 17 | 303 | 303 | passing | closed |
-| 6 — Sync and replicas | 9 | 132 | 132 | passing | closed |
+| 6 — Sync and replicas | 10 | 142 | 142 | passing | closed |
 | 7 — Memory | 6 | 86 | 86 | passing | closed |
 | 8 — Accountability | 5 | 93 | 93 | passing | closed |
 | 9 — Visibility | 6 | 49 | 49 | passing | closed |
@@ -41,7 +41,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 96 | 96 | passing | closed |
 | 12 — The operator console | 12 | 64 | 64 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 174 | 174 | passing | closed |
+| 14 — Assurance | 7 | 175 | 175 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 67 | 67 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 13 | 13 | passing | closed |

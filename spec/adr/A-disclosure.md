@@ -177,7 +177,7 @@ One authenticated frontier spans every affected table, and readers and writers f
 
 ## forced-rewrite-measured — Forced rewrite and measured receipt
 
-The object interface has no delete, so the receipt claims rewrite-and-exclude over the canonical store. Replicas and the replication bucket sit outside the claim.
+A purge deletes no bucket object, so the receipt claims rewrite-and-exclude over the canonical store. Replicas and the replication bucket sit outside the claim.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -187,7 +187,7 @@ The object interface has no delete, so the receipt claims rewrite-and-exclude ov
 | Crypto-shredding a per-subject key | Fit with the substrate | Every write path holds a per-subject key forever. |
 | A broad "data destroyed" receipt | Assertability | The claim is false when signed. |
 
-Revisit: the substrate gains a delete; 72 h request-to-last-replica erasure becomes an engine bound.
+Revisit: a purge deletes bucket objects; 72 h request-to-last-replica erasure becomes an engine bound.
 
 ## re-synthesis-after — Re-synthesis after erasure replays the extraction cache
 

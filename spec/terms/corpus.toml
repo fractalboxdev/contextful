@@ -120,25 +120,25 @@ why-unscoped = 0
 term-first-use = 0
 
 [ceiling.contract-words]
-assurance = 10961
-authority = 7712
+assurance = 11011
+authority = 7716
 connector = 10126
 corpus = 5120
 disclosure = 5217
 read = 9538
 run = 20441
-store = 9667
+store = 10128
 surface = 6309
 topology = 2641
 
 [ceiling.adr-words]
-A-assurance = 2795
-A-authority = 2061
+A-assurance = 2813
+A-authority = 2066
 A-connector = 1790
 A-corpus = 229
 A-disclosure = 1888
 A-read = 2681
 A-run = 4008
-A-store = 3581
+A-store = 3803
 A-surface = 1997
 A-topology = 1572

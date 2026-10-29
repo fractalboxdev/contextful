@@ -99,6 +99,7 @@ TagTreeDirty                     = { clause = "assurance.release.dirty-tree", gl
 TagOffDefaultBranch              = { clause = "assurance.release.off-branch", gloss = "A tag requested on a commit the default branch does not reach." }
 TagVersionRegressed              = { clause = "assurance.release.version-regressed", gloss = "A computed version below the highest existing version tag." }
 TagStoreFormatUnread             = { clause = "assurance.release.store-format", gloss = "A store format constant whose major or minor does not parse as an integer." }
+TagManifestFormatUnread          = { clause = "assurance.release.manifest-format", gloss = "A bucket manifest format constant that does not parse as an integer." }
 TagFormatBreakPatch              = { clause = "assurance.release.format-break-patch", gloss = "A store format major change under the highest existing tag's minor version." }
 TagWorkspaceVersionMismatch      = { clause = "assurance.release.workspace-version", gloss = "A workspace package version absent or differing from the computed tag version." }
 TagGateFailed                    = { clause = "assurance.release.gate-failed", gloss = "A gate stage failing on the commit a tag names." }

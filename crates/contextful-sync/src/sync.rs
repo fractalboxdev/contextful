@@ -136,7 +136,8 @@ enum KeyClass {
     Owned,
     /// Another node owns it: never pushed from here.
     Foreign,
-    /// Unowned and merged by its rule: a table's `schema.json`.
+    /// Unowned and merged by its rule: a table's `schema.json`, and a hold record or hold log a
+    /// renewal rewrites in place (`store.push.hold-renewal`).
     Mergeable,
     /// Unowned and written once: a snapshot's files.
     Immutable,
@@ -146,9 +147,20 @@ fn class(key: &str, me: &str) -> KeyClass {
     match owner_of(key) {
         Some(o) if o == me => KeyClass::Owned,
         Some(_) => KeyClass::Foreign,
-        None if key.ends_with("/schema.json") => KeyClass::Mergeable,
+        None if key.ends_with("/schema.json") || is_hold_record(key) || is_holds_log(key) => KeyClass::Mergeable,
         None => KeyClass::Immutable,
     }
+}
+
+/// Whether `key` is a hold record, `.../tables/<table>/holds/<build-id>.json` (`run.publish.hold`).
+pub(crate) fn is_hold_record(key: &str) -> bool {
+    let segs: Vec<&str> = key.split('/').collect();
+    segs.len() >= 5 && segs.contains(&"tables") && segs[segs.len() - 2] == contextful_core::pipeline::model::HOLDS_DIR && key.ends_with(".json")
+}
+
+/// Whether `key` is a table's hold log, `.../tables/<table>/holds.jsonl`.
+fn is_holds_log(key: &str) -> bool {
+    key.split('/').nth(1) == Some("tables") && key.ends_with(&format!("/{}", contextful_core::pipeline::model::HOLDS_LOG))
 }
 
 /// The table a key under `<project>/tables/` belongs to: the segments up to the table's
@@ -195,7 +207,7 @@ fn root_rest<'k>(project: &str, key: &'k str) -> Option<&'k str> {
 
 impl Redistribution {
     /// Whether `key`, under `project`, belongs to a withheld table.
-    fn withholds(&self, project: &str, key: &str) -> bool {
+    pub(crate) fn withholds(&self, project: &str, key: &str) -> bool {
         project_table(project, key).is_some_and(|t| self.withheld.contains(&t))
     }
 
@@ -281,6 +293,7 @@ impl ManifestPlan {
         let mut entries = self.mine.clone();
         entries.extend(self.shared.iter().map(|(k, e)| (k.clone(), e.clone())));
         let mut manifest = BucketManifest { entries, ..BucketManifest::default() };
+        manifest.format = manifest.written_format();
         if let (Some(head), Some(project)) = (&self.control_head, &self.control_project) {
             manifest.control_heads.insert(project.clone(), head.clone());
         }
@@ -460,7 +473,7 @@ fn ancestry(store: &Store, table_dir: &Path, snapshot: &str, ancestor: &str) -> 
 
 /// A bucket or generation manifest read off `key`, its `format` held to the newest this
 /// build parses before any other field is read (`store.push.format-unsupported`).
-fn parse_manifest(key: &str, bytes: &[u8]) -> Result<BucketManifest> {
+pub(crate) fn parse_manifest(key: &str, bytes: &[u8]) -> Result<BucketManifest> {
     let invalid = |e: serde_json::Error| SyncError::Context(ContextError::Invalid(format!("`{key}`: {e}")));
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(invalid)?;
     let format = value.get("format").and_then(serde_json::Value::as_u64).unwrap_or(1);
@@ -671,7 +684,7 @@ impl Syncer {
         Ok(())
     }
 
-    fn key(&self, rel: &str) -> Result<String> {
+    pub(crate) fn key(&self, rel: &str) -> Result<String> {
         Ok(confine(&self.prefix, rel)?)
     }
 
@@ -764,12 +777,12 @@ impl Syncer {
         Ok(plan)
     }
 
-    fn manifest(&self) -> Result<(BucketManifest, Option<String>)> {
+    pub(crate) fn manifest(&self) -> Result<(BucketManifest, Option<String>)> {
         Ok(self.manifest_bytes()?.map_or((BucketManifest::default(), None), |(m, _, etag)| (m, Some(etag))))
     }
 
     /// The bucket manifest with the bytes and ETag it was read at.
-    fn manifest_bytes(&self) -> Result<Option<(BucketManifest, Vec<u8>, String)>> {
+    pub(crate) fn manifest_bytes(&self) -> Result<Option<(BucketManifest, Vec<u8>, String)>> {
         match self.bucket.get(&self.key(MANIFEST_KEY)?)? {
             Some((bytes, etag)) => Ok(Some((parse_manifest(MANIFEST_KEY, &bytes)?, bytes, etag))),
             None => Ok(None),
@@ -806,7 +819,7 @@ impl Syncer {
     }
 
     /// Every generation the bucket holds a generation manifest for, ascending.
-    fn generations(&self) -> Result<Vec<u64>> {
+    pub(crate) fn generations(&self) -> Result<Vec<u64>> {
         let root = self.key(GENERATION_PREFIX)?;
         let under = root.strip_suffix(GENERATION_PREFIX).unwrap_or_default().to_string();
         let mut out: Vec<u64> = self.bucket.list(&root)?.iter().filter_map(|k| generation_of(k.strip_prefix(&under)?)).collect();
@@ -825,7 +838,7 @@ impl Syncer {
     /// generation `read`, and whether `gen-<read>.json` stands (`store.push.generation-probe`):
     /// past a numbered manifest each generation is probed by its own key, and only a manifest
     /// without `generation` lists `manifests/` whole.
-    fn generation_floor(&self, read: u64) -> Result<(u64, bool)> {
+    pub(crate) fn generation_floor(&self, read: u64) -> Result<(u64, bool)> {
         if read == 0 {
             return Ok((self.generations()?.last().copied().unwrap_or(0), false));
         }
@@ -896,7 +909,7 @@ impl Syncer {
 
     /// Create generation `n`'s immutable copy holding `bytes`; a copy already there holds
     /// the same commit, or the push refuses after its commit (`store.push.generation-conflict`).
-    fn put_generation(&self, n: u64, bytes: &[u8]) -> Result<()> {
+    pub(crate) fn put_generation(&self, n: u64, bytes: &[u8]) -> Result<()> {
         let key = generation_key(n);
         match self.bucket.put(&self.key(&key)?, bytes, Condition::IfNoneMatch)? {
             Put::Applied(_) => Ok(()),
@@ -915,7 +928,7 @@ impl Syncer {
     /// `manifest` lists, so the cost grows with the tables and not with the objects they hold
     /// (`store.pull.pointer-read`). A table's objects reach the manifest before its pointer
     /// does, so the manifest names every table a pointer can exist for.
-    fn project_pointers(&self, manifest: &BucketManifest) -> Result<BTreeMap<String, BucketPointer>> {
+    pub(crate) fn project_pointers(&self, manifest: &BucketManifest) -> Result<BTreeMap<String, BucketPointer>> {
         let project = format!("{}/", self.project);
         let tables: BTreeSet<String> = manifest.entries.keys().chain(manifest.pointers.keys()).filter(|k| k.starts_with(&project)).filter_map(|k| table_of(k)).collect();
         let keys: Vec<String> = tables.iter().map(|t| self.key(&format!("{}/tables/{t}/{POINTER_FILE}", self.project))).collect::<Result<_>>()?;
@@ -964,15 +977,11 @@ impl Syncer {
         }
     }
 
-    /// Push the store: upload each file whose digest the bucket lacks, then commit the
-    /// bucket manifest as the next generation by merge and compare-and-set within the retry
-    /// bound, and write that generation's immutable copy.
-    pub fn push(&self, now: Instant) -> Result<PushReport> {
-        let pushed_before = self.pushed_before();
-        let _guard = PushGuard::take(self.store.root(), std::time::Duration::from_secs(self.config.push_wait_secs()))?;
+    /// Hold the declared coordination to what the probe demonstrates (`store.probe.unproven`);
+    /// a store declaring single-writer coordination proceeds without the demonstration.
+    pub(crate) fn admit_coordination(&self) -> Result<()> {
         let coordination = match self.probe() {
             Ok(c) => c,
-            // A push declaring single-writer coordination proceeds without the demonstration.
             Err(SyncError::Store(StoreError::SyncProbeInconclusive(_))) if !self.config.declares_cas() => Coordination::SingleWriter,
             Err(e) => return Err(e),
         };
@@ -980,6 +989,16 @@ impl Syncer {
             (StoreError::SyncCoordinationUnproven(m), CasScope::Machine(why)) => StoreError::SyncCoordinationUnproven(format!("{m}: {why}")),
             (e, _) => e,
         })?;
+        Ok(())
+    }
+
+    /// Push the store: upload each file whose digest the bucket lacks, then commit the
+    /// bucket manifest as the next generation by merge and compare-and-set within the retry
+    /// bound, and write that generation's immutable copy.
+    pub fn push(&self, now: Instant) -> Result<PushReport> {
+        let pushed_before = self.pushed_before();
+        let _guard = PushGuard::take(self.store.root(), std::time::Duration::from_secs(self.config.push_wait_secs()))?;
+        self.admit_coordination()?;
         let mut plan = self.plan_manifest()?;
         let remote = self.manifest()?.0;
         self.admit_control_head(&plan, &remote)?;
@@ -996,7 +1015,9 @@ impl Syncer {
             .filter(|(key, entry)| {
                 // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.push.run-state-upload`).
                 let run_state = run_state_node(key).is_some_and(|n| **key == format!("{}/nodes/{n}/run-state.json", self.project));
-                run_state || remote.entries.get(*key).is_none_or(|e| e.sha256 != entry.sha256)
+                // A key a standing collected record names stays off the bucket (`store.push.collected`).
+                let collected = remote.collected.get(*key).is_some_and(|c| c.stands(now));
+                !collected && (run_state || remote.entries.get(*key).is_none_or(|e| e.sha256 != entry.sha256))
             })
             .collect();
         // Uploads run up to the transfer width at once, every one returned before the commit (`store.push.transfer-width`).
@@ -1151,20 +1172,7 @@ impl Syncer {
         let (mut round, mut stalled, mut last_floor) = (0u32, 0u32, None::<u64>);
         while round < PUSH_ROUND_CEILING && stalled < retries {
             round += 1;
-            let (remote, etag) = match self.manifest_bytes()? {
-                Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
-                None => (None, None),
-            };
-            let (newest, stands) = self.generation_floor(remote.as_ref().map_or(0, |(m, _)| m.generation))?;
-            // No commit lands past a generation whose copy is absent (`store.push.generation-heal`).
-            if let Some((remote, bytes)) = &remote {
-                if remote.generation > 0 && !stands {
-                    // A copy a concurrent writer created between the listing and this put already stands.
-                    self.bucket.put(&self.key(&generation_key(remote.generation))?, bytes, Condition::IfNoneMatch)?;
-                }
-            }
-            let remote = remote.map(|(m, _)| m).unwrap_or_default();
-            let floor = remote.generation.max(newest);
+            let (remote, etag, floor) = self.read_for_commit()?;
             match last_floor {
                 Some(last) if floor > last => stalled = 0,
                 _ => stalled += 1,
@@ -1206,10 +1214,7 @@ impl Syncer {
             if let Some(r) = &self.residency {
                 committed.residency = r.record(&remote);
             }
-            let bytes = serde_json::to_vec_pretty(&committed).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
-            let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
-            if let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? {
-                self.put_generation(committed.generation, &bytes)?;
+            if self.put_commit(&committed, etag)? {
                 return Ok(Commit {
                     entries: committed.entries.len(),
                     generation: committed.generation,
@@ -1229,6 +1234,39 @@ impl Syncer {
             if uploaded.is_empty() { "none this push".to_string() } else { uploaded.join(", ") }
         ))
         .into())
+    }
+
+    /// The bucket manifest a commit builds on, its ETag, and the generation floor the commit
+    /// numbers past, healing an absent copy of the read generation first
+    /// (`store.push.generation-floor`, `store.push.generation-heal`).
+    pub(crate) fn read_for_commit(&self) -> Result<(BucketManifest, Option<String>, u64)> {
+        let (remote, etag) = match self.manifest_bytes()? {
+            Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
+            None => (None, None),
+        };
+        let (newest, stands) = self.generation_floor(remote.as_ref().map_or(0, |(m, _)| m.generation))?;
+        // No commit lands past a generation whose copy is absent (`store.push.generation-heal`).
+        if let Some((remote, bytes)) = &remote {
+            if remote.generation > 0 && !stands {
+                // A copy a concurrent writer created between the listing and this put already stands.
+                self.bucket.put(&self.key(&generation_key(remote.generation))?, bytes, Condition::IfNoneMatch)?;
+            }
+        }
+        let remote = remote.map(|(m, _)| m).unwrap_or_default();
+        let floor = remote.generation.max(newest);
+        Ok((remote, etag, floor))
+    }
+
+    /// Replace the bucket manifest with `committed` on `etag`, then write its generation's
+    /// immutable copy; whether the condition held (`store.push.manifest-commit`).
+    pub(crate) fn put_commit(&self, committed: &BucketManifest, etag: Option<String>) -> Result<bool> {
+        // Format 2 only once the manifest holds a collected record or mark (`store.push.manifest-format`).
+        let stamped = BucketManifest { format: committed.written_format(), ..committed.clone() };
+        let bytes = serde_json::to_vec_pretty(&stamped).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+        let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
+        let Put::Applied(_) = self.bucket.put(&self.key(MANIFEST_KEY)?, &bytes, condition)? else { return Ok(false) };
+        self.put_generation(committed.generation, &bytes)?;
+        Ok(true)
     }
 
     /// Whether a holder keeps `table`'s compaction lease unexpired at `now`, this node included.
@@ -1292,7 +1330,7 @@ impl Syncer {
             let (merged, condition) = match self.bucket.get(&k)? {
                 Some((remote, etag)) => {
                     let path = self.local_path(key).ok_or_else(|| SyncError::Context(ContextError::Invalid(format!("`{key}` has no local path"))))?;
-                    let merged = merge_schema_bytes(&self.store.metadata_files(), &path, &remote, local)?;
+                    let merged = merge_shared_bytes(&self.store.metadata_files(), key, &path, &remote, local)?;
                     if sha256_hex(&merged) == sha256_hex(&remote) {
                         return Ok(false);
                     }
@@ -1521,10 +1559,10 @@ impl Syncer {
                     }
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
-                let merged = match (local.is_some(), schema) {
+                let merged = match (local.is_some(), schema || is_hold_record(key)) {
                     (true, true) => {
                         let mine = std::fs::read(&path).map_err(|e| io(&path, e))?;
-                        merge_schema_bytes(&self.store.metadata_files(), &path, &mine, &bytes)?
+                        merge_shared_bytes(&self.store.metadata_files(), key, &path, &mine, &bytes)?
                     }
                     _ => bytes,
                 };
@@ -1745,7 +1783,7 @@ impl Syncer {
         self.key(&format!("{}/tables/{table}/{POINTER_FILE}", self.project))
     }
 
-    fn read_pointer(&self, table: &str) -> Result<(BucketPointer, Option<String>)> {
+    pub(crate) fn read_pointer(&self, table: &str) -> Result<(BucketPointer, Option<String>)> {
         let key = self.pointer_key(table)?;
         match self.bucket.get(&key)? {
             Some((b, etag)) => {
@@ -1921,6 +1959,24 @@ fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Opti
     // A part carried by reference sits under its origin's directory, beside this one
     // (`store.fold.carry-by-reference`).
     Ok(m.parts.iter().map(|p| p.locator()).find(|l| !dir.join(l).is_file()))
+}
+
+/// Two copies `a` and `b` of the unowned rewritable key `key` merged by its rule: a schema column
+/// by column, a hold record to the later `expires_at`, and a hold log to `b`.
+fn merge_shared_bytes(codec: &MetadataFiles<'_>, key: &str, path: &Path, a: &[u8], b: &[u8]) -> Result<Vec<u8>> {
+    if key.ends_with("/schema.json") {
+        return merge_schema_bytes(codec, path, a, b);
+    }
+    if !is_hold_record(key) {
+        return Ok(b.to_vec());
+    }
+    use contextful_core::pipeline::model::HoldRecord;
+    let read = |bytes: &[u8]| codec.open_bytes(path, bytes).ok().and_then(|plain| serde_json::from_slice::<HoldRecord>(&plain).ok());
+    Ok(match (read(a), read(b)) {
+        (Some(x), Some(y)) if y.expires_at > x.expires_at => b.to_vec(),
+        (Some(_), _) => a.to_vec(),
+        (None, _) => b.to_vec(),
+    })
 }
 
 /// Two copies of a table's `schema.json` merged column by column.

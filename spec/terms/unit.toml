@@ -38,6 +38,7 @@ lines    = { gloss = "text lines" }
 clauses  = { gloss = "clause items in one list" }
 iterations = { gloss = "evaluator fixpoint iterations" }
 values   = { gloss = "distinct input values" }
+generations = { gloss = "generation manifests of a bucket" }
 lanes    = { gloss = "Argon2id parallelism lanes" }
 cases     = { gloss = "evaluation cases" }
 resamples = { gloss = "bootstrap resamples" }
