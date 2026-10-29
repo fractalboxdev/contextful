@@ -24,6 +24,20 @@ pub const SYNTHESIZE: &str = "synthesize";
 /// The kind whose per-row body is compiled code the embedding binary registers.
 pub const STORE_DRIVEN: &str = "store-driven";
 
+/// The maintenance kind running one fold pass over its target (`store.fold.job-pass`).
+pub const FOLD: &str = "fold";
+
+/// The maintenance kind pushing the store to its `[sync]` bucket (`store.push.job-push`).
+pub const SYNC_PUSH: &str = "sync-push";
+
+/// The maintenance kinds no fire runs, each with the command that does the work instead
+/// (`surface.fire.kind-undispatched`).
+pub const UNDISPATCHED: [(&str, &str); 3] = [
+    ("sweep", "no command runs a sweep job"),
+    ("rebuild-catalog", "`contextful context rebuild-catalog` repairs a lost derived catalog"),
+    ("validate", "`contextful pipeline validate` checks a declaration before apply"),
+];
+
 /// Keys that hand a block an argument vector or a host command.
 const COMMAND_KEYS: [&str; 5] = ["command", "argv", "args", "exec", "cmd"];
 
@@ -42,6 +56,9 @@ pub enum JobError {
     /// A store-driven body naming a delegate the daemon's configuration does not bind. (`surface.delegate.binding`)
     #[error("JobDelegateUnbound: {0}")]
     JobDelegateUnbound(String),
+    /// A job block naming a maintenance kind no fire runs. (`surface.fire.kind-undispatched`)
+    #[error("JobKindUndispatched: {0}")]
+    JobKindUndispatched(String),
     /// A job target binding to no produced table or declared model. (`surface.fire.target-unbound`)
     #[error("JobTargetUnbound: {0}")]
     JobTargetUnbound(String),
@@ -145,7 +162,44 @@ pub struct Job {
     pub kind: JobKind,
 }
 
+/// Refuse a job of a kind no fire runs, naming the command that does its work.
+fn undispatched(name: &str, kind: &str) -> Result<(), JobError> {
+    match UNDISPATCHED.iter().find(|(k, _)| *k == kind) {
+        Some((_, instead)) => Err(JobError::JobKindUndispatched(format!("job `{name}` names kind `{kind}`, which no fire runs; {instead}"))),
+        None => Ok(()),
+    }
+}
+
+/// Refuse each `[[job]]` block of `manifest` naming a kind of [`UNDISPATCHED`]; an
+/// applied snapshot holding one still parses and arms it nowhere
+/// (`surface.fire.kind-undispatched`).
+pub fn refuse_undispatched(manifest: &str) -> Result<(), JobError> {
+    let parsed: Manifest = toml::from_str(manifest).map_err(|e| JobError::Invalid(format!("the manifest does not parse: {e}")))?;
+    for block in &parsed.job {
+        let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("(unnamed)");
+        if let Some(kind) = block.get("kind").and_then(|v| v.as_str()) {
+            undispatched(name, kind)?;
+        }
+    }
+    Ok(())
+}
+
 impl Job {
+    /// Refuse this job when its kind is one no fire runs (`surface.fire.kind-undispatched`).
+    pub fn refuse_undispatched(&self) -> Result<(), JobError> {
+        undispatched(&self.name, self.kind_name())
+    }
+
+    /// Whether `pipeline serve` arms this job on its schedule: the kinds a `job fire`
+    /// child runs to completion (`surface.fire.scheduled-maintenance`).
+    pub fn dispatched(&self) -> bool {
+        match &self.kind {
+            JobKind::StoreDriven(_) | JobKind::Synthesize(_) => true,
+            JobKind::Maintenance(kind) => matches!(kind.as_str(), "build" | FOLD | SYNC_PUSH),
+            JobKind::Plan(_) => false,
+        }
+    }
+
     /// The kind as the block spells it.
     pub fn kind_name(&self) -> &str {
         match &self.kind {

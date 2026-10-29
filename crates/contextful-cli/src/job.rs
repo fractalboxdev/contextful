@@ -71,7 +71,7 @@ pub enum JobCmd {
         #[arg(long, default_value = "contextful.toml")]
         declaration: PathBuf,
     },
-    /// Fire one store-driven or plan job once, resuming its pending execution when one holds.
+    /// Fire one job once: a store-driven, build or plan job resumes its pending execution when one holds; a fold job folds its target; a sync-push job pushes the store.
     Fire {
         name: String,
         #[command(flatten)]
@@ -147,6 +147,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let delegates = crate::delegate::declared(&text).with_context(|| declaration.display().to_string())?;
             let registered = |name: &str| bodies.get(name).is_some() || name.strip_prefix(BODY_PREFIX).is_some_and(|d| delegates.contains_key(d));
             let jobs = parse_jobs(&text, &registered).with_context(|| declaration.display().to_string())?;
+            contextful_core::job::refuse_undispatched(&text)?;
             bind(&jobs, &declaration)?;
             crate::cadence::validate_externals(&text, &declaration, &jobs)?;
             for job in jobs {
@@ -182,6 +183,15 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             }
             if let JobKind::Plan(declared) = &job.kind {
                 return fire_plan(&l, &project, &text, &job.name, declared, run_id, site_id, site_id_env);
+            }
+            if let JobKind::Maintenance(kind) = &job.kind {
+                job.refuse_undispatched()?;
+                let at = crate::build::now(&project.now)?;
+                return match kind.as_str() {
+                    contextful_core::job::FOLD => crate::sync::fire_fold(&l, job.target.as_deref(), at),
+                    contextful_core::job::SYNC_PUSH => crate::sync::fire_push(&l, at),
+                    other => bail!("job `{name}` is kind `{other}`, which `job fire` does not run"),
+                };
             }
             bind_declared(std::slice::from_ref(&job), &effective.specs, &effective.models)?;
             let JobKind::StoreDriven(driven) = &mut job.kind else {

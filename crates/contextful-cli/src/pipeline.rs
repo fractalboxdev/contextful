@@ -829,6 +829,10 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             let packs = contextful_core::disclosure::pack::Pack::parse_set(&files)?;
             crate::secrets::check_records(&declaration, &files)?;
             let coverage = fold_coverage(&files)?;
+            // A job of a kind no fire runs refuses by name (`surface.fire.kind-undispatched`).
+            for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+                contextful_core::job::refuse_undispatched(&f.text)?;
+            }
             let declared = collect(&files)?;
             for d in &declared {
                 let at = || format!("{}:{}", d.file, d.line);

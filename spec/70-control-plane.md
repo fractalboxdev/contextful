@@ -147,6 +147,10 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *A-surface#configuration-reaches-engine*
 - `scheduled-build` — A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.
   *A-surface#configuration-reaches-engine, A-surface#native-model-builds*
+- `scheduled-maintenance` — A scheduled `fold` or `sync-push` job dispatches `contextful job fire <name>` through the cadence lease and pool under `job:<name>`; its next fire follows {{surface.arm.next-fire-from-history}} from its dispatch record.
+  *A-surface#maintenance-kinds*
+- `kind-undispatched` — A `[[job]]` of kind `sweep`, `rebuild-catalog` or `validate` raises `JobKindUndispatched` at `pipeline validate`, `job validate`, import and full apply, naming the command doing its work; serve arms none an applied snapshot holds.
+  *A-surface#maintenance-kinds*
 - `build-dependency` — A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.
   *A-surface#configuration-reaches-engine*
 - `build-dependency-invalid` — Import and apply refuse a job dependency naming no pipeline, combining `after` with `schedule`, or naming a kind other than `build`, under {{surface.apply.validation}}.
