@@ -507,7 +507,7 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *A-store#bucket-collect*
 - `format-unsupported` — A bucket or generation manifest with `format` above 2 raises `SyncManifestFormatUnsupported`, naming the key and format, before the push commit or any pull file write.
   *because a reader rewriting a manifest it parses in part drops a newer writer's fields*
-- `collected` — A push uploads no key a standing collected record names in the manifest it reads, and {{store.merge.collected}} keeps that key out of its commit.
+- `collected` — A push uploads no key a standing collected record names in the manifest it reads, and {{store.merge.collected}} keeps that key out of its commit; each commit round first uploads each key of its plan its manifest neither lists nor records.
   *A-store#bucket-collect*
 - `hold-renewal` — A hold record `holds/<build-id>.json` and a table's `holds.jsonl` commit as `schema.json` does, merged into the bucket's copy, a hold record keeping the later `expires_at`; a pull merges a hold record alike.
   *because a renewal rewrites a hold in place, and an immutable key refuses the rewrite*

@@ -1026,17 +1026,7 @@ impl Syncer {
             })
             .collect();
         // Uploads run up to the transfer width at once, every one returned before the commit (`store.push.transfer-width`).
-        let uploaded = each(self.config.transfers(), &differing, |(key, entry)| {
-            let bytes = plan.read(key)?;
-            // The manifest lists the digest of the bytes sent, whatever the plan read (`store.push.upload-digest`).
-            let sent = sha256_hex(&bytes);
-            let moved = (sent != entry.sha256).then(|| Entry { sha256: sent.clone(), size: bytes.len() as u64, owner: entry.owner.clone() });
-            let up = match class(key, &self.node) {
-                KeyClass::Owned => self.put_owned(key, &bytes).map(|()| true)?,
-                _ => self.put_immutable(key, &bytes, &sent)?,
-            };
-            Ok((up, moved))
-        })?;
+        let uploaded = each(self.config.transfers(), &differing, |(key, entry)| self.upload_planned(&plan, key, entry))?;
         let mut moved = Vec::new();
         for ((key, _), (up, entry)) in differing.iter().zip(uploaded) {
             if up {
@@ -1171,8 +1161,25 @@ impl Syncer {
     /// Commit the bucket manifest listing `plan` and the project's table pointers as read
     /// before the commit, then write its generation (`store.push.manifest-commit`,
     /// `store.push.generation`).
+    /// Upload one planned key, returning whether bytes went up and, where the bytes sent differ
+    /// from the plan's, the entry they make (`store.push.upload-digest`).
+    fn upload_planned(&self, plan: &ManifestPlan, key: &str, entry: &Entry) -> Result<(bool, Option<Entry>)> {
+        let bytes = plan.read(key)?;
+        // The manifest lists the digest of the bytes sent, whatever the plan read (`store.push.upload-digest`).
+        let sent = sha256_hex(&bytes);
+        let moved = (sent != entry.sha256).then(|| Entry { sha256: sent.clone(), size: bytes.len() as u64, owner: entry.owner.clone() });
+        let up = match class(key, &self.node) {
+            KeyClass::Owned => self.put_owned(key, &bytes).map(|()| true)?,
+            _ => self.put_immutable(key, &bytes, &sent)?,
+        };
+        Ok((up, moved))
+    }
+
     fn commit(&self, plan: &ManifestPlan, now: Instant, uploaded: &[String], held: &HeldKeys) -> Result<Commit> {
         let retries = self.config.push_retries().max(1);
+        // Keys this push sent, and the entries bytes sent later than the plan make.
+        let mut sent: BTreeSet<String> = uploaded.iter().cloned().collect();
+        let mut moved: BTreeMap<String, Entry> = BTreeMap::new();
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         // Consecutive rounds meeting no newer generation than the round before count against the retry
         // bound; every round counts against the ceiling (`store.merge.retries`, `store.merge.round-ceiling`).
@@ -1188,7 +1195,21 @@ impl Syncer {
             self.admit_control_head(plan, &remote)?;
             // Pointers read before the commit name snapshots whose files earlier commits listed.
             let pointers: BTreeMap<String, BucketPointer> = self.project_pointers(&remote)?.into_iter().filter(|(k, _)| !self.redistribution.withholds(&self.project, k)).collect();
+            // A planned key the plan's manifest kept off the bucket uploads before a round whose
+            // manifest neither lists nor records it commits the key (`store.push.collected`).
+            let pending: Vec<(&String, &Entry)> = plan
+                .mine
+                .iter()
+                .filter(|(k, e)| !sent.contains(*k) && !remote.collected.get(*k).is_some_and(|c| c.stands(now)) && remote.entries.get(*k).is_none_or(|r| r.sha256 != e.sha256))
+                .collect();
+            for ((key, _), (_, entry)) in pending.iter().zip(each(self.config.transfers(), &pending, |(key, entry)| self.upload_planned(plan, key, entry))?) {
+                sent.insert((*key).clone());
+                if let Some(entry) = entry {
+                    moved.insert((*key).clone(), entry);
+                }
+            }
             let mut entries = plan.mine.clone();
+            entries.extend(moved.iter().map(|(k, e)| (k.clone(), e.clone())));
             // A shared key lists the object the bucket holds now, whoever merged it last.
             for key in plan.shared.keys() {
                 if let Some((bytes, _)) = self.bucket.get(&self.key(key)?)? {

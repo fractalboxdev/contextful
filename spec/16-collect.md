@@ -31,8 +31,12 @@ Unlisting and deleting the bucket objects no reader needs, and the generation ma
   *because the window is a table declaration, not bucket state*
 - `two-phase` — Collect records a key as collected whether or not a retained generation lists it, and deletes the object at the first collect after {{store.collect.generation-listed}} stops holding it.
   *because a restore of a retained generation reads the object, while the record already keeps it out of every merge*
-- `record-stands` — While the bucket holds a recorded object, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets.
-  *because a record lapsing before its object goes lets a merge list the key again*
+- `record-stands` — While the bucket holds a recorded object, or its chain still supersedes or folds the key, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets.
+  *because a record lapsing while a chain still reclaims its key lets a node holding a copy list it again*
+- `retained-relisted` — Collect deletes no object a retained snapshot names, a hold reaching the bucket after its record included, and lists each such recorded key again while its object stays.
+  *because a hold or a referenced link can reach the bucket after a collect recorded its keys*
+- `marker-first-writer` — A collect uploads `_collected.json` only where no object holds its key, and lists the bytes the bucket then holds.
+  *because a losing concurrent collect overwriting a listed marker fails every pull's digest check*
 - `generation-listed` — Collect deletes no object whose key a retained generation lists, and leaves it for a later collect.
   *because `sync pull --generation` restores a retained generation's keys at their listed digests*
 - `retain-generations` — `[sync] retain_generations`, default 64 generations, sets how many newest generation manifests a collect keeps, the current one included; a value of 0 fails the configuration's parse.

@@ -349,7 +349,7 @@ fn build_hold_prints_held_then_renewed() {
 }
 
 /// On a store declaring `[sync]`, a hold naming a build whose parts the bucket records as collected raises
-/// `ModelBuildCollected`, an unexpired local hold's renewal included, and commits nothing.
+/// `ModelBuildCollected` and commits nothing, while an unexpired hold renews.
 // spec: run.model.hold-collected@5ed41926
 #[test]
 fn build_hold_refuses_a_build_the_bucket_collected() {
@@ -372,13 +372,14 @@ fn build_hold_refuses_a_build_the_bucket_collected() {
     assert!(!parts.is_empty());
     for k in &parts {
         manifest["entries"].as_object_mut().unwrap().remove(k);
-        manifest["collected"][k] = serde_json::json!({ "collected_at": "2030-01-26T12:00:00Z", "collected_by": "ingest-z" });
+        manifest["collected"][k] = serde_json::json!({ "collected_at": "2030-02-28T00:00:00Z", "collected_by": "ingest-z" });
     }
     manifest["format"] = serde_json::json!(2);
     std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    assert!(stdout(&hold("2030-01-27T00:00:00Z")).starts_with("Renewed"), "an unexpired hold renews whatever the bucket records");
     let holds = p.join(".contextful/context/research/tables/daily/holds").join(format!("{build_id}.json"));
     let before = std::fs::read(&holds).unwrap();
-    let e = refused(&hold("2030-01-27T00:00:00Z"), "ModelBuildCollected");
+    let e = refused(&hold("2030-03-01T00:00:00Z"), "ModelBuildCollected");
     assert!(e.contains(&build_id), "{e}");
     assert_eq!(std::fs::read(&holds).unwrap(), before, "the refused hold commits nothing");
 }

@@ -258,20 +258,20 @@ pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u
         ))
         .into());
     };
-    // A build whose parts a collection removed keeps only its manifest; no hold reads it again
-    // (`run.model.hold-collected`).
-    if store.snapshot_collected(model, found)? {
-        return Err(RunError::ModelBuildCollected(format!(
-            "model `{model}` build `{build_id}` keeps only its manifest: a collection removed its parts, so no hold can keep it readable"
-        ))
-        .into());
-    }
     let dir = holds_dir(store, model)?;
     fs::create_dir_all(&dir).at(&dir)?;
     let _lock = FileLock::acquire(&dir.join(".lock"), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     let path = dir.join(format!("{build_id}.json"));
     let prior: Option<HoldRecord> = store.metadata_files().read_optional(&path)?.and_then(|bytes| serde_json::from_slice(&bytes).ok());
     let receipt = if prior.is_some_and(|p| p.active(now)) { Receipt::Renewed } else { Receipt::Held };
+    // An unexpired hold renews; a new hold on a build whose parts a collection removed reads
+    // nothing (`run.model.hold-collected`).
+    if receipt == Receipt::Held && store.snapshot_collected(model, found)? {
+        return Err(RunError::ModelBuildCollected(format!(
+            "model `{model}` build `{build_id}` keeps only its manifest: a collection removed its parts, so no hold can keep it readable"
+        ))
+        .into());
+    }
     let record = HoldRecord { build_id: build_id.to_string(), principal: principal.to_string(), placed_at: now, expires_at: now.plus_secs(secs) };
     store.metadata_files().replace(&path, serde_json::to_string_pretty(&record).expect("a hold serializes").as_bytes())?;
     write_logs(store, model)?;

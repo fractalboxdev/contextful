@@ -143,7 +143,7 @@ fn generations_past_the_retained_count_are_deleted() {
 }
 
 /// An owner restoring a collected run neither lists nor uploads it while the collected record stands.
-// spec: store.push.collected@b72ca3a9
+// spec: store.push.collected@e5cb8ab7
 #[test]
 fn a_push_restoring_a_collected_key_neither_lists_nor_uploads_it() {
     let (_dir, b, a, saved) = tombstoned(Some(1));
@@ -476,7 +476,7 @@ fn a_table_scoped_pull_after_a_collect_takes_run_states_and_no_collected_key() {
 /// A collect records a listed key first and deletes its object only once no retained generation lists it, and a
 /// record stands, stamped again, while its object stays.
 // spec: store.collect.two-phase@d57fe42e
-// spec: store.collect.record-stands@0bd76699
+// spec: store.collect.record-stands@ddfd5950
 #[test]
 fn a_collect_unlists_first_and_deletes_once_no_retained_generation_lists_the_key() {
     let h = history(3);
@@ -637,4 +637,142 @@ fn a_group_marker_waits_for_every_member_fold_to_age_past_the_window() {
     let m = manifest(b.as_ref());
     assert!(!m.entries.contains_key(marker), "the marker leaves once every member's fold is a window old");
     assert!(listed(&m, "research/tables/pages/data/runs/run-1/").is_empty());
+}
+
+/// A collect whose manifest commit loses to a concurrent collect overwrites no `_collected.json` that collect
+/// listed, so every pull verifies the marker against its listed digest.
+// spec: store.collect.marker-first-writer@d1732d16
+#[test]
+fn a_losing_collect_overwrites_no_listed_marker() {
+    use std::sync::atomic::AtomicUsize;
+    let h = history(3);
+    let stale = h.b.get("team/manifest.json").unwrap().unwrap();
+    h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
+    let marker = format!("research/tables/filings/data/snapshots/{}/_collected.json", h.snapshots[0]);
+    let listed_digest = manifest(h.b.as_ref()).entries[&marker].sha256.clone();
+    // A second collect read the manifest before the first committed: its first two reads see that manifest.
+    let reads = Arc::new(AtomicUsize::new(0));
+    let seen = reads.clone();
+    let script = Script {
+        on_get: Some(Box::new(move |key| (key == "team/manifest.json" && seen.fetch_add(1, Ordering::SeqCst) < 2).then(|| Ok(Some(stale.clone()))))),
+        ..Script::default()
+    };
+    let racing = rebucketed(&h.writer, Arc::new(Scripted { inner: h.b.clone(), script }));
+    racing.collect_declared(at("2030-01-11T06:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
+    assert!(reads.load(Ordering::SeqCst) >= 2, "the second collect read the stale manifest");
+    let (bytes, _) = h.b.get(&format!("team/{marker}")).unwrap().unwrap();
+    assert_eq!(contextful_core::run::journal::sha256_hex(&bytes), listed_digest, "the listed marker keeps its bytes");
+    node("reader", h.b.clone(), "").syncer.pull(&PullScope::default()).unwrap();
+}
+
+/// A push whose plan skipped a key a standing collected record named uploads it before a later round commits
+/// the key, once that round's manifest no longer records it, so no listed key lacks its object.
+// spec: store.push.collected@e5cb8ab7
+#[test]
+fn a_push_uploads_a_key_its_commit_lists_after_the_record_leaves() {
+    use std::sync::atomic::AtomicUsize;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), T0);
+    a.syncer.push(at(T0)).unwrap();
+    // A finished collect: run-1 recorded as collected and its objects gone.
+    let mut m = manifest(b.as_ref());
+    let keys: Vec<String> = m.entries.keys().filter(|k| k.starts_with(RUN)).cloned().collect();
+    assert!(!keys.is_empty());
+    for k in &keys {
+        m.entries.remove(k);
+        m.collected.insert(k.clone(), contextful_core::store::sync::Collected { collected_at: at(T1), collected_by: "ingest-z".into() });
+        b.delete(&format!("team/{k}")).unwrap();
+    }
+    m.format = 2;
+    b.put("team/manifest.json", &serde_json::to_vec(&m).unwrap(), contextful_core::store::object::Condition::None).unwrap();
+    // The push plans against that manifest; before its commit round reads, another commit prunes the records.
+    let reads = Arc::new(AtomicUsize::new(0));
+    let (seen, inner) = (reads.clone(), b.clone());
+    let script = Script {
+        on_get: Some(Box::new(move |key| {
+            if key == "team/manifest.json" && seen.fetch_add(1, Ordering::SeqCst) == 1 {
+                let mut m: BucketManifest = serde_json::from_slice(&inner.get(key).unwrap().unwrap().0).unwrap();
+                m.collected.clear();
+                m.format = 1;
+                inner.put(key, &serde_json::to_vec(&m).unwrap(), contextful_core::store::object::Condition::None).unwrap();
+            }
+            None
+        })),
+        ..Script::default()
+    };
+    let pushing = rebucketed(&a, Arc::new(Scripted { inner: b.clone(), script }));
+    pushing.push(at(T1)).unwrap();
+    let m = manifest(b.as_ref());
+    let relisted: Vec<&String> = m.entries.keys().filter(|k| k.starts_with(RUN)).collect();
+    assert!(!relisted.is_empty(), "the commit lists run-1 again");
+    for k in relisted {
+        assert!(b.get(&format!("team/{k}")).unwrap().is_some(), "`{k}` is listed without its object");
+    }
+}
+
+/// A collect stamps again the record of a key the bucket chain still supersedes or folds after its object is gone,
+/// so a node holding a copy lists it again at no age.
+// spec: store.collect.record-stands@ddfd5950
+#[test]
+fn a_record_stands_while_the_chain_still_reclaims_its_key() {
+    let h = history(1);
+    let decls = std::slice::from_ref(&h.decl);
+    h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, decls).unwrap();
+    let run1: Vec<String> = manifest(h.b.as_ref()).collected.keys().filter(|k| k.starts_with("research/tables/filings/data/runs/run-1/")).cloned().collect();
+    assert!(!run1.is_empty());
+    assert!(run1.iter().all(|k| h.b.get(&format!("team/{k}")).unwrap().is_none()), "the objects are gone");
+    h.a.syncer.collect_declared(at("2030-01-30T00:00:00Z"), false, decls).unwrap();
+    let m = manifest(h.b.as_ref());
+    assert!(run1.iter().all(|k| m.collected[k].collected_at == at("2030-01-30T00:00:00Z")), "{:?}", m.collected);
+    // Past the first stamp's age, the writer's copy of run-1 stays unlisted.
+    h.writer.syncer.push(at("2030-02-15T00:00:00Z")).unwrap();
+    assert!(listed(&manifest(h.b.as_ref()), "research/tables/filings/data/runs/run-1/").is_empty());
+}
+
+/// A key a collect recorded that a hold reaching the bucket later retains is listed again and never deleted.
+// spec: store.collect.retained-relisted@608fea35
+#[test]
+fn a_hold_arriving_after_a_collect_keeps_the_parts() {
+    let h = history(3);
+    let decls = std::slice::from_ref(&h.decl);
+    let f1 = format!("research/tables/filings/data/snapshots/{}/", h.snapshots[0]);
+    let parts: Vec<String> = listed(&manifest(h.b.as_ref()), &f1).into_iter().filter(|k| k.ends_with(".parquet")).collect();
+    assert!(!parts.is_empty());
+    // A holds F1 locally before the collect, and its push carries the hold after.
+    let hold = json!({"build_id": h.snapshots[0], "principal": "ops", "placed_at": "2030-01-10T12:00:00Z", "expires_at": "2030-02-20T00:00:00Z"});
+    std::fs::create_dir_all(h.a.root().join("tables/filings/holds")).unwrap();
+    std::fs::write(h.a.root().join(format!("tables/filings/holds/{}.json", h.snapshots[0])), hold.to_string()).unwrap();
+    let first = h.writer.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, decls).unwrap();
+    assert!(first.superseded.dropped > 0 && first.superseded.deleted == 0, "{first:?}");
+    h.a.syncer.push(at("2030-01-11T01:00:00Z")).unwrap();
+    for i in 4..7 {
+        h.writer.land(&format!("run-{i}"), json!([{"id": 20 + i}]), "2030-01-12T00:00:00Z");
+        h.writer.syncer.push(at("2030-01-12T00:00:00Z")).unwrap();
+    }
+    h.writer.syncer.collect_declared(at("2030-01-12T01:00:00Z"), false, decls).unwrap();
+    let m = manifest(h.b.as_ref());
+    for k in &parts {
+        assert!(h.b.get(&format!("team/{k}")).unwrap().is_some(), "`{k}` was deleted under a hold");
+        assert!(m.entries.contains_key(k) && !m.collected.contains_key(k), "`{k}` is listed again");
+    }
+}
+
+/// A project named by several segments collects its tables as a one-segment project does.
+#[test]
+fn a_multi_segment_project_reclaims_its_superseded_snapshots() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = crate::support::node_in("lab/research", "ingest-a", b.clone(), "");
+    a.syncer.config.retain_generations = NonZeroU64::new(1);
+    let decl = keyed("filings");
+    let steps = [("2030-01-01T00:00:00Z", "2030-01-01T01:00:00Z"), ("2030-01-01T02:00:00Z", "2030-01-01T03:00:00Z"), ("2030-01-10T00:00:00Z", "2030-01-10T01:00:00Z")];
+    for (i, (landed, folded)) in steps.into_iter().enumerate() {
+        a.land(&format!("run-{}", i + 1), json!([{"id": 1, "v": i + 1}, {"id": 11 + i}]), landed);
+        fold_at(&a, &decl, folded);
+        a.syncer.push(at(folded)).unwrap();
+    }
+    let report = a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+    assert!(report.undeclared.is_empty() && report.superseded.dropped > 0, "{report:?}");
 }

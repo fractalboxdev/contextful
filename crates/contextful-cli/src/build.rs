@@ -148,9 +148,10 @@ pub fn run(args: BuildArgs) -> Result<()> {
             };
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let at = now(&project.now)?;
-            // A synced store asks the bucket whether a collect took the build's parts
-            // (`run.model.hold-collected`).
-            if crate::sync::bucket_collected_build(&l, &id, &build_id, at)? {
+            // A synced store asks the bucket whether a collect took the build's parts, save for
+            // the renewal of an unexpired hold (`run.model.hold-collected`).
+            let renewing = contextful_context::build::holds(&store, &id)?.iter().any(|h| h.build_id == build_id && h.active(at));
+            if !renewing && crate::sync::bucket_collected_build(&l, &id, &build_id, at)? {
                 return Err(RunError::ModelBuildCollected(format!(
                     "model `{id}` build `{build_id}`: the bucket records its parts as collected, so no hold can keep it readable"
                 ))
