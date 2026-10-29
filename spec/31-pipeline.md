@@ -456,8 +456,29 @@ A coordinated `[[publication]]` delivers every member of one producer completion
 - `group-d1-recovery` — After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.
   *A-run#d1-coordinated-groups*
 
+### delivery progress
+
+A caller reads an outbox's progress through a supported command and bounds a coordinated delivery to its own time slot.
+
+- `status` — `contextful export status <name>` prints {{type:contextful_core::export::DeliveryProgress}} for a declared publication or typed export, read through its profile's ledger without a lease or delivery; `--json` prints one object, otherwise one `key=value` line.
+  *because a caller ordering deliveries reads progress through a supported read, never the ledger's internal rows*
+- `status-no-outbox` — Status refuses an OTLP log export, which keeps a cursor rather than an outbox, and a name declaring neither, before reading any ledger; a publication under `postgres` refuses as {{run.export.group-storage}}.
+- `status-spilled` — A `cloudflare-d1` status reads a sender body {{run.export.group-d1-spill}} places in R2 from its object, and counts from the acknowledged sequence {{run.export.group-d1-resume}} replays.
+  *because a body over the row limit leaves the inline column empty, so a reader of the row alone parses nothing*
+- `status-version` — Each committed stage, acknowledgement or restore of an outbox advances its `version` by one in the same transaction, and each acknowledgement records its wall-clock instant as `last_ack_at`, RFC 3339 in UTC.
+  *because a caller polling progress tells a moving outbox from a stalled one without reading its events*
+- `status-sequence` — `pending_events` counts staged events no acknowledgement passed; `acknowledged_sequence` names a pending group's last acknowledged event, null before its first, and otherwise the outbox's last acknowledged event, whose typed sequence continues across publications.
+  *because a group numbers its events from zero, so an earlier group's sequence misstates a pending one*
+- `group-within` — Under `--within <secs>`, `contextful export group` starts a batch only while the seconds since it began plus its longest batch round trip so far stay below the bound.
+  *because a caller's time slot ends whatever the target's pace, and a batch started past it ends killed without its acknowledgement*
+- `group-within-exit` — A delivery stopping at its bound prints `PublicationDeliveryBounded` on stderr and exits 75, apart from 0 for a complete group and 1 for a failure; the group stays pending, and the next run resumes after its acknowledged prefix.
+  *because a caller schedules another slot for a pending group and investigates a failure*
+- `group-progress` — `contextful export group` prints `acknowledged <n> events · group pending` after each acknowledged batch, `acknowledged <n> events · group complete` after the batch completing its group, and `group complete` alone when no group is pending.
+  *because a delivery killed at its caller's bound has already reported every batch it acknowledged*
+
 #### Scenarios
 
+- `run.export.group-within`: WHEN a receiver holds the first batch for 6 s under `--within 10`, THEN the delivery acknowledges that batch, starts no second, and exits 75 with the group pending.
 - `run.export.group-stranded`: WHEN an earlier sender staged a group whose header alone exceeds the request ceiling, THEN the next `contextful export group` replaces it with a digest-headed group and delivers it.
 - `run.export.group-quiesce`: WHEN serve's cycle finds the producer due while an export of its publication awaits the receiver, THEN the cycle reports the producer pending and the export acknowledges its group.
 - `run.export.group-d1-recovery`: WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together.

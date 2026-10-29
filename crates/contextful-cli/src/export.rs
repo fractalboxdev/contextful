@@ -40,6 +40,19 @@ pub enum ExportCmd {
         #[command(flatten)] admit: AdmitArgs,
         /// Under `cloudflare-d1`, take the publication lease from a writer killed before its expiry.
         #[arg(long)] take_over: bool,
+        /// Start no batch that the seconds elapsed plus the longest batch so far carry past this bound;
+        /// a delivery stopping there exits [`BOUNDED_STATUS`] with its group pending.
+        #[arg(long, value_name = "SECS")] within: Option<u64>,
+    },
+    /// Report a publication's or typed export's delivery progress, read through its ledger.
+    Status {
+        name: String,
+        #[command(flatten)] project: ProjectArgs,
+        #[arg(long)] declaration: Option<PathBuf>,
+        /// A publication's receiver namespace; absent, its active namespace.
+        #[arg(long)] namespace: Option<String>,
+        /// Print the progress as one JSON object.
+        #[arg(long)] json: bool,
     },
     /// Rebuild every member into a fresh receiver namespace without executing jobs.
     Rebuild {
@@ -103,12 +116,24 @@ fn read_cursor(store: &contextful_context::Store, path: &Path) -> Result<ExportC
     }
 }
 
+/// The exit status of `export group --within` stopping at its bound with the group still pending,
+/// apart from 0 for a complete group and 1 for a failure (`run.export.group-within-exit`).
+pub const BOUNDED_STATUS: i32 = 75;
+
 pub fn run(cmd: ExportCmd) -> Result<()> {
     match cmd {
-        ExportCmd::Group {name,project,declaration,admit,take_over} => publication::deliver(&name,None,&project,declaration,&admit,None,take_over),
-        ExportCmd::Rebuild {name,namespace,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,None,false),
+        ExportCmd::Group {name,project,declaration,admit,take_over,within} => {
+            let bound = publication::Bound { take_over, within: within.map(std::time::Duration::from_secs) };
+            if let publication::Delivered::Bounded(why) = publication::deliver(&name,None,&project,declaration,&admit,None,bound)? {
+                eprintln!("PublicationDeliveryBounded: {why}");
+                std::process::exit(BOUNDED_STATUS);
+            }
+            Ok(())
+        }
+        ExportCmd::Status {name,project,declaration,namespace,json} => status(&name,&project,declaration,namespace,json),
+        ExportCmd::Rebuild {name,namespace,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,None,publication::Bound::default()).map(drop),
         ExportCmd::Checkpoint {name,namespace,out,project,declaration} => publication::checkpoint(&name,&namespace,&out,&project,declaration),
-        ExportCmd::Restore {name,namespace,checkpoint,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,Some(checkpoint),false),
+        ExportCmd::Restore {name,namespace,checkpoint,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,Some(checkpoint),publication::Bound::default()).map(drop),
         ExportCmd::Run { name, project, declaration, admit } => run_once(&name, &project, declaration, &admit),
         ExportCmd::Watch { name, project, declaration, admit } => {
             let l = project.locate(declaration.clone())?;
@@ -140,6 +165,34 @@ pub fn run(cmd: ExportCmd) -> Result<()> {
             }
         }
     }
+}
+
+/// `contextful export status`: a declared publication's or typed export's progress, read through
+/// its ledger without a lease or delivery (`run.export.status`).
+fn status(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, namespace: Option<String>, json: bool) -> Result<()> {
+    let l = project.locate(declaration)?;
+    let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
+    let store = contextful_context::Store::open(&l.project.dir, &l.project.name)?;
+    let progress = if contextful_core::export::publication::declarations(&text)?.iter().any(|g| g.name == name) {
+        crate::storage::preflight(&l.project)?;
+        publication::progress(&store, name, namespace)?
+    } else {
+        let export = parse_exports(&text)?.into_iter().find(|e| e.name == name).with_context(|| format!("no publication or export `{name}` is declared"))?;
+        if export.signal != Signal::ChangesV1 {
+            anyhow::bail!("export `{name}` delivers from a cursor and keeps no delivery outbox");
+        }
+        Ledger::reader(&l.project, &store)?.progress(name)?
+    };
+    if json {
+        println!("{}", serde_json::to_string(&progress)?);
+    } else {
+        let or_null = |v: Option<String>| v.unwrap_or_else(|| "null".into());
+        println!(
+            "{name}: pending={} pending_events={} acknowledged_sequence={} version={} last_ack_at={}",
+            progress.pending, progress.pending_events, or_null(progress.acknowledged_sequence.map(|s| s.to_string())), progress.version, or_null(progress.last_ack_at.map(|t| t.to_rfc3339())),
+        );
+    }
+    Ok(())
 }
 
 fn wall_clock() -> Result<contextful_core::time::Instant> {
@@ -363,27 +416,36 @@ enum Ledger {
 
 impl Ledger {
     fn open(project: &contextful_context::project::Project, store: &contextful_context::Store, name: &str) -> Result<Self> {
-        let _ = name;
+        Self::open_as(project, store, Some(name))
+    }
+
+    /// The ledger for reads alone: a remote one claims no writer lease (`run.export.status`).
+    fn reader(project: &contextful_context::project::Project, store: &contextful_context::Store) -> Result<Self> {
+        Self::open_as(project, store, None)
+    }
+
+    fn open_as(project: &contextful_context::project::Project, store: &contextful_context::Store, writer: Option<&str>) -> Result<Self> {
         if let Some(remote) = crate::storage::preflight(project)? {
             let holder = format!("{}:{}:{}", crate::run::boot_id(), std::process::id(), wall_clock()?.unix_nanos());
             match remote {
                 crate::storage::Remote::Postgres { url, .. } => {
                     #[cfg(feature = "pg-catalog")]
-                    { let mut ledger = contextful_pg::PgExportLedger::connect(&url)?; ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?; return Ok(Self::Postgres(Box::new(ledger))) }
+                    { let mut ledger = contextful_pg::PgExportLedger::connect(&url)?; if let Some(name) = writer { ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?; } return Ok(Self::Postgres(Box::new(ledger))) }
                     #[cfg(not(feature = "pg-catalog"))]
-                    { let _ = (url, holder); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `pg-catalog`") }
+                    { let _ = (url, holder, writer); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `pg-catalog`") }
                 }
                 crate::storage::Remote::D1 { endpoint, .. } => {
                     #[cfg(feature = "d1-catalog")]
-                    { let mut ledger = contextful_d1::D1ExportLedger::connect(&endpoint)?; ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?; return Ok(Self::D1(Box::new(ledger))) }
+                    { let mut ledger = contextful_d1::D1ExportLedger::connect(&endpoint)?; if let Some(name) = writer { ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?; } return Ok(Self::D1(Box::new(ledger))) }
                     #[cfg(not(feature = "d1-catalog"))]
-                    { let _ = (endpoint, holder); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `d1-catalog`") }
+                    { let _ = (endpoint, holder, writer); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `d1-catalog`") }
                 }
             }
         }
         let machine = project.store_root().join(MACHINE_CATALOG_FILE);
         Ok(Self::Local(Box::new(match store.file_cipher() { Some(cipher) => ExportLedger::open_sealed(&machine, cipher)?, None => ExportLedger::open(&machine)? })))
     }
+    fn progress(&self, name: &str) -> Result<contextful_core::export::DeliveryProgress> { Ok(match self { Self::Local(s) => s.progress(name)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.progress(name)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.progress(name)? }) }
     fn position(&self, name: &str) -> Result<ExportPosition> { Ok(match self { Self::Local(s) => s.position(name)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.position(name)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.position(name)? }) }
     fn state(&self, name: &str) -> Result<ChangeState> { Ok(match self { Self::Local(s) => s.state(name)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.state(name)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.state(name)? }) }
     fn stage(&mut self, name: &str, publication: ExportPublication<'_>, events: &[ChangeEvent], state: &ChangeState) -> Result<bool> { Ok(match self { Self::Local(s) => s.stage(name, publication, events, state)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.stage(name, publication, events, state)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.stage(name, publication, events, state)? }) }

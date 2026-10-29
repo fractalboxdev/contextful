@@ -956,3 +956,146 @@ fn a_held_push_guard_leaves_the_wake_up_queued_and_retryable() {
     assert!(ok(&drain(p, &public, &token)).contains("delivered 2 rows"));
     assert!(spooled(p).is_empty());
 }
+
+/// Record `projection`'s producer completion over the current `spans` frontier.
+fn record_producer(dir: &Path, run: &str) {
+    use sha2::{Digest, Sha256};
+    let store = contextful_context::Store::open(dir, "research").unwrap();
+    let mut runs = store.committed_runs("spans").unwrap();
+    runs.sort_by(|a, b| (a.commit_seq, &a.run_id, &a.node_id).cmp(&(b.commit_seq, &b.run_id, &b.node_id)));
+    let pointer = store.pointer("spans").unwrap().map(|(p, _)| p.snapshot_id.to_string());
+    let frontier = format!("{:x}", Sha256::digest(serde_json::to_vec(&(pointer, runs)).unwrap()));
+    let ledger = contextful_sqlite::PublicationLedger::open(&dir.join(".contextful/context/research/machine.sqlite")).unwrap();
+    let source = contextful_sqlite::SourcePublication { run: run.into(), input: serde_json::json!({ "run": run }), frontiers: [("spans".into(), frontier)].into() };
+    ledger.record_source("projection", &source).unwrap();
+}
+
+/// `contextful export status <name> --json`, parsed.
+fn status(dir: &Path, name: &str) -> serde_json::Value {
+    serde_json::from_str(&ok(&cf(dir, &["export", "status", name, "--project", "research", "--json"], &[]))).unwrap()
+}
+
+/// The instant `last_ack_at` carries, spelled in RFC 3339.
+fn acknowledged_at(status: &serde_json::Value) -> contextful_core::time::Instant {
+    contextful_core::time::Instant::parse(status["last_ack_at"].as_str().expect("an acknowledgement instant")).unwrap()
+}
+
+/// A group bounded by `--within` stops between batches with its group pending and exits 75; status reads the
+/// pending group, its acknowledged prefix and the ledger's version through the port, and the next run completes it.
+// spec: run.export.status@a875bf68
+// spec: run.export.status-version@723413f0
+// spec: run.export.status-sequence@8b5eef4e
+// spec: run.export.group-within@a22ed395
+// spec: run.export.group-within-exit@c9936dba
+// spec: run.export.group-progress@644dfe16
+#[test]
+fn a_bounded_group_stops_between_batches_and_status_reads_its_progress() {
+    let collector = Collector::start();
+    let manifest = format!("{}\n[[publication]]\nname='projection'\njob='producer'\nmembers=['spans-mirror']\n", typed_block(&collector.endpoint()));
+    let (dir, public, token) = project(&manifest, "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 600));
+    record_producer(p, "producer-run");
+    let group = |extra: &[&str]| {
+        let mut args = vec!["export", "group", "projection", "--project", "research", "--public-key", &public, "--audience", AUD];
+        args.extend_from_slice(extra);
+        cf(p, &args, &[("CONTEXTFUL_TOKEN", &token)])
+    };
+    let events = 600 + 2;
+
+    // A zero bound stages the group and starts no POST.
+    let stopped = group(&["--within", "0"]);
+    let stderr = String::from_utf8_lossy(&stopped.stderr).to_string();
+    assert_eq!(stopped.status.code(), Some(75), "{stderr}");
+    assert!(stderr.contains("PublicationDeliveryBounded"), "{stderr}");
+    assert!(String::from_utf8_lossy(&stopped.stdout).trim().is_empty());
+    assert!(collector.received().is_empty());
+    let staged = status(p, "projection");
+    assert_eq!(staged, serde_json::json!({ "pending": true, "pending_events": events, "acknowledged_sequence": null, "version": 1, "last_ack_at": null }));
+
+    // A batch held past half the bound leaves no room for another of its length.
+    collector.hold(true);
+    let bounded = {
+        let (public, token, p) = (public.clone(), token.clone(), p.to_path_buf());
+        std::thread::spawn(move || {
+            let args = ["export", "group", "projection", "--project", "research", "--public-key", &public, "--audience", AUD, "--within", "10"];
+            cf(&p, &args, &[("CONTEXTFUL_TOKEN", &token)])
+        })
+    };
+    collector.await_requests(1);
+    std::thread::sleep(Duration::from_secs(6));
+    collector.hold(false);
+    let bounded = bounded.join().unwrap();
+    assert_eq!(bounded.status.code(), Some(75), "{}", String::from_utf8_lossy(&bounded.stderr));
+    let requests = collector.received();
+    assert_eq!(requests.len(), 1, "the bound admits no second batch");
+    let first = typed_events(&requests[0]).len();
+    assert!(first > 0 && first < events, "{first}");
+    assert_eq!(String::from_utf8_lossy(&bounded.stdout).trim(), format!("acknowledged {first} events · group pending"));
+    let partial = status(p, "projection");
+    assert_eq!(partial["pending"], true);
+    assert_eq!(partial["pending_events"], events - first);
+    assert_eq!(partial["acknowledged_sequence"], first - 1);
+    assert_eq!(partial["version"], 2);
+    let at = acknowledged_at(&partial);
+
+    // An unbounded run resumes after the acknowledged prefix and completes the group.
+    let finished = ok(&group(&[]));
+    let lines: Vec<&str> = finished.lines().collect();
+    let resumed = collector.received()[1..].to_vec();
+    assert!(!resumed.is_empty());
+    assert_eq!(typed_events(&resumed[0])[0]["sequence"], first);
+    assert_eq!(lines.len(), resumed.len(), "{finished}");
+    for (i, (line, request)) in lines.iter().zip(&resumed).enumerate() {
+        let state = if i + 1 == resumed.len() { "complete" } else { "pending" };
+        assert_eq!(*line, format!("acknowledged {} events · group {state}", typed_events(request).len()));
+    }
+    let complete = status(p, "projection");
+    assert_eq!(complete["pending"], false);
+    assert_eq!(complete["pending_events"], 0);
+    assert_eq!(complete["acknowledged_sequence"], events - 1);
+    assert_eq!(complete["version"], 2 + resumed.len());
+    assert!(acknowledged_at(&complete) >= at);
+    let text = ok(&cf(p, &["export", "status", "projection", "--project", "research"], &[]));
+    let expected = format!("projection: pending=false pending_events=0 acknowledged_sequence={} version={} last_ack_at={}", events - 1, 2 + resumed.len(), complete["last_ack_at"].as_str().unwrap());
+    assert_eq!(text, expected);
+
+    // With nothing pending, the group reports itself complete and sends nothing.
+    assert_eq!(ok(&group(&[])), "group complete");
+    assert_eq!(collector.received().len(), 1 + resumed.len());
+}
+
+/// A typed export's status reads its publication outbox: a refused send leaves the whole publication pending, and
+/// the acknowledged retry advances the sequence, the version and the acknowledgement instant.
+// spec: run.export.status@a875bf68
+// spec: run.export.status-no-outbox@0487e4d8
+// spec: run.export.status-version@723413f0
+// spec: run.export.status-sequence@8b5eef4e
+#[test]
+fn a_typed_export_status_reads_its_pending_publication() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    let before = status(p, "spans-mirror");
+    assert_eq!(before, serde_json::json!({ "pending": false, "pending_events": 0, "acknowledged_sequence": null, "version": 0, "last_ack_at": null }));
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    collector.answer(503);
+    err(&export(p, &public, &token, &[]));
+    let pending = status(p, "spans-mirror");
+    assert_eq!(pending, serde_json::json!({ "pending": true, "pending_events": 3, "acknowledged_sequence": null, "version": 1, "last_ack_at": null }));
+    collector.answer(200);
+    ok(&export(p, &public, &token, &[]));
+    let acknowledged = status(p, "spans-mirror");
+    assert_eq!(acknowledged["pending"], false);
+    assert_eq!(acknowledged["pending_events"], 0);
+    assert_eq!(acknowledged["acknowledged_sequence"], 2);
+    assert_eq!(acknowledged["version"], 2);
+    acknowledged_at(&acknowledged);
+
+    // An OTLP log export keeps a cursor, not an outbox.
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", block(&collector.endpoint(), ""))).unwrap();
+    let refused = err(&cf(p, &["export", "status", "spans-mirror", "--project", "research"], &[]));
+    assert!(refused.contains("no delivery outbox"), "{refused}");
+    let absent = err(&cf(p, &["export", "status", "absent", "--project", "research"], &[]));
+    assert!(absent.contains("no publication or export `absent`"), "{absent}");
+}

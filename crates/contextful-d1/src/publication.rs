@@ -2,6 +2,7 @@
 
 use crate::{D1Catalog, Statement, D1};
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey};
+use contextful_core::export::{DeliveryMark, DeliveryProgress};
 use contextful_core::export::publication::{
     GroupBatch, GroupSender, GroupState, PublicationGroup, PublicationPlan, SourcePublication,
 };
@@ -19,6 +20,31 @@ pub const GROUP_STATE_BYTES: usize = 8 * 1024 * 1024;
 
 const LEASE: &str = " AND EXISTS (SELECT 1 FROM contextful_lease WHERE key = ? AND holder = ? AND fence = ? AND expires_us > CAST((julianday('now') - 2440587.5) * 86400000000 AS INTEGER))";
 const WRITTEN: &str = "EXISTS (SELECT 1 FROM contextful_publication WHERE role = ? AND name = ? AND namespace = ? AND token = ?)";
+/// The delivery mark beside an outbox: its row version counts the outbox's committed writes, and
+/// an acknowledgement replaces its body (`run.export.status-version`).
+const MARK: &str = "INSERT INTO contextful_publication (role, name, namespace, version, body) SELECT 'progress', ?, ?, 1, ? WHERE ";
+const MARK_WROTE: &str = " ON CONFLICT(role, name, namespace) DO UPDATE SET version = version + 1";
+const MARK_ACKNOWLEDGED: &str = " ON CONFLICT(role, name, namespace) DO UPDATE SET version = version + 1, body = excluded.body";
+
+/// The mark statement chained after the sender write carrying `token`; `acknowledged` names the
+/// sequence an acknowledgement passed.
+fn mark(name: &str, namespace: &str, token: &str, acknowledged: Option<u64>) -> Result<(String, Vec<Value>), Failure> {
+    let (body, conflict) = match acknowledged {
+        Some(through) => {
+            let at = wall_clock()?;
+            let mark = DeliveryMark { version: 0, acknowledged: Some(through), at: Some(at) };
+            (serde_json::to_string(&mark).map_err(failure)?, MARK_ACKNOWLEDGED)
+        }
+        None => ("null".to_owned(), MARK_WROTE),
+    };
+    let args = vec![json!(name), json!(namespace), json!(body), json!("sender"), json!(name), json!(namespace), json!(token)];
+    Ok((format!("{MARK}{WRITTEN}{conflict}"), args))
+}
+
+fn wall_clock() -> Result<contextful_core::time::Instant, Failure> {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(failure)?.as_nanos();
+    contextful_core::time::Instant::from_unix_nanos(i128::try_from(nanos).map_err(failure)?).map_err(failure)
+}
 
 pub struct D1PublicationLedger {
     db: D1,
@@ -199,6 +225,7 @@ impl D1PublicationLedger {
         let body = serde_json::to_string(acknowledged).map_err(failure)?;
         let mut record = vec![json!(name), json!(namespace), json!(body)];
         record.extend([json!("sender"), json!(name), json!(namespace), json!(token)]);
+        let (marked, marks) = mark(name, namespace, &token, Some(acknowledged.through))?;
         let results = self
             .db
             .batch(&[
@@ -210,6 +237,7 @@ impl D1PublicationLedger {
                     sql: &format!("INSERT INTO contextful_publication (role, name, namespace, version, body) SELECT 'sender-ack', ?, ?, 0, ? WHERE {WRITTEN} ON CONFLICT(role, name, namespace) DO UPDATE SET version = version + 1, body = excluded.body"),
                     params: record,
                 },
+                Statement { sql: &marked, params: marks },
             ])
             .map_err(failure)?;
         Ok(results.first().is_some_and(|r| r.changes == 1))
@@ -222,6 +250,7 @@ impl D1PublicationLedger {
         version: Option<i64>,
         body: &str,
         follow: Option<Follow<'_>>,
+        acknowledged: Option<u64>,
     ) -> Result<bool, Failure> {
         let lease = self.lease(name)?;
         if body.len() > GROUP_STATE_BYTES {
@@ -262,6 +291,7 @@ impl D1PublicationLedger {
             let mut args = vec![json!(name), json!(namespace)];
             args.extend(written());
             chained.push((format!("DELETE FROM contextful_publication WHERE role = 'sender-ack' AND name = ? AND namespace = ? AND {WRITTEN}"), args));
+            chained.push(mark(name, namespace, &token, acknowledged)?);
         }
         match follow {
             Some(Follow::ActiveNamespace(active)) => {
@@ -305,7 +335,7 @@ impl D1PublicationLedger {
             }
             let body = serde_json::to_string(&sender).map_err(failure)?;
             let follow = completed.then_some(Follow::ActiveNamespace(namespace));
-            if self.commit(("sender", name, namespace), row.version, &body, follow)? {
+            if self.commit(("sender", name, namespace), row.version, &body, follow, None)? {
                 return Ok(result);
             }
         }
@@ -344,7 +374,7 @@ impl D1PublicationLedger {
                 return Ok(());
             }
             let follow = Follow::History(&source.run, body.clone());
-            if self.commit(("source", name, ""), current.version, &body, Some(follow))? {
+            if self.commit(("source", name, ""), current.version, &body, Some(follow), None)? {
                 return Ok(());
             }
         }
@@ -409,7 +439,7 @@ impl D1PublicationLedger {
             };
             let written = if sender.acknowledge(group, through).map_err(failure)? {
                 let body = serde_json::to_string(&sender).map_err(failure)?;
-                self.commit(("sender", name, namespace), Some(version), &body, Some(Follow::ActiveNamespace(namespace)))?
+                self.commit(("sender", name, namespace), Some(version), &body, Some(Follow::ActiveNamespace(namespace)), Some(through))?
             } else {
                 let acknowledged = Acknowledged { group: group.to_owned(), through };
                 self.record_acknowledged(name, namespace, version, &acknowledged)?
@@ -423,6 +453,16 @@ impl D1PublicationLedger {
             FailureTag::Transient,
             "D1 publication state changed repeatedly or writer lease moved",
         ))
+    }
+
+    /// The outbox's progress, read without a lease or delivery; a body held in R2 and the
+    /// acknowledged sequence beside the outbox resolve as every read does (`run.export.status-spilled`).
+    pub fn progress(&self, name: &str, namespace: &str) -> Result<DeliveryProgress, Failure> {
+        let sender = self.sender(name, namespace)?.value.unwrap_or_default();
+        let row = self.load::<Option<DeliveryMark>>("progress", name, namespace)?;
+        let recorded = row.value.flatten().unwrap_or_default();
+        let version = row.version.map_or(Ok(0), u64::try_from).map_err(failure)?;
+        Ok(sender.progress(&DeliveryMark { version, ..recorded }))
     }
 
     pub fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>, Failure> {

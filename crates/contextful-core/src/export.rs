@@ -33,6 +33,61 @@ pub struct ExportPosition {
     pub next_sequence: u64,
 }
 
+/// The revision and last acknowledgement a delivery ledger keeps beside one outbox
+/// (`run.export.status-version`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryMark {
+    #[serde(default)]
+    pub version: u64,
+    #[serde(default)]
+    pub acknowledged: Option<u64>,
+    #[serde(default)]
+    pub at: Option<Instant>,
+}
+
+impl DeliveryMark {
+    /// One committed write of the outbox other than an acknowledgement.
+    pub fn wrote(&mut self) {
+        self.version += 1;
+    }
+
+    /// One committed acknowledgement through `through`, at `at`.
+    pub fn acknowledged(&mut self, through: u64, at: Instant) {
+        self.version += 1;
+        self.acknowledged = Some(through);
+        self.at = Some(at);
+    }
+
+    /// The progress of a typed export at `position` (`run.export.status-sequence`).
+    pub fn typed(&self, position: &ExportPosition) -> DeliveryProgress {
+        let pending = position.pending_publication.is_some();
+        let delivered = position.ack_sequence.map_or(0, |a| a.saturating_add(1));
+        DeliveryProgress {
+            pending,
+            pending_events: if pending { position.next_sequence.saturating_sub(delivered) } else { 0 },
+            acknowledged_sequence: position.ack_sequence,
+            version: self.version,
+            last_ack_at: self.at,
+        }
+    }
+}
+
+/// The delivery progress of one typed export or coordinated group, read through its ledger
+/// (`run.export.status`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryProgress {
+    /// Whether a staged publication or group awaits acknowledgement.
+    pub pending: bool,
+    /// Staged events no acknowledgement has passed.
+    pub pending_events: u64,
+    /// The sequence of the last acknowledged event, or null.
+    pub acknowledged_sequence: Option<u64>,
+    /// Committed writes of the outbox: stages, acknowledgements and restores.
+    pub version: u64,
+    /// The instant of the last acknowledgement, or null.
+    pub last_ack_at: Option<Instant>,
+}
+
 /// The source frontier and read/delivery identity of one staged publication.
 #[derive(Debug, Clone, Copy)]
 pub struct ExportPublication<'a> {

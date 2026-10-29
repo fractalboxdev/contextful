@@ -192,3 +192,34 @@ fn ownership_transfer_waits_for_an_admitted_outbound_effect() {
         .unwrap_err();
     assert!(error.message.contains("ExecutionWriterFenced"), "{error}");
 }
+
+/// A reader holding no lease reads the remote outbox's progress: a stage and each acknowledgement
+/// advance its version, and the acknowledgement stamps its instant.
+// spec: run.export.status-version@723413f0
+#[test]
+fn progress_counts_the_remote_outbox_without_a_lease() {
+    let Some(server) = super::server::start() else {
+        return;
+    };
+    let export = parse_exports("[[export]]\nname='sink'\ntable='items'\nendpoint='https://sink.example/events'\nformat='changes-v1'\nkey=['id']\nschedule='every 30s'\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a"}), json!({"id":"b"})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let reader = PgExportLedger::connect(&server.conninfo).unwrap();
+    assert_eq!(reader.progress("sink").unwrap().version, 0);
+    let mut writer = PgExportLedger::connect(&server.conninfo).unwrap();
+    writer.claim("sink", "writer", 90).unwrap();
+    let publication = ExportPublication { source: "source-1", id: "publication-1", identity: "identity-1", destination: "destination-1" };
+    assert!(writer.stage("sink", publication, &events, &state).unwrap());
+    let staged = reader.progress("sink").unwrap();
+    assert_eq!((staged.pending, staged.pending_events, staged.acknowledged_sequence, staged.version, staged.last_ack_at), (true, 3, None, 1, None));
+    writer.pending("sink", 500).unwrap();
+    writer.offer("sink", 0).unwrap();
+    writer.acknowledge("sink", 0).unwrap();
+    let partial = reader.progress("sink").unwrap();
+    assert_eq!((partial.pending, partial.pending_events, partial.acknowledged_sequence, partial.version), (true, 2, Some(0), 2));
+    assert!(partial.last_ack_at.is_some());
+    writer.pending("sink", 500).unwrap();
+    writer.acknowledge("sink", 2).unwrap();
+    let complete = reader.progress("sink").unwrap();
+    assert_eq!((complete.pending, complete.pending_events, complete.acknowledged_sequence, complete.version), (false, 0, Some(2), 3));
+}

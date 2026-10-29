@@ -3,8 +3,8 @@
 use crate::{D1Catalog, D1};
 use contextful_core::coordinate::{Catalog, ExecutionAdmission, Lease, LeaseKey};
 use contextful_core::export::{
-    Change, ChangeEvent, ChangeState, ExportCursor, ExportPosition, ExportPublication,
-    EXPORT_BATCH_ROWS,
+    Change, ChangeEvent, ChangeState, DeliveryMark, DeliveryProgress, ExportCursor, ExportPosition,
+    ExportPublication, EXPORT_BATCH_ROWS,
 };
 use contextful_core::run::{Failure, FailureTag};
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,9 @@ struct State {
     events: Vec<ChangeEvent>,
     pending_source: Option<String>,
     acknowledged_publication: Option<String>,
+    /// The outbox's committed writes and last acknowledgement (`run.export.status-version`).
+    #[serde(default)]
+    mark: DeliveryMark,
 }
 
 impl Default for State {
@@ -40,6 +43,7 @@ impl Default for State {
             events: vec![],
             pending_source: None,
             acknowledged_publication: None,
+            mark: DeliveryMark::default(),
         }
     }
 }
@@ -183,6 +187,11 @@ impl D1ExportLedger {
     pub fn position(&self, name: &str) -> Result<ExportPosition, Failure> {
         Ok(self.load(name)?.1.position)
     }
+    /// The export's progress, read without a lease or delivery (`run.export.status`).
+    pub fn progress(&self, name: &str) -> Result<DeliveryProgress, Failure> {
+        let state = self.load(name)?.1;
+        Ok(state.mark.typed(&state.position))
+    }
     pub fn state(&self, name: &str) -> Result<ChangeState, Failure> {
         Ok(self.load(name)?.1.current)
     }
@@ -238,6 +247,7 @@ impl D1ExportLedger {
             state.pending_source = Some(publication.source.into());
             state.events = events.to_vec();
             state.next = next.clone();
+            state.mark.wrote();
             Ok(true)
         })?;
         if staged {
@@ -293,6 +303,7 @@ impl D1ExportLedger {
                 "export acknowledgement is not its offered frontier",
             ));
         }
+        let at = wall_clock().map_err(failure)?;
         self.edit(name, |state| {
             let pending = state
                 .position
@@ -323,6 +334,7 @@ impl D1ExportLedger {
                 return Err(failure("export acknowledgement skips an event"));
             }
             state.position.ack_sequence = Some(through);
+            state.mark.acknowledged(through, at);
             if events
                 .last()
                 .is_some_and(|e| matches!(e.change, Change::PublicationComplete { .. }))
@@ -346,4 +358,10 @@ impl Drop for D1ExportLedger {
             let _ = self.catalog.release(lease);
         }
     }
+}
+
+/// The wall-clock instant an acknowledgement records (`run.export.status-version`).
+fn wall_clock() -> Result<contextful_core::time::Instant, String> {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
+    contextful_core::time::Instant::from_unix_nanos(i128::try_from(nanos).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }

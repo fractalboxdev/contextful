@@ -3,8 +3,8 @@
 use crate::{from_text, to_text, Fail, PgCatalog};
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey};
 use contextful_core::export::{
-    Change, ChangeEvent, ChangeState, ExportCursor, ExportPosition, ExportPublication,
-    EXPORT_BATCH_ROWS,
+    Change, ChangeEvent, ChangeState, DeliveryMark, DeliveryProgress, ExportCursor, ExportPosition,
+    ExportPublication, EXPORT_BATCH_ROWS,
 };
 use contextful_core::run::{Failure, FailureTag};
 use postgres::Transaction;
@@ -21,6 +21,9 @@ struct State {
     events: Vec<ChangeEvent>,
     pending_source: Option<String>,
     acknowledged_publication: Option<String>,
+    /// The outbox's committed writes and last acknowledgement (`run.export.status-version`).
+    #[serde(default)]
+    mark: DeliveryMark,
 }
 
 impl Default for State {
@@ -40,6 +43,7 @@ impl Default for State {
             events: Vec::new(),
             pending_source: None,
             acknowledged_publication: None,
+            mark: DeliveryMark::default(),
         }
     }
 }
@@ -166,6 +170,13 @@ impl PgExportLedger {
     pub fn position(&self, name: &str) -> Result<ExportPosition, Failure> {
         self.db.with(|tx, fail| Ok(load(tx, name, fail)?.position))
     }
+    /// The export's progress, read without a lease or delivery (`run.export.status`).
+    pub fn progress(&self, name: &str) -> Result<DeliveryProgress, Failure> {
+        self.db.with(|tx, fail| {
+            let s = load(tx, name, fail)?;
+            Ok(s.mark.typed(&s.position))
+        })
+    }
     pub fn state(&self, name: &str) -> Result<ChangeState, Failure> {
         self.db.with(|tx, fail| Ok(load(tx, name, fail)?.current))
     }
@@ -223,6 +234,7 @@ impl PgExportLedger {
             s.pending_source = Some(publication.source.into());
             s.events = events.to_vec();
             s.next = next.clone();
+            s.mark.wrote();
             Ok(true)
         })?;
         if staged {
@@ -288,6 +300,7 @@ impl PgExportLedger {
                 "export acknowledgement is not its offered frontier",
             ));
         }
+        let at = wall_clock().map_err(|e| crate::storage(self.db.name(), e))?;
         self.edit(name, |s, fail| {
             let pending = s
                 .position
@@ -314,6 +327,7 @@ impl PgExportLedger {
                 return Err(fail(&"export acknowledgement skips an event"));
             }
             s.position.ack_sequence = Some(through);
+            s.mark.acknowledged(through, at);
             if events
                 .last()
                 .is_some_and(|e| matches!(e.change, Change::PublicationComplete { .. }))
@@ -337,4 +351,10 @@ impl Drop for PgExportLedger {
             let _ = self.db.release(lease);
         }
     }
+}
+
+/// The wall-clock instant an acknowledgement records (`run.export.status-version`).
+fn wall_clock() -> Result<contextful_core::time::Instant, String> {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
+    contextful_core::time::Instant::from_unix_nanos(i128::try_from(nanos).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }

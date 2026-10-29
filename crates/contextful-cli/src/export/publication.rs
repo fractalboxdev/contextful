@@ -5,7 +5,8 @@ use contextful_core::export::publication::{
     declarations, GroupState, PublicationDeclaration, PublicationPlan,
 };
 use contextful_core::run::record::RunRow;
-use contextful_core::export::publication::{GroupBatch, PublicationGroup, SourcePublication};
+use contextful_core::export::publication::{GroupBatch, GroupChange, PublicationGroup, SourcePublication};
+use contextful_core::export::DeliveryProgress;
 use contextful_sqlite::PublicationLedger;
 
 /// The machine-local ledger, or D1 under the `cloudflare-d1` profile.
@@ -37,6 +38,52 @@ impl Ledger {
     fn acknowledge(&mut self, name: &str, namespace: &str, group: &str, through: u64) -> Result<()> { each!(self, l => l.acknowledge(name, namespace, group, through)) }
     fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>> { each!(self, l => l.checkpoint(name, namespace)) }
     fn restore(&mut self, name: &str, namespace: &str, bytes: &[u8], incarnation: &str, identity: &str) -> Result<()> { each!(self, l => l.restore(name, namespace, bytes, incarnation, identity)) }
+    fn progress(&self, name: &str, namespace: &str) -> Result<DeliveryProgress> { each!(self, l => l.progress(name, namespace)) }
+}
+
+/// How one `export group` run claims its lease and bounds its delivery.
+#[derive(Default)]
+pub(super) struct Bound {
+    /// Take the D1 publication lease from a killed holder (`run.export.group-d1-takeover`).
+    pub take_over: bool,
+    /// The wall clock the delivery stays within (`run.export.group-within`).
+    pub within: Option<std::time::Duration>,
+}
+
+/// How a delivery ended: its group complete, or stopped at its bound with the group pending.
+pub(super) enum Delivered {
+    Complete,
+    Bounded(String),
+}
+
+/// The ledger for reads alone; under `cloudflare-d1` it claims no publication lease
+/// (`run.export.status`).
+fn reader(store: &contextful_context::Store) -> Result<Ledger> {
+    supported()?;
+    if let Some(crate::storage::Remote::D1 { endpoint, .. }) = crate::storage::remote()? {
+        #[cfg(feature = "d1-catalog")]
+        return Ok(Ledger::D1(Box::new(contextful_d1::D1PublicationLedger::connect(&endpoint)?)));
+        #[cfg(not(feature = "d1-catalog"))]
+        {
+            let _ = endpoint;
+            anyhow::bail!("ProfileCapabilityAbsent: D1 publication state requires `d1-catalog`");
+        }
+    }
+    let path = store.root().join(MACHINE_CATALOG_FILE);
+    Ok(Ledger::Local(Box::new(match store.file_cipher() {
+        Some(cipher) => PublicationLedger::open_sealed(&path, cipher)?,
+        None => PublicationLedger::open(&path)?,
+    })))
+}
+
+/// Publication `name`'s progress in `namespace`, else its active namespace (`run.export.status`).
+pub(super) fn progress(store: &contextful_context::Store, name: &str, namespace: Option<String>) -> Result<DeliveryProgress> {
+    let ledger = reader(store)?;
+    let namespace = match namespace {
+        Some(namespace) => namespace,
+        None => ledger.active_namespace(name)?.unwrap_or_else(|| "initial".into()),
+    };
+    ledger.progress(name, &namespace)
 }
 
 /// Under `cloudflare-d1` the publication's durable lease, not the machine file lock, fences writers;
@@ -111,8 +158,8 @@ fn quiesce_files(project_dir: &Path, project: &str, name: &str) -> Result<(std::
     std::fs::create_dir_all(&dir)?;
     let open = |kind: &str| -> Result<std::fs::File> {
         let path = dir.join(format!("publication-{name}.{kind}.lock"));
-        Ok(std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)
-            .with_context(|| format!("opening `{}`", path.display()))?)
+        std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)
+            .with_context(|| format!("opening `{}`", path.display()))
     };
     Ok((open("intent")?, open("inputs")?))
 }
@@ -293,8 +340,9 @@ pub(super) fn deliver(
     declaration: Option<PathBuf>,
     admit: &AdmitArgs,
     restore: Option<PathBuf>,
-    take_over: bool,
-) -> Result<()> {
+    bound: Bound,
+) -> Result<Delivered> {
+    let started = std::time::Instant::now();
     supported()?;
     let located = project.locate(declaration)?;
     crate::storage::preflight(&located.project)?;
@@ -331,7 +379,7 @@ pub(super) fn deliver(
         )?;
     }
     let identity = identity(&face, &session, &authority, &exports)?;
-    let mut ledger = ledger(face.store(), name, take_over)?;
+    let mut ledger = ledger(face.store(), name, bound.take_over)?;
     let incarnation = ledger.incarnation(&format!(
         "{:x}",
         Sha256::digest(format!(
@@ -410,8 +458,21 @@ pub(super) fn deliver(
         };
         ledger.stage(&plan, &states, &identity)?;
     }
+    // The longest batch so far forecasts the next (`run.export.group-within`).
+    let mut longest = std::time::Duration::ZERO;
     let mut delivered = 0;
     while let Some(batch) = ledger.batch(name, &namespace)? {
+        if let Some(within) = bound.within {
+            if started.elapsed() + longest >= within {
+                let pending = ledger.progress(name, &namespace)?.pending_events;
+                return Ok(Delivered::Bounded(format!(
+                    "publication `{name}` stopped before its next batch {} s into its {} s bound; {pending} events stay pending in namespace {namespace}",
+                    started.elapsed().as_secs(),
+                    within.as_secs()
+                )));
+            }
+        }
+        let began = std::time::Instant::now();
         let mut headers = vec![(
             "Content-Type".into(),
             HeaderValue::Plain("application/json".into()),
@@ -450,10 +511,19 @@ pub(super) fn deliver(
                 .into())
             }
         }
+        longest = longest.max(began.elapsed());
         delivered += batch.events.len();
+        // One stable line per acknowledged batch (`run.export.group-progress`).
+        let state = match batch.events.last().map(|e| &e.change) {
+            Some(GroupChange::GroupComplete) => "complete",
+            _ => "pending",
+        };
+        println!("acknowledged {} events · group {state}", batch.events.len());
     }
-    println!("{name}: acknowledged {delivered} coordinated events in namespace {namespace}");
-    Ok(())
+    if delivered == 0 {
+        println!("group complete");
+    }
+    Ok(Delivered::Complete)
 }
 
 pub(super) fn checkpoint(
