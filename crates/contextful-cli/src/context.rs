@@ -264,6 +264,23 @@ fn land_session(
     Ok(())
 }
 
+/// The pass a one-shot land runs after its commit: one when the table's trigger fires, as a
+/// landing session runs it, and none on a store declaring `[sync]`, whose fold job owns the
+/// pass, or on a snapshot corpus, which folds each capture as it lands
+/// (`store.fold.land-trigger`).
+fn land_pass(store: &Store, args: &StoreArgs, decl: &TableDecl, at: Instant) -> Result<Option<FoldOutcome>> {
+    if decl.snapshot.is_some() || crate::sync::sync_config(&locate(args.project.as_deref(), args.declaration.clone())?)?.0.is_some() {
+        return Ok(None);
+    }
+    // The run is committed whatever the pass does, so a failed pass reports beside it.
+    let failed = |e: ContextError| FoldOutcome::Failed(e.to_string());
+    match store.state(decl).map(|state| contextful_core::store::fold::due(&state, decl, at)) {
+        Ok(false) => Ok(None),
+        Ok(true) => Ok(Some(fold(store, decl, at).unwrap_or_else(failed))),
+        Err(e) => Ok(Some(failed(e))),
+    }
+}
+
 fn bound(flag: Option<String>) -> Result<Option<Bound>> {
     Ok(flag.map(|s| Bound::parse(&s)).transpose()?)
 }
@@ -437,10 +454,19 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let (rows, run_id) = (rows.context("`--rows` names the batch")?, run_id.context("`--run-id` names the run")?);
             let batch = Batch { rows: read_rows(&rows)?, types: fixed };
             let ctx = RunContext { node, injection: injection(run_id), committed_at: now(at)? };
-            let l = land_run(&o.store, &o.decl(&table), std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
+            let (decl, committed_at) = (o.decl(&table), ctx.committed_at);
+            let l = land_run(&o.store, &decl, std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
             let (m, verb) = (&l.manifest, if l.replay { "replayed" } else { "committed" });
-            if !l.replay { crate::queue::announce(&o.store, &table, &m.run_id, m.commit_seq); }
-            println!("{table}: {verb} {} on {} ({} parts, {} rows)", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
+            let pass = if l.replay { None } else {
+                crate::queue::announce(&o.store, &table, &m.run_id, m.commit_seq);
+                land_pass(&o.store, &store, &decl, committed_at)?
+            };
+            let failed = pass.as_ref().is_some_and(FoldOutcome::is_failure);
+            let pass = pass.map(|f| format!("; {f}")).unwrap_or_default();
+            println!("{table}: {verb} {} on {} ({} parts, {} rows){pass}", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
+            if failed {
+                bail!("{table}: the run committed and its pass failed");
+            }
             Ok(())
         }
         ContextCmd::Files { table, store, as_of } => {

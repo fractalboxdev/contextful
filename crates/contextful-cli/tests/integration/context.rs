@@ -200,9 +200,58 @@ fn a_scheduled_pass_fires_at_the_declared_unfolded_run_count() {
     let compact = || stdout(&run(p.path(), &["context", "compact", "--project", "research", "--now", "2030-01-01T01:00:00Z"]));
     let report = compact();
     assert!(report.lines().any(|l| l == "events: not due"), "{report}");
-    land(p.path(), "events", "run-3", "2030-01-01T00:02:00Z");
+    // Lowered to the count already landed, the declaration fires the next scheduled pass.
+    std::fs::write(&manifest, std::fs::read_to_string(&manifest).unwrap().replace("fold_max_unfolded_runs = 3\n", "fold_max_unfolded_runs = 2\n")).unwrap();
     let report = compact();
-    assert!(report.lines().any(|l| l.starts_with("events: folded snapshot-") && l.contains("(3 runs")), "{report}");
+    assert!(report.lines().any(|l| l.starts_with("events: folded snapshot-") && l.contains("(2 runs")), "{report}");
+}
+
+/// Declares `fold_max_unfolded_runs = <runs>` on `events`.
+fn declare_run_count(dir: &Path, runs: usize) {
+    let manifest = dir.join("contextful.toml");
+    let declared = std::fs::read_to_string(&manifest).unwrap().replace("name = \"events\"\n", &format!("name = \"events\"\nfold_max_unfolded_runs = {runs}\n"));
+    std::fs::write(&manifest, declared).unwrap();
+}
+
+/// After a commit that is not a replay, `contextful context land` runs a pass before returning once the table's trigger
+/// fires; on a store declaring `[sync]` it runs none, leaving the pass to the fold job.
+// spec: store.fold.land-trigger@0e4f727c
+#[test]
+fn one_shot_lands_hold_the_declared_unfolded_run_count() {
+    let p = project();
+    declare_run_count(p.path(), 20);
+    let (mut unfolded, mut passes) = (0, 0);
+    for i in 1..=100 {
+        let out = land(p.path(), "events", &format!("run-{i}"), &format!("2030-01-01T00:{:02}:{:02}Z", i / 60, i % 60));
+        unfolded += 1;
+        if let Some((_, pass)) = out.split_once("; ") {
+            assert!(pass.starts_with("folded snapshot-") && pass.contains(&format!("({unfolded} runs")), "{out}");
+            (unfolded, passes) = (0, passes + 1);
+        }
+        assert!(unfolded < 20, "land {i} left {unfolded} unfolded runs: {out}");
+    }
+    assert_eq!(passes, 5);
+    // A replay commits nothing and runs no pass.
+    let again = land(p.path(), "events", "run-100", "2030-01-01T00:02:00Z");
+    assert_eq!(again, "events: replayed run-100 on ingest-a (1 parts, 1 rows)");
+}
+
+/// A store declaring `[sync]` leaves the pass to its fold job, so a land past the trigger commits and folds nothing.
+// spec: store.fold.land-trigger@0e4f727c
+#[test]
+fn a_one_shot_land_on_a_synced_store_runs_no_pass() {
+    let p = project();
+    let bucket = tempfile::tempdir().unwrap();
+    let config = p.path().join(".contextful/context/research/config.toml");
+    let sync = format!("[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display());
+    std::fs::write(&config, format!("[node]\nid = \"ingest-a\"\n{sync}")).unwrap();
+    declare_run_count(p.path(), 2);
+    let outs: Vec<String> = (1..=3).map(|i| land(p.path(), "events", &format!("run-{i}"), &format!("2030-01-01T00:0{i}:00Z"))).collect();
+    assert_eq!(outs.len(), 3);
+    for (i, out) in outs.iter().enumerate() {
+        assert_eq!(out, &format!("events: committed run-{} on ingest-a (1 parts, 1 rows)", i + 1));
+    }
+    assert!(!p.path().join(".contextful/context/research/tables/events/_pointer.json").exists());
 }
 
 /// `contextful context scan` prints the file list, the relation and the bounds a read echoes.

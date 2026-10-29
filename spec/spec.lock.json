@@ -3643,6 +3643,17 @@
       "line": 314
     },
     {
+      "id": "store.fold.land-trigger",
+      "contract": "store",
+      "operation": "fold",
+      "subject": "land-trigger",
+      "kind": "behavior",
+      "statement": "After a commit that is not a replay, `contextful context land` runs a pass before returning once the table's trigger fires; on a store declaring `[sync]` it runs none, leaving the pass to {{store.fold.job-pass-synced}}.",
+      "why": "because a writer landing through repeated one-shot commands otherwise accrues unfolded runs without bound",
+      "file": "spec/10-store.md",
+      "line": 316
+    },
+    {
       "id": "store.fold.job-pass",
       "contract": "store",
       "operation": "fold",
@@ -3651,7 +3662,7 @@
       "statement": "`contextful job fire` on a `fold` job runs a pass over its `target`, or over every table the store holds when it names none, reporting each table under {{store.fold.result}} and exiting non-zero once any table fails.",
       "why": "A-surface#maintenance-kinds",
       "file": "spec/10-store.md",
-      "line": 316
+      "line": 318
     },
     {
       "id": "store.fold.job-pass-synced",
@@ -3662,7 +3673,7 @@
       "statement": "On a store declaring `[sync]`, a fold job's pass takes each table's compaction lease, pulls, folds, pushes and publishes as `contextful sync compact <table>` does; on any other store it folds locally as `contextful context compact <table>` does.",
       "why": "because a node publishing a snapshot outside the lease races every other node's pass on the bucket pointer",
       "file": "spec/10-store.md",
-      "line": 318
+      "line": 320
     },
     {
       "id": "store.fold.retention",
@@ -3673,7 +3684,7 @@
       "statement": "`retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older than the window.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 320
+      "line": 322
     },
     {
       "id": "store.fold.reference-retention",
@@ -3684,7 +3695,7 @@
       "statement": "Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the collected snapshot's directory, manifest included.",
       "why": "A-store#pass-carries-untouched",
       "file": "spec/10-store.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "store.fold.cached-inputs",
@@ -3695,7 +3706,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, a fold fetches input parts through {{store.pull.part-cache}}; inputs exceeding the cache raise `FoldInputsExceedCache`, naming both byte counts, and publish nothing.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "store.fold.row-retention",
@@ -3706,7 +3717,7 @@
       "statement": "After keyed winner selection and derived supersession, a fold removes expired snapshot and sidecar rows, skipping row reads of unkeyed partitions whose footer maximum precedes the cutoff; idle passes publish on expiry under {{store.declare.retain-rows}}.",
       "why": "because a time partition follows the sender's clock while the retention clock follows arrival",
       "file": "spec/10-store.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "store.fold.row-retention-report",
@@ -3717,7 +3728,7 @@
       "statement": "Per table, a pass reports the row-age cutoff, expired rows, dropped partitions and collected directories; `collect` returns the removed paths.",
       "why": "because an operator needs evidence of both logical expiry and physical collection",
       "file": "spec/10-store.md",
-      "line": 327
+      "line": 329
     },
     {
       "id": "store.fold.result",
@@ -3728,7 +3739,7 @@
       "statement": "A pass reports one line per table, folded, `indexes-built` for sidecars built without folding runs, failed, or nothing-landed when no run is pending and every declared sidecar is current, and continues.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 329
+      "line": 331
     },
     {
       "id": "store.fold.collection-failed",
@@ -3739,7 +3750,7 @@
       "statement": "A collection failure reports beside `folded` when the pass published, the snapshot staying published, and as `failed` otherwise; both exit non-zero.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "store.fold.compaction-lease",
@@ -3750,7 +3761,7 @@
       "statement": "A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 331
+      "line": 333
     },
     {
       "id": "store.fold.pointer-commit",
@@ -3761,7 +3772,7 @@
       "statement": "A pass publishes by replacing `_pointer.json` conditioned on the ETag read at pass start. Object stores use `If-Match`; filesystems use a version-checked rename.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 333
+      "line": 335
     },
     {
       "id": "store.fold.partial-snapshot",
@@ -3772,7 +3783,7 @@
       "statement": "A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 335
+      "line": 337
     },
     {
       "id": "store.fold.lost-pointer",
@@ -3783,7 +3794,7 @@
       "statement": "If a pointer replacement loses its condition, the pass publishes nothing. Collection removes the staged snapshot.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "store.fold.group-marker",
@@ -3794,7 +3805,7 @@
       "statement": "Collection keeps a folded run's `_group.json` while a member table's copy of that run stays unfolded, and removes it once every member folds the run.",
       "why": "because a member run reads as committed only beside its group root's marker",
       "file": "spec/10-store.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "store.fold.staging-collected",
@@ -3805,7 +3816,7 @@
       "statement": "The next pass collects staging directories and snapshot directories unreachable through any pointer chain. Reads exclude these directories.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 340
+      "line": 342
     },
     {
       "id": "store.fold.non-blocking",
@@ -3816,7 +3827,7 @@
       "statement": "A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 341
+      "line": 343
     },
     {
       "id": "store.fold.supersedes",
@@ -3827,7 +3838,7 @@
       "statement": "A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 342
+      "line": 344
     },
     {
       "id": "store.index.kinds",
@@ -3838,7 +3849,7 @@
       "statement": "Five index kinds exist: footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector graphs, positional full-text indexes and opt-in per-column bloom filters.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 378
+      "line": 380
     },
     {
       "id": "store.index.declaration",
@@ -3849,7 +3860,7 @@
       "statement": "Each table declares sidecars under `indexes` as {{type:contextful_core::store::index::IndexBlock}}. A vector sidecar requires `model` and `dim`, and a key outside its kind refuses the declaration.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "store.index.id-column",
@@ -3860,7 +3871,7 @@
       "statement": "Without `valid_time`, `id_column` defaults to the table's single-column primary key; a table's sidecars share one `id_column`, whether it is keyed, composite-keyed or unkeyed.",
       "why": "A-store#sidecar-names-id",
       "file": "spec/10-store.md",
-      "line": 380
+      "line": 382
     },
     {
       "id": "store.index.id-column-unresolved",
@@ -3871,7 +3882,7 @@
       "statement": "Manifest validation raises `StoreIndexIdColumnUnresolved` when `id_column` is missing without a single-column primary key or with `valid_time`, names a valid-time table's single key, or differs across sidecars.",
       "why": "A-store#sidecar-names-id",
       "file": "spec/10-store.md",
-      "line": 382
+      "line": 384
     },
     {
       "id": "store.index.id-unique",
@@ -3882,7 +3893,7 @@
       "statement": "Two staged snapshot rows sharing an `id_column` value make fold raise `StoreIndexIdNotUnique`, naming the table, column and value, and publish nothing.",
       "why": "A-store#sidecar-names-id",
       "file": "spec/10-store.md",
-      "line": 384
+      "line": 386
     },
     {
       "id": "store.index.paths",
@@ -3893,7 +3904,7 @@
       "statement": "A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 386
+      "line": 388
     },
     {
       "id": "store.index.path-collision",
@@ -3904,7 +3915,7 @@
       "statement": "Two sidecar declarations of one table resolving to one path under {{store.index.paths}} raise `StoreIndexPathCollision`, naming both, at manifest validation before either builds.",
       "why": "because a second build overwrites the first sidecar's files",
       "file": "spec/10-store.md",
-      "line": 387
+      "line": 389
     },
     {
       "id": "store.index.identity",
@@ -3915,7 +3926,7 @@
       "statement": "A sidecar's identity is its one path under {{store.index.paths}}; `derived.sqlite` records the builder and builder version of each sidecar a reachable snapshot holds.",
       "why": "A-store#sidecar-s-builder",
       "file": "spec/10-store.md",
-      "line": 389
+      "line": 391
     },
     {
       "id": "store.index.filter-copies",
@@ -3926,7 +3937,7 @@
       "statement": "A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant filtered traversal needs; every other filter applies at {{store.index.candidate-ids}}.",
       "why": "A-store#sidecar-copies-tenant, A-read#sidecar-serves-past",
       "file": "spec/10-store.md",
-      "line": 391
+      "line": 393
     },
     {
       "id": "store.index.dies-with-snapshot",
@@ -3937,7 +3948,7 @@
       "statement": "Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 393
+      "line": 395
     },
     {
       "id": "store.index.candidate-ids",
@@ -3948,7 +3959,7 @@
       "statement": "A sidecar returns only candidate `id_column` values, which retrieval joins on that column through the relation access controls protect before finalizing top-K.",
       "why": "P5",
       "file": "spec/10-store.md",
-      "line": 394
+      "line": 396
     },
     {
       "id": "store.index.column-absent",
@@ -3959,7 +3970,7 @@
       "statement": "A reconciled schema lacking an index's column or `id_column` makes fold raise `StoreIndexColumnAbsent` before staging that build.",
       "why": "because an index over a missing column builds empty and reads as no match",
       "file": "spec/10-store.md",
-      "line": 396
+      "line": 398
     },
     {
       "id": "store.index.column-type",
@@ -3970,7 +3981,7 @@
       "statement": "`StoreIndexColumnType` refuses an `id_column` other than text or integer, a vector-sidecar column other than vectors of `dim`, and a fulltext column other than text, at manifest validation when `columns` types them, otherwise before landing rows.",
       "why": "because a builder reading another type indexes rows no reader finds",
       "file": "spec/10-store.md",
-      "line": 398
+      "line": 400
     },
     {
       "id": "store.index.bloom-parts",
@@ -3981,7 +3992,7 @@
       "statement": "Without a project encryption key, each landed or folded part carries bloom filters, sized to its row count, on the columns `bloom_filter` names; erasure rewrites carry none.",
       "why": "A-store#sidecar-names-id",
       "file": "spec/10-store.md",
-      "line": 405,
+      "line": 407,
       "group": "bloom filters"
     },
     {
@@ -3993,7 +4004,7 @@
       "statement": "Without a project encryption key, each landed or folded vintage-table part carries a bloom filter on every primary-key column, whatever `bloom_filter` declares.",
       "why": "because interleaved writers write parts with overlapping key bounds",
       "file": "spec/10-store.md",
-      "line": 407,
+      "line": 409,
       "group": "bloom filters"
     },
     {
@@ -4005,7 +4016,7 @@
       "statement": "A project binding an encryption key writes no bloom filter in any part, whatever `bloom_filter` names.",
       "why": "because Parquet modular encryption leaves a bloom filter in plaintext, answering key membership",
       "file": "spec/10-store.md",
-      "line": 409,
+      "line": 411,
       "group": "bloom filters"
     },
     {
@@ -4017,7 +4028,7 @@
       "statement": "A pass rebuilds in full, into a new snapshot, a current sidecar whose builder or builder version differs from this build's; readers keep the prior snapshot until pointer publication.",
       "why": "A-store#sidecar-s-builder",
       "file": "spec/10-store.md",
-      "line": 416,
+      "line": 418,
       "group": "sidecar builds"
     },
     {
@@ -4029,7 +4040,7 @@
       "statement": "A pass builds a declared sidecar the current snapshot lacks, or records with other `id_column` or builder parameters, over those rows, publishing a new snapshot even without a landed run.",
       "why": "because an index over landed rows otherwise waits for a landing that may never come",
       "file": "spec/10-store.md",
-      "line": 418,
+      "line": 420,
       "group": "sidecar builds"
     },
     {
@@ -4041,7 +4052,7 @@
       "statement": "The vector graph's byte layout carries no compatibility guarantee: a reader opens a sidecar only at its own builder and builder version, else {{read.retrieve.sidecar-falls-back}}.",
       "why": "A-store#sidecar-s-builder",
       "file": "spec/10-store.md",
-      "line": 420,
+      "line": 422,
       "group": "sidecar builds"
     },
     {
@@ -4053,7 +4064,7 @@
       "statement": "A vector or full-text entry counts in `extensions` the segment-adding passes since its last full build; a pass finding 16 extensions rebuilds in full and records 0.",
       "why": "A-store#sidecar-s-builder",
       "file": "spec/10-store.md",
-      "line": 422,
+      "line": 424,
       "group": "sidecar builds"
     },
     {
@@ -4065,7 +4076,7 @@
       "statement": "A delta replacing and removing no stored row adds a segment to each current sidecar, referencing earlier ones; probes read every segment, scoring full text over their summed statistics.",
       "why": "A-store#sidecar-s-builder",
       "file": "spec/10-store.md",
-      "line": 424,
+      "line": 426,
       "group": "sidecar builds"
     },
     {
@@ -4077,7 +4088,7 @@
       "statement": "Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the declared model where `embedding_model` exists, and records it in the snapshot manifest.",
       "why": "A-store#sidecar-names-id",
       "file": "spec/10-store.md",
-      "line": 426,
+      "line": 428,
       "group": "sidecar builds"
     },
     {
@@ -4089,7 +4100,7 @@
       "statement": "A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.",
       "why": "because a recall figure then replays from its snapshot",
       "file": "spec/10-store.md",
-      "line": 428,
+      "line": 430,
       "group": "sidecar builds"
     },
     {
@@ -4101,7 +4112,7 @@
       "statement": "Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term, recording it in the snapshot manifest.",
       "why": "A-store#sidecar-names-id",
       "file": "spec/10-store.md",
-      "line": 430,
+      "line": 432,
       "group": "sidecar builds"
     },
     {
@@ -4113,7 +4124,7 @@
       "statement": "Each full-text segment is one file holding a sorted term dictionary and each term's row identifiers and positions, which readers binary-search mapped or decrypted.",
       "why": "because a probe then reads only its own terms' postings, mapped or decrypted",
       "file": "spec/10-store.md",
-      "line": 432,
+      "line": 434,
       "group": "sidecar builds"
     },
     {
@@ -4125,7 +4136,7 @@
       "statement": "The default `unicode` tokenizer indexes each lowercased alphanumeric run as one term; `cjk` indexes each Han, Kana or Hangul stretch within a run as overlapping character bigrams.",
       "why": "because an unspaced script puts no boundary inside a sentence",
       "file": "spec/10-store.md",
-      "line": 434,
+      "line": 436,
       "group": "sidecar builds"
     },
     {
@@ -4137,7 +4148,7 @@
       "statement": "`cluster_by` sorts file rows lexicographically by its columns in order, so zone maps skip row groups with no manifest entry or sidecar.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 441,
+      "line": 443,
       "group": "partitions"
     },
     {
@@ -4149,7 +4160,7 @@
       "statement": "A table uses partitioning only when the table declares `partition_by`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 442,
+      "line": 444,
       "group": "partitions"
     },
     {
@@ -4161,7 +4172,7 @@
       "statement": "A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.",
       "why": "because bytes name no directory that keeps two distinct values apart",
       "file": "spec/10-store.md",
-      "line": 443,
+      "line": 445,
       "group": "partitions"
     },
     {
@@ -4173,7 +4184,7 @@
       "statement": "Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 445,
+      "line": 447,
       "group": "partitions"
     },
     {
@@ -4185,7 +4196,7 @@
       "statement": "A multi-tenant table carries the tenant identifier as its outermost partition column.",
       "why": "because a dropped tenant predicate then reads nothing instead of every tenant",
       "file": "spec/10-store.md",
-      "line": 446,
+      "line": 448,
       "group": "partitions"
     },
     {
@@ -4197,7 +4208,7 @@
       "statement": "Landing applies no canonical form to tenant values: writes and comparisons keep bytes without trimming, case folding or Unicode normalization, and percent-escaping changes only the directory name.",
       "why": "A-store#tenant-value-bytes",
       "file": "spec/10-store.md",
-      "line": 448,
+      "line": 450,
       "group": "partitions"
     },
     {
@@ -4209,7 +4220,7 @@
       "statement": "A project enables at-rest encryption by binding `[encryption] key_source` to `env:<NAME>` or a key-management service; without it, encryption is off.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 455
+      "line": 457
     },
     {
       "id": "store.encrypt.key-unbound",
@@ -4220,7 +4231,7 @@
       "statement": "A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 456
+      "line": 458
     },
     {
       "id": "store.encrypt.cipher",
@@ -4231,7 +4242,7 @@
       "statement": "Parquet modular encryption encrypts Parquet files, footers included; every sidecar and ledger file uses AES-256-GCM under a per-file data key the project key wraps.",
       "why": "because a cleartext vector graph admits nearest-neighbour search over the embedding space",
       "file": "spec/10-store.md",
-      "line": 458
+      "line": 460
     },
     {
       "id": "store.encrypt.metadata-envelope",
@@ -4242,7 +4253,7 @@
       "statement": "With a bound key, schema, manifest, pointer, counter and commit-log files enclose canonical JSON or text in an authenticated versioned envelope; without one they keep their canonical bytes.",
       "why": "A-store#sidecar-memory-mapped, A-store#canonical-metadata-sits",
       "file": "spec/10-store.md",
-      "line": 460
+      "line": 462
     },
     {
       "id": "store.encrypt.run-state-envelope",
@@ -4253,7 +4264,7 @@
       "statement": "With a bound key, a node's synced run-state JSON encloses canonical bytes in an authenticated envelope, and readers refuse a file sealed under another key.",
       "why": "A-store#sidecar-memory-mapped, A-store#canonical-metadata-sits",
       "file": "spec/10-store.md",
-      "line": 462
+      "line": 464
     },
     {
       "id": "store.encrypt.machine-catalog-sealing",
@@ -4264,7 +4275,7 @@
       "statement": "A bound `machine.sqlite` holds an authenticated SQLite snapshot: each catalog transaction locks the file, reads the snapshot into memory and seals the committed bytes before unlocking.",
       "why": "A-store#sidecar-memory-mapped, A-store#machine-catalog-seals",
       "file": "spec/10-store.md",
-      "line": 464
+      "line": 466
     },
     {
       "id": "store.encrypt.redacted-index",
@@ -4275,7 +4286,7 @@
       "statement": "An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.",
       "why": "A-authority#redaction-no-copy",
       "file": "spec/10-store.md",
-      "line": 466
+      "line": 468
     },
     {
       "id": "store.encrypt.sidecar-reader",
@@ -4286,7 +4297,7 @@
       "statement": "Unencrypted projects' readers memory-map sidecars read-only; encrypted projects' readers decrypt each sealed sidecar into anonymous process memory, writing no cleartext to disk.",
       "why": "A-store#sidecar-memory-mapped",
       "file": "spec/10-store.md",
-      "line": 468
+      "line": 470
     },
     {
       "id": "store.emit.plan",
@@ -4297,7 +4308,7 @@
       "statement": "`contextful sync manifest --emit` prints the JSON bucket manifest a push commits, each key with sha256, size and owner, reading and writing no bucket object.",
       "why": "because a pre-push check and a dry run need the commit's content without a credential",
       "file": "spec/10-store.md",
-      "line": 479
+      "line": 481
     },
     {
       "id": "store.emit.plan-scope",
@@ -4308,7 +4319,7 @@
       "statement": "The plan lists every key {{store.push.wire-format}} uploads and each `schema.json` at its local digest; a key another node owns stays out.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 481
+      "line": 483
     },
     {
       "id": "store.push.prefix-escape",
@@ -4319,7 +4330,7 @@
       "statement": "A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 487
+      "line": 489
     },
     {
       "id": "store.push.prefix-unbound",
@@ -4330,7 +4341,7 @@
       "statement": "An unset variable named by `prefix_from` raises `SyncPrefixUnbound` at startup, with no bucket-root fallback.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 489
+      "line": 491
     },
     {
       "id": "store.push.prefix-overspecified",
@@ -4341,7 +4352,7 @@
       "statement": "Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 491
+      "line": 493
     },
     {
       "id": "store.push.in-flight",
@@ -4352,7 +4363,7 @@
       "statement": "A push waits up to `[sync] push_wait_secs`, default 300 s, for another local push to release the store's push guard, then raises `SyncPushInFlight`, naming the holder.",
       "why": "because units of one serve share a store root, and a refused push fails a committed fire",
       "file": "spec/10-store.md",
-      "line": 493
+      "line": 495
     },
     {
       "id": "store.push.wire-format",
@@ -4363,7 +4374,7 @@
       "statement": "A push conditionally uploads files the bucket lacks by digest under `<prefix>/<project>/<path>`, of the pushing node or none; machine catalogs, `config.toml`, locks and staging directories stay local, and pointers follow {{store.push.pointer-carry}}.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 495
+      "line": 497
     },
     {
       "id": "store.push.schema-cas",
@@ -4374,7 +4385,7 @@
       "statement": "A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read, so no copy overwrites another.",
       "why": "because two nodes landing different columns into one table both keep them",
       "file": "spec/10-store.md",
-      "line": 496
+      "line": 498
     },
     {
       "id": "store.push.manifest-commit",
@@ -4385,7 +4396,7 @@
       "statement": "A push commits by replacing `<prefix>/manifest.json` under `If-Match` on the ETag it read; this bucket manifest lists each key's sha256, size and owner.",
       "why": "A-store#push-tombstones-owned",
       "file": "spec/10-store.md",
-      "line": 498
+      "line": 500
     },
     {
       "id": "store.push.manifest-format",
@@ -4396,7 +4407,7 @@
       "statement": "The bucket manifest and every generation manifest carry `format`: `1` while they hold no collected record, `2` while they hold one; a manifest without `format` reads as `1`.",
       "why": "A-store#bucket-collect",
       "file": "spec/10-store.md",
-      "line": 500
+      "line": 502
     },
     {
       "id": "store.push.format-unsupported",
@@ -4407,7 +4418,7 @@
       "statement": "A bucket or generation manifest with `format` above 2 raises `SyncManifestFormatUnsupported`, naming the key and format, before the push commit or any pull file write.",
       "why": "because a reader rewriting a manifest it parses in part drops a newer writer's fields",
       "file": "spec/10-store.md",
-      "line": 502
+      "line": 504
     },
     {
       "id": "store.push.collected",
@@ -4418,7 +4429,7 @@
       "statement": "A push uploads no key a standing collected record names in the manifest it reads, and {{store.merge.collected}} keeps that key out of its commit.",
       "why": "A-store#bucket-collect",
       "file": "spec/10-store.md",
-      "line": 504
+      "line": 506
     },
     {
       "id": "store.push.hold-renewal",
@@ -4429,7 +4440,7 @@
       "statement": "A hold record `holds/<build-id>.json` and a table's `holds.jsonl` commit as `schema.json` does, merged into the bucket's copy, a hold record keeping the later `expires_at`; a pull merges a hold record alike.",
       "why": "because a renewal rewrites a hold in place, and an immutable key refuses the rewrite",
       "file": "spec/10-store.md",
-      "line": 506
+      "line": 508
     },
     {
       "id": "store.push.run-state",
@@ -4440,7 +4451,7 @@
       "statement": "`sync push` and `sync manifest --emit` first write `nodes/<node-id>/run-state.json`, recording each pipeline's newest run and each cursor row with its commit marker.",
       "why": "because run history and cursors live outside the store root",
       "file": "spec/10-store.md",
-      "line": 508
+      "line": 510
     },
     {
       "id": "store.push.run-state-upload",
@@ -4451,7 +4462,7 @@
       "statement": "A push uploads its node's run state whatever digest the bucket manifest lists.",
       "why": "because an interrupted push leaves the key holding bytes its listed digest misdescribes",
       "file": "spec/10-store.md",
-      "line": 510
+      "line": 512
     },
     {
       "id": "store.push.control-version",
@@ -4462,7 +4473,7 @@
       "statement": "`sync push` and `sync manifest --emit` record the default local applied control version in each node's run state, which replicas use only for verification.",
       "why": "because a cold node needs the version a writer applied",
       "file": "spec/10-store.md",
-      "line": 512
+      "line": 514
     },
     {
       "id": "store.push.run-state-format",
@@ -4473,7 +4484,7 @@
       "statement": "A run state records `format`, `1` for this layout; readers take no run or cursor from a run state above 1.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 514
+      "line": 516
     },
     {
       "id": "store.push.control-artifact",
@@ -4484,7 +4495,7 @@
       "statement": "A push uploads each immutable applied control snapshot and its {{surface.apply.synced-attestation}} receipt under `<project>/control/`, then commits their digests and project-scoped head in the bucket manifest.",
       "why": "A-surface#synced-control-head",
       "file": "spec/10-store.md",
-      "line": 515
+      "line": 517
     },
     {
       "id": "store.push.control-diverged",
@@ -4495,7 +4506,7 @@
       "statement": "A push whose signed control head does not descend from the bucket head raises `SyncControlDiverged`, naming both heads, and leaves the bucket head unchanged.",
       "why": "A-surface#synced-control-head",
       "file": "spec/10-store.md",
-      "line": 517,
+      "line": 519,
       "scenarios": [
         "WHEN two signed control heads name the same predecessor, THEN the second push refuses and keeps the first head."
       ]
@@ -4509,7 +4520,7 @@
       "statement": "A manifest commit records the sha256 of the uploaded bytes, not the plan's; where they differ, push drops the file's digest record.",
       "why": "because a file rewritten after the plan otherwise lists a digest no bucket object carries",
       "file": "spec/10-store.md",
-      "line": 519
+      "line": 521
     },
     {
       "id": "store.push.transfer-width",
@@ -4520,7 +4531,7 @@
       "statement": "A push keeps up to {{store.pull.transfer-width}} uploads in flight and commits the bucket manifest only once every upload it started returns.",
       "why": "because the manifest lists an object only once the bucket holds it",
       "file": "spec/10-store.md",
-      "line": 521
+      "line": 523
     },
     {
       "id": "store.push.pointer-carry",
@@ -4531,7 +4542,7 @@
       "statement": "After the manifest commit, push conditionally publishes local pointers of complete snapshots, keeping the bucket's fence, when {{store.lay-out.ancestors}} names the bucket pointer's snapshot or the bucket pointer names none.",
       "why": "because a locally published snapshot reads nowhere else until its pointer reaches the bucket",
       "file": "spec/10-store.md",
-      "line": 523
+      "line": 525
     },
     {
       "id": "store.push.pointer-leased",
@@ -4542,7 +4553,7 @@
       "statement": "A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.",
       "why": "because a publish beside the holder races the commit its fence guards",
       "file": "spec/10-store.md",
-      "line": 525
+      "line": 527
     },
     {
       "id": "store.push.pointer-fenced",
@@ -4553,7 +4564,7 @@
       "statement": "A local pointer fenced below the bucket pointer stays local, and the push warns beside its commit.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 527
+      "line": 529
     },
     {
       "id": "store.push.pointer-unrooted",
@@ -4564,7 +4575,7 @@
       "statement": "Snapshot ancestry ending at a collected manifest before the bucket pointer's snapshot or a root keeps the pointer local, and the push warns beside its commit.",
       "why": "because a publish over an unproven descent drops rows the bucket reaches",
       "file": "spec/10-store.md",
-      "line": 529
+      "line": 531
     },
     {
       "id": "store.push.pointer-recommit",
@@ -4575,7 +4586,7 @@
       "statement": "Once the bucket accepts a published pointer, the push commits the manifest again, so a generation names a carried pointer only after the bucket holds it.",
       "why": "because a generation otherwise names a pointer the bucket never held",
       "file": "spec/10-store.md",
-      "line": 531
+      "line": 533
     },
     {
       "id": "store.push.stranded",
@@ -4586,7 +4597,7 @@
       "statement": "Push reports local keys other nodes own that the committed bucket manifest neither lists nor tombstones, grouped by owner on stderr with the `CONTEXTFUL_NODE_ID` pushing each group.",
       "why": "because a moved store root re-derives the node id, stranding runs under the old one",
       "file": "spec/10-store.md",
-      "line": 533
+      "line": 535
     },
     {
       "id": "store.push.after-run",
@@ -4597,7 +4608,7 @@
       "statement": "With `[sync] push_after_run = true`, `run start`, `pipeline run` and `job fire` push the store once the fire's runs close, a failed push failing the command.",
       "why": "because a push spends bucket writes on every fire, which a scheduled sync avoids",
       "file": "spec/10-store.md",
-      "line": 540,
+      "line": 542,
       "group": "fire-driven pushes"
     },
     {
@@ -4609,7 +4620,7 @@
       "statement": "`contextful job fire` on a `sync-push` job pushes the store once as `contextful sync push` does; on a store declaring no `[sync]` the fire fails, naming the store's `config.toml`.",
       "why": "A-surface#maintenance-kinds",
       "file": "spec/10-store.md",
-      "line": 542,
+      "line": 544,
       "group": "fire-driven pushes"
     },
     {
@@ -4621,7 +4632,7 @@
       "statement": "Each manifest commit records `generation` under {{store.push.generation-floor}} and the project's table pointers read before it, then creates `<prefix>/manifests/gen-<N>.json` with the committed bytes under `If-None-Match`.",
       "why": "because a restore or pre-push gate names one committed state",
       "file": "spec/10-store.md",
-      "line": 549,
+      "line": 551,
       "group": "generations"
     },
     {
@@ -4633,7 +4644,7 @@
       "statement": "Each manifest commit records `committed_at`, the push instant, and `committed_by`, the pushing node id; a plan records neither.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 551,
+      "line": 553,
       "group": "generations"
     },
     {
@@ -4645,7 +4656,7 @@
       "statement": "A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.",
       "why": "because reusing a taken number collides with its immutable copy",
       "file": "spec/10-store.md",
-      "line": 552,
+      "line": 554,
       "group": "generations"
     },
     {
@@ -4657,7 +4668,7 @@
       "statement": "Push lists `gen-<G>.json`, G the read manifest's generation, and each later generation's key one by one until the first absent key; only a manifest without `generation` lists all of `manifests/`.",
       "why": "because the prefix gains one copy per commit and is never pruned",
       "file": "spec/10-store.md",
-      "line": 554,
+      "line": 556,
       "group": "generations"
     },
     {
@@ -4669,7 +4680,7 @@
       "statement": "Before each manifest commit, a push finding no `gen-<N>.json` for the read manifest's generation creates it from the bytes it read.",
       "why": "because a missing `gen-<N>.json` otherwise leaves a gap no later push sees",
       "file": "spec/10-store.md",
-      "line": 556,
+      "line": 558,
       "group": "generations"
     },
     {
@@ -4681,7 +4692,7 @@
       "statement": "A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.",
       "why": "because the immutable copy keeps the first commit, so `pull --generation` restores another state",
       "file": "spec/10-store.md",
-      "line": 558,
+      "line": 560,
       "group": "generations"
     },
     {
@@ -4693,7 +4704,7 @@
       "statement": "A downloaded object whose digest differs from its manifest entry is discarded and raises `SyncObjectDigestMismatch`; run states follow {{store.pull.run-state-torn}} instead.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 598
+      "line": 600
     },
     {
       "id": "store.pull.run-state-torn",
@@ -4704,7 +4715,7 @@
       "statement": "A downloaded `nodes/<node-id>/run-state.json` differing from its listed digest is discarded with a warning naming the key, and the pull continues without it.",
       "why": "because an interrupted push leaves a run state its manifest never committed",
       "file": "spec/10-store.md",
-      "line": 600
+      "line": 602
     },
     {
       "id": "store.pull.identity-conflict",
@@ -4715,7 +4726,7 @@
       "statement": "A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.",
       "why": "because importing another UUID lets that store's owner credential read local rows",
       "file": "spec/10-store.md",
-      "line": 602
+      "line": 604
     },
     {
       "id": "store.pull.convergence",
@@ -4726,7 +4737,7 @@
       "statement": "A named key disappearing mid-download makes the pull re-fetch the manifest and retry the shortfall, up to 3 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 604
+      "line": 606
     },
     {
       "id": "store.pull.unconverged",
@@ -4737,7 +4748,7 @@
       "statement": "Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 605
+      "line": 607
     },
     {
       "id": "store.pull.unconverged-resume",
@@ -4748,7 +4759,7 @@
       "statement": "A pull refused under {{store.pull.unconverged}} keeps verified objects, so the next `sync pull` downloads only keys whose digests still differ.",
       "why": "A-store#exhausted-pull-refuses",
       "file": "spec/10-store.md",
-      "line": 607
+      "line": 609
     },
     {
       "id": "store.pull.transfer-width",
@@ -4759,7 +4770,7 @@
       "statement": "A pull downloads with up to `[sync] transfers` concurrent requests, default 16 requests, minimum 1, and writes every verified object before returning any refusal.",
       "why": "because one request per round trip makes a cold boot grow with object count",
       "file": "spec/10-store.md",
-      "line": 609
+      "line": 611
     },
     {
       "id": "store.pull.digest-record",
@@ -4770,7 +4781,7 @@
       "statement": "Pull and push reuse a file's machine-local sha256 record while size, modification time, change time and inode match it, and hash the file otherwise.",
       "why": "because rehashing every held file on each sync grows with the store",
       "file": "spec/10-store.md",
-      "line": 611
+      "line": 613
     },
     {
       "id": "store.pull.pointer-last",
@@ -4781,7 +4792,7 @@
       "statement": "A pull writes a table's pointer only once every Parquet part of the named snapshot exists locally, so no reader meets a pointer before its data.",
       "why": "A-store#replica-read-whole",
       "file": "spec/10-store.md",
-      "line": 613
+      "line": 615
     },
     {
       "id": "store.pull.run-manifest-last",
@@ -4792,7 +4803,7 @@
       "statement": "A pull writes a run's `_manifest.json` only after every other listed object it downloads exists locally, so a concurrent read resolves no run missing parts.",
       "why": "because a read resolves every run whose `_manifest.json` exists",
       "file": "spec/10-store.md",
-      "line": 615
+      "line": 617
     },
     {
       "id": "store.pull.tombstone-applied",
@@ -4803,7 +4814,7 @@
       "statement": "Pull deletes local keys tombstoned and absent from entries; a tombstoned key with no local copy goes unverified and unreported.",
       "why": "because a deletion that never reaches a consumer resurrects once its tombstone ages out",
       "file": "spec/10-store.md",
-      "line": 617
+      "line": 619
     },
     {
       "id": "store.pull.cold-own-keys",
@@ -4814,7 +4825,7 @@
       "statement": "A pull downloads each key its node owns that the store lacks and {{store.merge.held-record}} does not list, so a replacement host or a widened table scope reusing the node id reads every such key.",
       "why": "because only a key the store held and lost is its own deletion; one it never held carries rows nothing local replaces",
       "file": "spec/10-store.md",
-      "line": 619
+      "line": 621
     },
     {
       "id": "store.pull.pointer-read",
@@ -4825,7 +4836,7 @@
       "statement": "Pull and push read the pointer of each table the bucket manifest lists by its key, `tables/<t>/_pointer.json`, and list no table objects, so the read grows with the tables and not with their objects.",
       "why": "because a bucket gathers parts with every landing, and a pointer read listing them grows with the store's history",
       "file": "spec/10-store.md",
-      "line": 621
+      "line": 623
     },
     {
       "id": "store.pull.pointer-advance",
@@ -4836,7 +4847,7 @@
       "statement": "Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.",
       "why": "A-store#replica-read-whole",
       "file": "spec/10-store.md",
-      "line": 623
+      "line": 625
     },
     {
       "id": "store.pull.pointer-adopt",
@@ -4847,7 +4858,7 @@
       "statement": "Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot, whatever its fence, and warns, once {{store.pull.local-fold-unrecoverable}} admits its branch, so the branch's runs fold again against the bucket's head.",
       "why": "because a fold outside a lease writes no fence, and a local snapshot off the bucket's chain misses every run the bucket's head folded",
       "file": "spec/10-store.md",
-      "line": 625
+      "line": 627
     },
     {
       "id": "store.pull.local-fold-unrecoverable",
@@ -4858,7 +4869,7 @@
       "statement": "A branch back to the bucket's chain or a root that folds a run neither on disk, listed in the bucket nor folded on that chain, or meets an absent manifest, raises `SyncLocalFoldUnrecoverable` naming the runs, and the pointer stays.",
       "why": "because those rows otherwise live only in the replaced snapshot's parts, which collection deletes once no pointer names them",
       "file": "spec/10-store.md",
-      "line": 627
+      "line": 629
     },
     {
       "id": "store.pull.schema-merge",
@@ -4869,7 +4880,7 @@
       "statement": "A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.",
       "why": "because rows landed locally carry columns the bucket's copy may lack",
       "file": "spec/10-store.md",
-      "line": 629
+      "line": 631
     },
     {
       "id": "store.pull.table-scope",
@@ -4880,7 +4891,7 @@
       "statement": "`contextful sync pull --table <pattern>`, repeatable, pulls only the tables its patterns cover through {{authority.grant.one-matcher}}. Without the flag, a pull takes `[sync] pull_tables`, and without either, every table.",
       "why": "because a disposable disk serving one table otherwise downloads every table the bucket holds",
       "file": "spec/10-store.md",
-      "line": 631
+      "line": 633
     },
     {
       "id": "store.pull.tables-empty",
@@ -4891,7 +4902,7 @@
       "statement": "A `[sync] pull_tables` holding no pattern raises `SyncPullTablesEmpty` when the config is read; `[\"*\"]` names every table.",
       "why": "because an empty list reads as no table to one operator and every table to another",
       "file": "spec/10-store.md",
-      "line": 633
+      "line": 635
     },
     {
       "id": "store.pull.scope-shared",
@@ -4902,7 +4913,7 @@
       "statement": "A table-scoped pull also takes `store-id`, `control/`, every `nodes/<node-id>/run-state.json` and every `cursors/` entry, and no other key outside `tables/`.",
       "why": "because run states and commit-log entries name no table, and a scoped store lacking them restarts each source",
       "file": "spec/10-store.md",
-      "line": 635
+      "line": 637
     },
     {
       "id": "store.pull.before-run",
@@ -4913,7 +4924,7 @@
       "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull the tables {{store.pull.table-scope}} selects before their first read, a failed pull stopping the command.",
       "why": "because a container on an empty disk otherwise serves without other nodes' runs",
       "file": "spec/10-store.md",
-      "line": 637
+      "line": 639
     },
     {
       "id": "store.pull.serve-refresh",
@@ -4924,7 +4935,7 @@
       "statement": "Under {{store.pull.before-run}}, `serve` pulls again every 30 s and maps the new generation for reads starting after that pull; a failed refresh keeps serving the held generation and logs the failure.",
       "why": "because a separate query face otherwise serves its starting generation until restart",
       "file": "spec/10-store.md",
-      "line": 639
+      "line": 641
     },
     {
       "id": "store.pull.generation",
@@ -4935,7 +4946,7 @@
       "statement": "`contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads its in-scope keys at their listed digests and writes exactly its pointers regardless of fence.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 641
+      "line": 643
     },
     {
       "id": "store.pull.generation-list",
@@ -4946,7 +4957,7 @@
       "statement": "`contextful sync generations` lists the bucket's `gen-<N>.json` files in ascending order with `committed_at`, `committed_by` and the project's entry and tombstone counts, a missing stamp printing as `-`.",
       "why": "because generation numbers carry no time",
       "file": "spec/10-store.md",
-      "line": 642
+      "line": 644
     },
     {
       "id": "store.pull.generation-absent",
@@ -4957,7 +4968,7 @@
       "statement": "A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.",
       "why": "because a restore falling back to another generation reads a state nobody named",
       "file": "spec/10-store.md",
-      "line": 644
+      "line": 646
     },
     {
       "id": "store.pull.generation-diverged",
@@ -4968,7 +4979,7 @@
       "statement": "A local syncable file in scope that the generation omits makes generation pull raise `SyncGenerationDiverged`, naming the file, and write nothing.",
       "why": "because a kept unlisted run adds rows the generation never held",
       "file": "spec/10-store.md",
-      "line": 646
+      "line": 648
     },
     {
       "id": "store.pull.generation-schema",
@@ -4979,7 +4990,7 @@
       "statement": "A generation pull merges the bucket's current `schema.json` under {{store.pull.schema-merge}}, refusing nothing over a differing generation digest.",
       "why": "because the lattice keeps every column an earlier generation carried",
       "file": "spec/10-store.md",
-      "line": 648
+      "line": 650
     },
     {
       "id": "store.pull.generation-run-state",
@@ -4990,7 +5001,7 @@
       "statement": "Generation pull exempts `nodes/<node-id>/run-state.json` from {{store.pull.generation-diverged}}, keeping run states the generation omits; other unlisted files under `nodes/` meet that refusal.",
       "why": "because a run state summarizes history outside the store root",
       "file": "spec/10-store.md",
-      "line": 650
+      "line": 652
     },
     {
       "id": "store.pull.run-state-cursor",
@@ -5001,7 +5012,7 @@
       "statement": "At run open, a run resumes from a pulled run state's cursor when that pipeline and table's commit marker is newer than every local one.",
       "why": "because a collected run takes its cursor out of the bucket, so a cold node re-reads the source",
       "file": "spec/10-store.md",
-      "line": 652
+      "line": 654
     },
     {
       "id": "store.pull.control-head",
@@ -5012,7 +5023,7 @@
       "statement": "Pull downloads the bucket manifest's project-scoped control head, snapshot and receipt ancestry at their listed digests. The local applied pointer stays unchanged for {{surface.reconcile.pulled-control}}.",
       "why": "A-surface#synced-control-head",
       "file": "spec/10-store.md",
-      "line": 654,
+      "line": 656,
       "scenarios": [
         "WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head."
       ]
@@ -5026,7 +5037,7 @@
       "statement": "With `[sync] lazy_parts = true`, pull skips table Parquet data parts, which the store fetches whole on first read or fold use and verifies under {{store.pull.digest-mismatch}}.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 661,
+      "line": 663,
       "group": "lazy parts"
     },
     {
@@ -5038,7 +5049,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, {{store.pull.pointer-last}} waits for the named snapshot's `_manifest.json` alone; a part's digest comes from the bucket manifest when a read first fetches it.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 663,
+      "line": 665,
       "group": "lazy parts"
     },
     {
@@ -5050,7 +5061,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, {{store.pull.before-run}} waits for every in-scope object except data parts and the manifests {{store.pull.lazy-folded-runs}} skips.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 665,
+      "line": 667,
       "group": "lazy parts"
     },
     {
@@ -5062,7 +5073,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 667,
+      "line": 669,
       "group": "lazy parts"
     },
     {
@@ -5074,7 +5085,7 @@
       "statement": "Each pull rewrites `.skipped-runs.json` to the listed manifests still absent locally, keeping entries of tables outside its scope; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
-      "line": 669,
+      "line": 671,
       "group": "lazy parts"
     },
     {
@@ -5086,7 +5097,7 @@
       "statement": "Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 671,
+      "line": 673,
       "group": "lazy parts"
     },
     {
@@ -5098,7 +5109,7 @@
       "statement": "A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, naming the manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 673,
+      "line": 675,
       "group": "lazy parts"
     },
     {
@@ -5110,7 +5121,7 @@
       "statement": "A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 675,
+      "line": 677,
       "group": "lazy parts"
     },
     {
@@ -5122,7 +5133,7 @@
       "statement": "Every command opening a store whose `[sync]` declares `lazy_parts` registers the bucket's part source once per process, whether or not the command pulls.",
       "why": "because a command reading runs without pulling otherwise meets {{store.pull.folded-runs-unreachable}}",
       "file": "spec/10-store.md",
-      "line": 677,
+      "line": 679,
       "group": "lazy parts"
     },
     {
@@ -5134,7 +5145,7 @@
       "statement": "`[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 679,
+      "line": 681,
       "group": "lazy parts"
     },
     {
@@ -5146,7 +5157,7 @@
       "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.",
       "why": "because a partial acquisition and a lost index leave completed downloads subject to eviction",
       "file": "spec/10-store.md",
-      "line": 681,
+      "line": 683,
       "group": "lazy parts"
     },
     {
@@ -5158,7 +5169,7 @@
       "statement": "A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.",
       "why": "because `sync collect` deletes a tombstoned run's parts while a container whose pointer predates the tombstone reads them",
       "file": "spec/10-store.md",
-      "line": 683,
+      "line": 685,
       "group": "lazy parts"
     },
     {
@@ -5170,7 +5181,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 720
+      "line": 722
     },
     {
       "id": "store.merge.tombstone-signed",
@@ -5181,7 +5192,7 @@
       "statement": "Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 722
+      "line": 724
     },
     {
       "id": "store.merge.tombstone-unverified",
@@ -5192,7 +5203,7 @@
       "statement": "Unsigned tombstones, invalid signatures, or keys absent from the key-set ledger's verifying set at `deleted_at` raise `SyncTombstoneUnverified`. Merge preserves the named entry; pull deletes nothing.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 724
+      "line": 726
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -5203,7 +5214,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 726
+      "line": 728
     },
     {
       "id": "store.merge.retries",
@@ -5214,7 +5225,7 @@
       "statement": "`[sync] push_retries`, default 5 attempts, bounds consecutive re-commit rounds whose re-read manifest carries no newer generation than the round before.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 727
+      "line": 729
     },
     {
       "id": "store.merge.round-ceiling",
@@ -5225,7 +5236,7 @@
       "statement": "A push stops its manifest commit loop after 64 rounds, whatever generations those rounds meet.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 729
+      "line": 731
     },
     {
       "id": "store.merge.exhausted",
@@ -5236,7 +5247,7 @@
       "statement": "Exhausting {{store.merge.retries}} or {{store.merge.round-ceiling}} raises `SyncManifestRebaseExhausted`, reports every uploaded object as in the bucket and asks for a re-run.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 731
+      "line": 733
     },
     {
       "id": "store.merge.cursor-recency",
@@ -5247,7 +5258,7 @@
       "statement": "Resolving a cursor by last-write time raises `SyncCursorConflict`. A cursor resolves through its commit.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/10-store.md",
-      "line": 733
+      "line": 735
     },
     {
       "id": "store.merge.scoped-union",
@@ -5258,7 +5269,7 @@
       "statement": "A merge takes local entries owned by this writer or unowned, and all other remote entries. It tombstones a writer-owned remote entry only when {{store.merge.held-record}} lists the key and the store lacks the file.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 735
+      "line": 737
     },
     {
       "id": "store.merge.held-record",
@@ -5269,7 +5280,7 @@
       "statement": "Push records locally held owned keys under its node id in `.sync-held.json`, adding before commit and replacing that node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 737
+      "line": 739
     },
     {
       "id": "store.merge.held-absent",
@@ -5280,7 +5291,7 @@
       "statement": "With no keys for the node in `.sync-held.json`, a surviving `.push.lock` means the store holds every remote key the node owns, and none without it.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 739
+      "line": 741
     },
     {
       "id": "store.merge.held-unreadable",
@@ -5291,7 +5302,7 @@
       "statement": "An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.",
       "why": "because corruption establishes no ownership and a replacement discards other nodes' entries",
       "file": "spec/10-store.md",
-      "line": 741
+      "line": 743
     },
     {
       "id": "store.merge.collected",
@@ -5302,7 +5313,7 @@
       "statement": "A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.",
       "why": "A-store#bucket-collect",
       "file": "spec/10-store.md",
-      "line": 743
+      "line": 745
     },
     {
       "id": "store.merge.ownership",
@@ -5313,7 +5324,7 @@
       "statement": "A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 745
+      "line": 747
     },
     {
       "id": "store.snapshot.capture",
@@ -34811,6 +34822,10 @@
     [
       "store.fold.declared-trigger",
       "store.fold.triggers"
+    ],
+    [
+      "store.fold.land-trigger",
+      "store.fold.job-pass-synced"
     ],
     [
       "store.fold.job-pass",
@@ -67588,6 +67603,22 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/maintenance.rs",
         "name": "a_fold_job_on_a_synced_store_publishes_under_the_compaction_lease",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.fold.land-trigger": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/context.rs",
+        "name": "one_shot_lands_hold_the_declared_unfolded_run_count",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/context.rs",
+        "name": "a_one_shot_land_on_a_synced_store_runs_no_pass",
         "verdict": "performed",
         "proved": false
       }
