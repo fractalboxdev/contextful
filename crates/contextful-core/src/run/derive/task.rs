@@ -2,7 +2,7 @@
 //! embedding binary registers by name before build, the key a host unit derives under,
 //! and the rows it lands across a marker table and its content tables.
 
-use super::config::{DeriveConfig, check_output_table, check_reserved_discriminator};
+use super::config::{DeriveConfig, OrderBy, check_output_table, check_reserved_discriminator};
 use super::emit::{
     DERIVATION_KEY, DERIVED_ID, EMPTY_ATTEMPTS, KIND, MARKER_SEQ, UnitStatus, by_unit, derived_id, redact, standing,
 };
@@ -177,9 +177,18 @@ pub fn ingested_since(row: &Row, since: Instant) -> bool {
         .is_some_and(|at| at >= since)
 }
 
-/// The outstanding host units of one tick: every parent row the task's `sample_rate` keeps
-/// and holding no settled marker under its current key in the marker table, truncated to the
-/// run's row budget after the anti-join (`run.select.sample`, `run.select.anti-join`).
+/// Keep the first `budget` of `units` in `order`, ties broken by unit key (`run.select.order`).
+pub fn keep_ordered(units: &mut Vec<HostUnit>, order: &OrderBy, budget: usize) {
+    units.sort_by(|a, b| order.compare((&a.key, a.row.get(&order.column)), (&b.key, b.row.get(&order.column))));
+    units.truncate(budget);
+}
+
+/// The outstanding host units of one tick: every parent row the task's `filter` matches and
+/// its `sample_rate` keeps, holding no settled marker under its current key in the marker
+/// table, ordered by `order_by` and truncated to the run's row budget after the anti-join.
+/// An ordered selection holds at most twice the budget in units, cutting back to the budget
+/// each time it fills (`run.select.filter`, `run.select.sample`, `run.select.anti-join`,
+/// `run.select.order`).
 pub fn select_host(
     parents: &[Row],
     markers: &[Row],
@@ -188,6 +197,7 @@ pub fn select_host(
 ) -> HostSelection {
     let units = by_unit(markers);
     let columns = task.columns();
+    let budget = usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX);
     let mut sel = HostSelection::default();
     let mut seen = BTreeSet::new();
     for r in parents {
@@ -199,6 +209,9 @@ pub fn select_host(
             continue;
         };
         if !seen.insert(key.clone()) {
+            continue;
+        }
+        if config.filter.as_ref().is_some_and(|f| !f.0.matches(r)) {
             continue;
         }
         if config
@@ -227,9 +240,16 @@ pub fn select_host(
             prior_attempts: prior,
             derivation_key,
         });
+        if let Some(order) = &config.order_by {
+            if sel.outstanding.len() >= budget.saturating_mul(2).max(1) {
+                keep_ordered(&mut sel.outstanding, order, budget);
+            }
+        }
     }
-    sel.outstanding
-        .truncate(usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX));
+    match &config.order_by {
+        Some(order) => keep_ordered(&mut sel.outstanding, order, budget),
+        None => sel.outstanding.truncate(budget),
+    }
     sel
 }
 

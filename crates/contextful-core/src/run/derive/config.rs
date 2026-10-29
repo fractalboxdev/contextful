@@ -3,10 +3,12 @@
 
 use super::task::{Tasks, BUILT_IN_TASKS};
 use crate::connector::meter::LimiterDeclaration;
+use crate::read::filter::Filter;
 use crate::run::RunError;
 use crate::time::Instant;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 /// Units one run attempts: 25 rows (`run.select.rows-per-run`).
@@ -19,12 +21,13 @@ pub const LINK_SECONDS_PER_RUN: u64 = 300;
 pub const PARENT_SCAN_ROWS: u64 = 1_000_000;
 
 /// The keys a derive source reads.
-pub const KEYS: [&str; 12] = [
+pub const KEYS: [&str; 14] = [
     "engine", "source_table", "media_column", "parent_id_column", "task", "max_rows_per_run", "max_attempts", "max_seconds_per_run", "journal", "grant",
-    "sample_rate", "since",
+    "sample_rate", "since", "filter", "order_by",
 ];
-/// The keys only a host task reads: which of its units a pass selects (`run.select.sample`, `run.select.since`).
-pub const HOST_KEYS: [&str; 2] = ["sample_rate", "since"];
+/// The keys only a host task reads: which of its units a pass selects (`run.select.sample`,
+/// `run.select.since`, `run.select.filter`, `run.select.order`).
+pub const HOST_KEYS: [&str; 4] = ["sample_rate", "since", "filter", "order_by"];
 /// Keys that belong to the machine's binding, never to the manifest (`run.bind.command-in-manifest`).
 pub const MACHINE_KEYS: [&str; 4] = ["command", "preprocess", "env", "allow_hosts"];
 
@@ -81,6 +84,57 @@ impl SampleRate {
     }
 }
 
+/// The parent rows a host task selects: equality and membership conditions over its key
+/// and declared columns, in the shape of a ranked read's filter (`run.select.filter`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ParentFilter(pub Filter);
+
+/// [`Filter::parse`] reads each number through `as_f64`, which yields no NaN, so equality
+/// is reflexive.
+impl Eq for ParentFilter {}
+
+/// The order a host task's outstanding units take before the row budget cuts them
+/// (`run.select.order`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderBy {
+    pub column: String,
+    pub descending: bool,
+}
+
+impl OrderBy {
+    /// Compare two units by their cells under the column, nulls and absent cells last in
+    /// either direction, ties broken by unit key ascending. Booleans sort before numbers and
+    /// numbers before text; numbers compare by value and text by bytes.
+    pub fn compare(&self, a: (&str, Option<&Value>), b: (&str, Option<&Value>)) -> Ordering {
+        fn rank(v: &Value) -> Option<(u8, &Value)> {
+            match v {
+                Value::Bool(_) => Some((0, v)),
+                Value::Number(_) => Some((1, v)),
+                Value::String(_) => Some((2, v)),
+                _ => None,
+            }
+        }
+        let cells = match (a.1.and_then(rank), b.1.and_then(rank)) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(_), None) => Ordering::Less,
+            (Some((ra, va)), Some((rb, vb))) => {
+                let ascending = ra.cmp(&rb).then_with(|| match (va, vb) {
+                    (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
+                    (Value::Number(x), Value::Number(y)) => match (x.as_i64(), y.as_i64()) {
+                        (Some(x), Some(y)) => x.cmp(&y),
+                        _ => x.as_f64().unwrap_or(0.0).total_cmp(&y.as_f64().unwrap_or(0.0)),
+                    },
+                    (Value::String(x), Value::String(y)) => x.as_bytes().cmp(y.as_bytes()),
+                    _ => Ordering::Equal,
+                });
+                if self.descending { ascending.reverse() } else { ascending }
+            }
+        };
+        cells.then_with(|| a.0.as_bytes().cmp(b.0.as_bytes()))
+    }
+}
+
 /// A derive source's configuration, from `[pipeline.source.config]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeriveConfig {
@@ -98,6 +152,10 @@ pub struct DeriveConfig {
     pub sample_rate: Option<SampleRate>,
     /// The earliest `_ingested_at` at which a host task selects a parent row (`run.select.since`).
     pub since: Option<Instant>,
+    /// The parent rows a host task selects; absent, every row (`run.select.filter`).
+    pub filter: Option<ParentFilter>,
+    /// The order a host task's outstanding units are cut in; absent, scan order (`run.select.order`).
+    pub order_by: Option<OrderBy>,
 }
 
 fn int(cfg: &Map<String, Value>, key: &str) -> Option<i64> {
@@ -149,7 +207,7 @@ impl DeriveConfig {
         };
         if let Some(k) = cfg.keys().find(|k| !task.is_host() && HOST_KEYS.contains(&k.as_str())) {
             return Err(RunError::PipelineUnknownConfigKey(format!(
-                "task `{}` reads no key `{k}`; `sample_rate` and `since` select a host task's units",
+                "task `{}` reads no key `{k}`; `sample_rate`, `since`, `filter` and `order_by` select a host task's units",
                 task.name()
             )));
         }
@@ -194,6 +252,55 @@ impl DeriveConfig {
         }).transpose()?;
         let source_table = required("source_table")?;
         let parent_id_column = required("parent_id_column")?;
+        // A host task's selection names its key or a column it declares (`run.select.filter`, `run.select.order`).
+        let declared: Vec<String> = match &task {
+            Task::Host(name) => std::iter::once(parent_id_column.clone())
+                .chain(tasks.get(name).map(|t| t.columns()).unwrap_or_default())
+                .collect(),
+            _ => Vec::new(),
+        };
+        let undeclared = |key: &str, column: &str| {
+            RunError::PipelineSpecInvalid(format!(
+                "pipeline `{pipeline_id}` declares `{key}` over `{column}`, which task `{}` neither keys on nor declares; it reads {}",
+                task.name(),
+                declared.join(", ")
+            ))
+        };
+        let filter = match cfg.get("filter") {
+            None => None,
+            Some(v) => {
+                let filter = Filter::parse(Some(v), None)
+                    .map_err(|e| RunError::PipelineSpecInvalid(format!("pipeline `{pipeline_id}` declares `filter = {v}`: {e}")))?;
+                if !v.is_object() {
+                    return Err(RunError::PipelineSpecInvalid(format!("pipeline `{pipeline_id}` declares `filter = {v}`; a filter is a table")));
+                }
+                if let Some(column) = filter.columns().find(|c| !declared.iter().any(|d| d == c)) {
+                    return Err(undeclared("filter", column));
+                }
+                Some(ParentFilter(filter))
+            }
+        };
+        let order_by = match cfg.get("order_by") {
+            None => None,
+            Some(v) => {
+                let words: Vec<&str> = v.as_str().map(|s| s.split_whitespace().collect()).unwrap_or_default();
+                let descending = match words.as_slice() {
+                    [_] => Some(false),
+                    [_, direction] if direction.eq_ignore_ascii_case("asc") => Some(false),
+                    [_, direction] if direction.eq_ignore_ascii_case("desc") => Some(true),
+                    _ => None,
+                };
+                let Some(descending) = descending else {
+                    return Err(RunError::PipelineSpecInvalid(format!(
+                        "pipeline `{pipeline_id}` declares `order_by = {v}`; `order_by` is a column, then `asc` or `desc`"
+                    )));
+                };
+                if !declared.iter().any(|d| d == words[0]) {
+                    return Err(undeclared("order_by", words[0]));
+                }
+                Some(OrderBy { column: words[0].to_string(), descending })
+            }
+        };
         // A host task reads the parent columns it declares and binds no engine (`run.bind.driver-mismatch`).
         let (engine, media_column) = if task.is_host() {
             if let Some(engine) = cfg.get("engine") {
@@ -229,6 +336,8 @@ impl DeriveConfig {
             }),
             sample_rate,
             since,
+            filter,
+            order_by,
         })
     }
 }
