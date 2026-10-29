@@ -20,6 +20,9 @@ pub const SNAPSHOT_ANCESTORS_MAX: usize = 256;
 pub const LOCAL_NODE_ID: &str = "local";
 
 pub const MANIFEST_FILE: &str = "_manifest.json";
+/// The marker a collection writes beside a snapshot's `_manifest.json` once it removed the
+/// snapshot's own parts and sidecars (`store.fold.manifest-kept`, `store.collect.superseded`).
+pub const COLLECTED_FILE: &str = "_collected.json";
 pub const POINTER_FILE: &str = "_pointer.json";
 pub const SCHEMA_FILE: &str = "schema.json";
 pub const STAGING_SUFFIX: &str = ".staging";

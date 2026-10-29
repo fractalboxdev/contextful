@@ -147,7 +147,16 @@ pub fn run(args: BuildArgs) -> Result<()> {
                 None => anyhow::bail!("no placing principal: pass `--by`"),
             };
             let store = Store::open(&l.project.dir, &l.project.name)?;
-            let (receipt, record) = hold(&store, &id, &build_id, &principal, duration, now(&project.now)?)?;
+            let at = now(&project.now)?;
+            // A synced store asks the bucket whether a collect took the build's parts
+            // (`run.model.hold-collected`).
+            if crate::sync::bucket_collected_build(&l, &id, &build_id, at)? {
+                return Err(RunError::ModelBuildCollected(format!(
+                    "model `{id}` build `{build_id}`: the bucket records its parts as collected, so no hold can keep it readable"
+                ))
+                .into());
+            }
+            let (receipt, record) = hold(&store, &id, &build_id, &principal, duration, at)?;
             let word = match receipt {
                 Receipt::Held => "Held",
                 Receipt::Renewed => "Renewed",

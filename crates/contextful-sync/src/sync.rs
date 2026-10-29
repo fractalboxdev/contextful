@@ -1848,7 +1848,10 @@ impl Syncer {
         let mut keep: BTreeSet<String> = skipped.iter().filter_map(|k| self.local_rel(k)).map(str::to_string).collect();
         for rel in held.manifests {
             let key = format!("{}/{rel}", self.project);
-            if !self.store.root().join(&rel).exists() && (!reaches(&key) || manifest.entries.contains_key(&key)) {
+            // A pull outside the table's scope still drops a manifest a collect took
+            // (`store.pull.skipped-record`).
+            let kept = manifest.entries.contains_key(&key) || (!reaches(&key) && !manifest.collected.contains_key(&key));
+            if !self.store.root().join(&rel).exists() && kept {
                 keep.insert(rel);
             }
         }

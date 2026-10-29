@@ -34,6 +34,16 @@ impl Fixture {
         Fixture { _dir: dir, store }
     }
 
+    /// A store whose `config.toml` declares `[sync]`.
+    pub fn synced() -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join(".contextful/context/research");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("config.toml"), "[sync]\nendpoint = \"file://bucket\"\nbucket = \"context-team\"\n").unwrap();
+        let store = Store::open(dir.path(), "research").unwrap();
+        Fixture { _dir: dir, store }
+    }
+
     pub fn table_dir(&self, table: &str) -> PathBuf {
         self.store.table_dir(table).unwrap()
     }

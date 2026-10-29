@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 /// on disk publishes refuses, naming the oldest one that does
 /// (`read.resolve-pin.unknown-build`).
 pub(crate) fn pinned(store: &Store, table: &str, build_id: &str, as_of: Option<Bound>) -> Result<Option<SnapshotManifest>, ReadFault> {
-    let published: Vec<SnapshotManifest> = crate::build::manifests(store, table)?.into_iter().filter(|m| m.publish.is_some()).collect();
+    let published: Vec<SnapshotManifest> = retained(store, table)?.into_iter().filter(|m| m.publish.is_some()).collect();
     let Some(found) = published.iter().find(|m| m.publish.as_ref().is_some_and(|p| p.build_id == build_id)) else {
         let oldest = published.first().and_then(|m| m.publish.as_ref()).map(|p| p.build_id.as_str());
         return Err(unavailable(table, build_id, oldest));
@@ -32,7 +32,20 @@ pub(crate) fn pinned(store: &Store, table: &str, build_id: &str, as_of: Option<B
 /// The store snapshot a pin on a snapshot corpus names (`store.snapshot.capture`); an id
 /// naming no snapshot of `table` refuses as an unknown build.
 pub(crate) fn capture(store: &Store, table: &str, snapshot_id: &str) -> Result<SnapshotManifest, ReadFault> {
-    crate::build::manifests(store, table)?.into_iter().find(|m| m.snapshot_id.to_string() == snapshot_id).ok_or_else(|| unavailable(table, snapshot_id, None))
+    retained(store, table)?.into_iter().find(|m| m.snapshot_id.to_string() == snapshot_id).ok_or_else(|| unavailable(table, snapshot_id, None))
+}
+
+/// Every snapshot manifest of `table` [`crate::build::manifests`] reads, save each a collection
+/// reduced to its manifest: a pin to one is a pin to a collected build
+/// (`read.resolve-pin.unknown-build`).
+fn retained(store: &Store, table: &str) -> Result<Vec<SnapshotManifest>, ReadFault> {
+    let mut out = Vec::new();
+    for m in crate::build::manifests(store, table)? {
+        if !store.snapshot_collected(table, &m)? {
+            out.push(m);
+        }
+    }
+    Ok(out)
 }
 
 /// The refusal of a pin on `table` to `build_id`, naming `oldest`, the oldest build still
@@ -62,7 +75,7 @@ pub(crate) fn resolved<'t>(session: &Session, touched: impl IntoIterator<Item = 
 /// `Some(None)` when none is (`read.horizon.build-resolution`). A build recording no
 /// horizon read current inputs and serves no horizon.
 pub(crate) fn within_horizon(store: &Store, table: &str, horizon: contextful_core::time::Instant) -> Result<Option<Option<String>>, ReadFault> {
-    let published: Vec<SnapshotManifest> = crate::build::manifests(store, table)?.into_iter().filter(|m| m.publish.is_some()).collect();
+    let published: Vec<SnapshotManifest> = retained(store, table)?.into_iter().filter(|m| m.publish.is_some()).collect();
     if published.is_empty() {
         return Ok(None);
     }

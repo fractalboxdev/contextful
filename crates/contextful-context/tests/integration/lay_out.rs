@@ -374,7 +374,7 @@ fn each_batch_merges_into_schema_json() {
 
 /// The store writes each run file once and edits none; snapshot directories are immutable, so a fold writes a new
 /// snapshot.
-// spec: store.lay-out.immutable-files@66c76789
+// spec: store.lay-out.immutable-files@e2527587
 #[test]
 fn a_fold_writes_a_new_snapshot_and_edits_nothing_published() {
     let f = Fixture::new();

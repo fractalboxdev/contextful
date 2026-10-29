@@ -583,6 +583,21 @@ fn a_hold_on_an_unknown_build_is_refused() {
     assert!(!p.dir().join("holds").join("snapshot-00000000000000000001.json").exists());
 }
 
+/// A hold naming a build whose parts a collection removed raises `ModelBuildCollected`, a renewal included, and an
+/// unexpired hold renews while its build's parts stay.
+// spec: run.model.hold-collected@5ed41926
+#[test]
+fn a_hold_on_a_collected_build_is_refused() {
+    let p = Project::new();
+    let b = p.build(MODEL, "2030-01-01T00:00:00Z").unwrap();
+    let (held, _) = hold(&p.fx.store, "daily", &b.build_id, "ops", 30 * 86_400, at("2030-01-01T01:00:00Z")).unwrap();
+    let (renewed, _) = hold(&p.fx.store, "daily", &b.build_id, "ops", 30 * 86_400, at("2030-01-26T00:00:00Z")).unwrap();
+    assert_eq!((held, renewed), (Receipt::Held, Receipt::Renewed));
+    std::fs::write(p.dir().join("data/snapshots").join(&b.build_id).join("_collected.json"), br#"{"collected_at":"2030-02-01T00:00:00Z"}"#).unwrap();
+    let e = hold(&p.fx.store, "daily", &b.build_id, "ops", 60, at("2030-01-27T00:00:00Z")).unwrap_err().to_string();
+    assert!(e.starts_with("ModelBuildCollected:") && e.contains(&b.build_id), "{e}");
+}
+
 /// `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.
 #[test]
 fn the_logs_follow_the_committed_manifests() {

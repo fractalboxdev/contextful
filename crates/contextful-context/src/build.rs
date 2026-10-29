@@ -249,11 +249,20 @@ pub fn held(store: &Store, model: &str, now: Instant) -> Result<BTreeSet<String>
 /// on it is renewed, anything else is held anew.
 pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u64, now: Instant) -> Result<(Receipt, HoldRecord)> {
     store.check_writable("build hold")?;
-    let published: Vec<String> = manifests(store, model)?.into_iter().filter_map(|m| m.publish.map(|s| s.build_id)).collect();
-    if !published.iter().any(|b| b == build_id) {
+    let committed = manifests(store, model)?;
+    let published: Vec<String> = committed.iter().filter_map(|m| m.publish.as_ref().map(|s| s.build_id.clone())).collect();
+    let Some(found) = committed.iter().find(|m| m.publish.as_ref().is_some_and(|p| p.build_id == build_id)) else {
         return Err(RunError::ModelBuildUnknown(format!(
             "model `{model}` holds no published build `{build_id}`; its committed builds are [{}]",
             published.join(", ")
+        ))
+        .into());
+    };
+    // A build whose parts a collection removed keeps only its manifest; no hold reads it again
+    // (`run.model.hold-collected`).
+    if store.snapshot_collected(model, found)? {
+        return Err(RunError::ModelBuildCollected(format!(
+            "model `{model}` build `{build_id}` keeps only its manifest: a collection removed its parts, so no hold can keep it readable"
         ))
         .into());
     }

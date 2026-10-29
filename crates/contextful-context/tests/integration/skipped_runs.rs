@@ -149,7 +149,7 @@ fn without_a_part_source_skipped_runs_refuse_rather_than_drop_rows() {
 }
 
 /// A skipped manifest the part source leaves absent refuses as a collected part.
-// spec: store.pull.folded-run-collected@5cbfc1d8
+// spec: store.pull.folded-run-collected@7a1472fe
 #[test]
 fn a_skipped_manifest_the_source_cannot_bring_refuses_as_collected() {
     let (f, _) = folded_store();
@@ -157,6 +157,39 @@ fn a_skipped_manifest_the_source_cannot_bring_refuses_as_collected() {
     let (store, _) = lazy(&f, Vec::new());
     let err = refusal(store.committed_runs("filings").unwrap_err());
     assert!(matches!(&err, StoreError::SyncPartCollected(m) if m.contains("run-1")), "{err}");
+}
+
+/// A source restoring every stashed manifest save those a collection took, which it answers as collected.
+#[derive(Debug, Default)]
+struct Collected {
+    inner: Manifests,
+    gone: Vec<String>,
+}
+
+impl PartSource for Collected {
+    fn hold(&self, files: &[String]) -> Result<PartHold, StoreError> {
+        if let Some(rel) = files.iter().find(|f| self.gone.contains(f)) {
+            return Err(StoreError::SyncPartCollected(format!("`{rel}` is gone from the bucket")));
+        }
+        self.inner.hold(files)
+    }
+}
+
+/// An unbounded listing leaves out a skipped manifest the source answers as collected and lists every other run;
+/// an `as_of` read needing it still refuses as collected.
+// spec: store.pull.folded-run-collected@7a1472fe
+#[test]
+fn an_unbounded_listing_leaves_out_a_collected_manifest() {
+    let (f, d) = folded_store();
+    let stash = skip_folded(&f, "filings");
+    let gone = stash.iter().find(|(rel, _)| rel.contains("/run-1/")).map(|(rel, _)| rel.clone()).unwrap();
+    let source = Arc::new(Collected { inner: Manifests { root: f.store.root().to_path_buf(), stash, ..Manifests::default() }, gone: vec![gone] });
+    let store = f.store.clone().with_part_source(source);
+    let listed = keys(&store.committed_runs("filings").unwrap());
+    assert!(!listed.is_empty());
+    assert_eq!(listed, ["run-2/ingest-a", "run-3/ingest-a"]);
+    let err = contextful_context::scan::scan(&store, &d, as_of("2030-01-01T01:00:00Z")).unwrap_err().to_string();
+    assert!(err.starts_with("SyncPartCollected"), "{err}");
 }
 
 /// The request ledger's fold reads each run's commit instant through the fetched manifests,

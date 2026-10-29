@@ -170,6 +170,14 @@ pub(crate) fn sync_config(l: &Located) -> Result<(Option<SyncConfig>, PathBuf)> 
     Ok((file.sync, config_path))
 }
 
+/// Whether the bucket of a store declaring `[sync]` records build `build_id` of `model` as
+/// collected (`run.model.hold-collected`); `false` for a store declaring none.
+pub(crate) fn bucket_collected_build(l: &Located, model: &str, build_id: &str, now: Instant) -> Result<bool> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(false) };
+    let (syncer, _) = open_with(l, config)?;
+    Ok(syncer.build_collected(model, build_id, now)?)
+}
+
 fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)> {
     let store = Store::open(&l.project.dir, &l.project.name)?;
     let bucket = bucket(&config)?;
@@ -836,8 +844,17 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             Ok(())
         }
         SyncCmd::Collect { args, dry_run } => {
-            let (s, _) = open(&args)?;
-            let report = s.collect(now(&args.now)?, dry_run)?;
+            let (s, mut decls) = open(&args)?;
+            // A model's table collects under the window a build's own retention reads: its
+            // declaration, else the default (`store.collect.declared-window`).
+            let l = locate(args.project.as_deref(), args.declaration.clone())?;
+            let files = crate::pipeline::manifests(&l.declaration)?;
+            for m in contextful_core::pipeline::model::collect_models(&files, &contextful_core::pipeline::declare::collect(&files)?)? {
+                if !decls.iter().any(|d| d.name == m.spec.id) {
+                    decls.push(TableDecl::named(&m.spec.id));
+                }
+            }
+            let report = s.collect_declared(now(&args.now)?, dry_run, &decls)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }

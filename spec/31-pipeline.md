@@ -678,6 +678,8 @@ A hold keeps one build from collection, and status reads the last attempt beside
 - `status-verb` — `build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.
 - `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.
   *because a hold on a build that does not exist protects nothing and reads as protection*
+- `hold-collected` — A hold naming a build {{store.fold.collected-snapshot}} counts, or whose parts the bucket of a store declaring `[sync]` records as collected, raises `ModelBuildCollected` and commits nothing; an unexpired hold renews.
+  *because a hold over removed parts reports `Held` for a build no reader can read*
 
 unsettled: Does a model materialize incrementally, merging each build into its prior one on `unique_key`? owner: pipeline affects: run.model
 
