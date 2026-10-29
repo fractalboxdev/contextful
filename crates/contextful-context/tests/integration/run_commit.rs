@@ -28,7 +28,7 @@ fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(4), logged: false, replace_frontier: false };
     let batches = [batch(json!([{"id": "d1"}, {"id": "d2"}])), batch(json!([])), batch(json!([{"id": "d3"}]))];
     assert!(f.store.try_schema("filings").unwrap().is_none(), "no table exists before its first batch");
-    let m = land_batches(&f.store, &d, &batches, &ctx, &position, &|| Ok(())).unwrap();
+    let m = land_batches(&f.store, &d, &batches, &ctx, &position, &|| Ok(())).unwrap().manifest.unwrap();
     assert!(f.store.try_schema("filings").unwrap().is_some_and(|s| s.get("id").is_some()), "the first batch's schema creates the table");
     assert_eq!((m.fence, m.logged), (Some(4), false));
     assert_eq!(m.parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["part-00000.parquet", "part-00001.parquet"]);
@@ -65,7 +65,7 @@ fn fenced_landing(f: &Fixture, run: &str, fence: u64) -> contextful_core::store:
         committed_at: at("2030-01-01T00:01:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!(run)), fence: Some(fence), logged: true, replace_frontier: false };
-    land_batches(&f.store, &decl("name = \"filings\""), &[batch(json!([{"id": run}]))], &ctx, &position, &|| Ok(())).unwrap()
+    land_batches(&f.store, &decl("name = \"filings\""), &[batch(json!([{"id": run}]))], &ctx, &position, &|| Ok(())).unwrap().manifest.unwrap()
 }
 
 fn commit(f: &Fixture, run: &str, fence: u64) -> contextful_context::Result<u64> {
@@ -237,7 +237,7 @@ fn a_staged_run_takes_its_commit_seq_at_its_commit() {
     let f = Fixture::new();
     let d = decl("name = \"filings\"");
     let staged = stage(&f, &d, &batch(json!([{"id": "s1"}, {"id": "s2"}])), &staging("run-s", "2030-01-01T00:01:00Z"), 0, 0).unwrap();
-    let between = land_batches(&f.store, &d, &[batch(json!([{"id": "c1"}]))], &staging("run-c", "2030-01-01T00:02:00Z"), &fed("c"), &|| Ok(())).unwrap();
+    let between = land_batches(&f.store, &d, &[batch(json!([{"id": "c1"}]))], &staging("run-c", "2030-01-01T00:02:00Z"), &fed("c"), &|| Ok(())).unwrap().manifest.unwrap();
     let m = commit_parts(&f.store, &d, &[staged.name], &staging("run-s", "2030-01-01T00:03:00Z"), &fed("s"), &|| Ok(()), &|_| Ok(())).unwrap();
     assert_eq!((between.commit_seq, m.commit_seq), (Some(1), Some(2)));
     let rows = f.query(&d, Bounds::default(), "SELECT id, _commit_seq FROM t ORDER BY id");

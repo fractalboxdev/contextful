@@ -61,7 +61,7 @@ pub fn append(store: &Store, node: &NodeId, row: &RunRow, at: Instant) -> Result
     getrandom::fill(&mut nonce).map_err(|e| ContextError::Invalid(format!("run record nonce: {e}")))?;
     let store_run = format!("{}-{}-{}", phase_name(row.phase), at.unix_nanos(), crate::store::hex(&nonce));
     let injection = Injection { run_id: store_run, site_id: row.site_id.clone(), batch_seq: None, authored_by: None, authored_agent: None, taint: None };
-    let manifest = land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at })?;
+    let manifest = land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at })?.into_committed()?;
     // The row is durable: a pass that fails here is retried by the next append
     // (`run.record.record-folds`).
     let _ = fold_when_due(store, at);

@@ -89,7 +89,7 @@ fn composed_destinations_keep_static_removal_and_add_producer_rules() {
     for (ordinary, producer, protected, additional) in [("retain_runs = '0s'", "", false, false), (static_rule, "", true, false), (static_rule, producer_rule, true, true)] {
         let dir = composed_declarations(ordinary, producer);
         let store = Store::open(dir.path(), "research").unwrap();
-        let manifest = land_batches(&store, &TableDecl::named("feed_messages"), &[input()], &context(), &Position::default(), &|| Ok(())).unwrap();
+        let manifest = land_batches(&store, &TableDecl::named("feed_messages"), &[input()], &context(), &Position::default(), &|| Ok(())).unwrap().manifest.unwrap();
         let path = store.table_dir("feed_messages").unwrap().join("data/runs/run-a/ingest-a").join(&manifest.parts[0].name);
         assert_eq!(body(&path), if protected { "[REDACTED:phone]" } else { "415-555-0100" });
         if protected {
@@ -317,7 +317,7 @@ fn a_bare_caller_declaration_cannot_omit_the_durable_writer_rule() {
     let table = TableDecl::named("messages");
     let ctx = context();
     let position = Position { pipeline_id: Some("feed".into()), ..Position::default() };
-    let manifest = land_batches(&store, &table, &[input()], &ctx, &position, &|| Ok(())).unwrap();
+    let manifest = land_batches(&store, &table, &[input()], &ctx, &position, &|| Ok(())).unwrap().manifest.unwrap();
     assert_eq!(manifest.parts.len(), 1);
     let path = store.table_dir("messages").unwrap().join("data/runs/run-a/ingest-a").join(&manifest.parts[0].name);
     assert_eq!(body(&path), "[REDACTED:phone]");
@@ -335,7 +335,7 @@ fn a_staged_part_contains_the_same_removed_form_before_commit() {
     let run_dir = staged.table_dir("messages").unwrap().join("data/runs/run-a/ingest-a");
     assert_eq!(body(&run_dir.join("stage.staging").join(&part.name)), "[REDACTED:phone]");
     let staged_manifest = commit_parts(&staged, &table, &[part.name], &ctx, &position, &|| Ok(()), &|_| Ok(())).unwrap();
-    let direct_manifest = land_batches(&direct, &table, &[input()], &ctx, &position, &|| Ok(())).unwrap();
+    let direct_manifest = land_batches(&direct, &table, &[input()], &ctx, &position, &|| Ok(())).unwrap().manifest.unwrap();
     let staged_path = run_dir.join(&staged_manifest.parts[0].name);
     let direct_path = direct.table_dir("messages").unwrap().join("data/runs/run-a/ingest-a").join(&direct_manifest.parts[0].name);
     assert_eq!(body(&staged_path), body(&direct_path));
@@ -348,10 +348,10 @@ fn replay_compares_the_removed_form_and_refuses_changed_public_data() {
     let table = TableDecl::named("messages");
     let ctx = context();
     let position = Position { pipeline_id: Some("feed".into()), ..Position::default() };
-    let first = land_batches(&store, &table, &[input()], &ctx, &position, &|| Ok(())).unwrap();
+    let first = land_batches(&store, &table, &[input()], &ctx, &position, &|| Ok(())).unwrap().manifest.unwrap();
     let mut equivalent = input();
     equivalent.rows[0]["body"] = json!("415-555-0999");
-    let replay = land_batches(&store, &table, &[equivalent.clone()], &ctx, &position, &|| Ok(())).unwrap();
+    let replay = land_batches(&store, &table, &[equivalent.clone()], &ctx, &position, &|| Ok(())).unwrap().manifest.unwrap();
     assert_eq!(first.parts, replay.parts);
     equivalent.rows[0]["public"] = json!("changed");
     assert!(land_batches(&store, &table, &[equivalent], &ctx, &position, &|| Ok(())).is_err());

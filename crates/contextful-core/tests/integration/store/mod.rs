@@ -37,6 +37,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         commit_seq: None,
         group_root: None,
         schema_diffs: Vec::new(),
+        batch_digest: None,
     }
 }
 

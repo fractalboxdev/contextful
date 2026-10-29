@@ -44,8 +44,8 @@ fn a_session_commits_each_micro_batch_as_its_own_run() {
 
     for i in 1..4 {
         let landing = session.land(&single_row(i), injection(&format!("run-{i}")), tick(i), &Position::default(), &|| Ok(())).unwrap();
-        assert_eq!(landing.manifest.run_id, format!("run-{i}"));
-        assert_eq!(landing.manifest.node_id.as_str(), "ingest-a");
+        assert_eq!(landing.manifest.as_ref().unwrap().run_id, format!("run-{i}"));
+        assert_eq!(landing.manifest.as_ref().unwrap().node_id.as_str(), "ingest-a");
         assert!(landing.fold.is_none(), "four runs fire no 50-run trigger");
     }
     for (path, bytes) in &held {

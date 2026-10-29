@@ -12,7 +12,7 @@ use arrow_array::builder::{
 use arrow_array::{ArrayRef, ListArray, MapArray, NullArray, RecordBatch, StringArray, StructArray};
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use contextful_core::store::declare::{TableDecl, WriteMode};
-use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
+use contextful_core::store::lay_out::{is_path_segment, part_name, FoldedRow, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, LIST_ITEM, VECTOR_ITEM};
 use contextful_core::store::reserve::{
     optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_AGENT, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
@@ -456,7 +456,56 @@ fn replay(
             return Err(other_rows());
         }
     }
-    Ok(Landing { manifest: committed, replay: true })
+    Ok(Landing { manifest: Some(committed), replay: true, folded: None })
+}
+
+/// The digest a run's manifest records over the landing's `batches` and `position`
+/// (`store.lay-out.run-digest`): SHA-256 of the canonical JSON of each batch's producer rows
+/// and fixed column types, in batch and row order, beside the position. The injected
+/// columns and the commit instant stay outside it, so a retry carrying a new instant digests
+/// the same.
+fn batch_digest(batches: &[Batch], position: &Position) -> String {
+    let batches: Vec<Value> = batches
+        .iter()
+        .map(|b| {
+            let types: Map<String, Value> = b.types.iter().map(|(c, t)| (c.clone(), Value::String(t.name()))).collect();
+            serde_json::json!({ "rows": b.rows, "types": types })
+        })
+        .collect();
+    let position = serde_json::json!({
+        "pipeline_id": position.pipeline_id,
+        "cursor": position.cursor,
+        "fence": position.fence,
+        "logged": position.logged,
+        "replace_frontier": position.replace_frontier,
+    });
+    let doc = serde_json::json!({ "batches": batches, "position": position });
+    contextful_core::run::journal::sha256_hex(contextful_core::pipeline::canonical::canonical_json(&doc).as_bytes())
+}
+
+/// The answer to a landing under run key `key`, which the table's folded runs name while no
+/// manifest stands under it: a replay carrying the folded row when its digest equals the
+/// landing's (`store.lay-out.run-folded-replay`), `StoreRunConflict` otherwise
+/// (`store.lay-out.run-conflict`).
+fn folded_replay(key: &str, row: Option<FoldedRow>, digest: &str) -> Result<Landing> {
+    let conflict = |why: String| -> ContextError { StoreError::StoreRunConflict(format!("run `{key}` is folded {why}")).into() };
+    let Some(row) = row else {
+        return Err(conflict("by a snapshot no valid folded-runs index lists, so no digest answers whether this landing replays it".into()));
+    };
+    match row.batch_digest.as_deref() {
+        Some(held) if held == digest => Ok(Landing { manifest: None, replay: true, folded: Some(row) }),
+        Some(_) => Err(conflict(format!("into snapshot {} with other rows or at another position", row.snapshot_id))),
+        None => Err(conflict(format!("into snapshot {} under a row that predates digests, so no landing replays it", row.snapshot_id))),
+    }
+}
+
+/// The conflict a staged commit under a folded run key raises: a staged run records no digest.
+fn folded_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -> Result<()> {
+    let key = format!("{run_id}/{node}");
+    match store.folded_runs(table, |k| k == key)?.is_empty() {
+        true => Ok(()),
+        false => Err(StoreError::StoreRunConflict(format!("run `{key}` is folded, and a staged commit records no digest to replay it by")).into()),
+    }
 }
 
 /// `part` and the batches `stored` holds carry the same named columns, each with the same
@@ -474,7 +523,7 @@ fn same_columns(part: &RecordBatch, stored: &[RecordBatch]) -> bool {
 /// Land `batch` into `decl`'s table as run `ctx.injection.run_id`. Every refusal — a
 /// reserved name, an incompatible or widened type, an unknown ordering column —
 /// fires before any Parquet is written; the run is visible once its manifest exists.
-pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<RunManifest> {
+pub fn land(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<Landing> {
     land_batches(store, decl, std::slice::from_ref(batch), ctx, &Position::default(), &|| Ok(()))
 }
 
@@ -490,8 +539,8 @@ pub fn land_batches(
     ctx: &RunContext,
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
-) -> Result<RunManifest> {
-    land_run(store, decl, batches, ctx, position, precommit).map(|l| l.manifest)
+) -> Result<Landing> {
+    land_run(store, decl, batches, ctx, position, precommit)
 }
 
 /// [`land_batches`], answering whether the landing replayed a run already committed
@@ -513,12 +562,30 @@ pub fn land_run(
     Ok(landing)
 }
 
-/// A run's landing: the committed manifest, and whether this landing replayed it
-/// rather than committing it.
+/// A run's landing: the committed manifest, whether this landing replayed it rather than
+/// committing it, and, for a replay of a run whose manifest a collection removed, the
+/// folded-runs row naming it in place of the manifest (`store.lay-out.run-folded-replay`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Landing {
-    pub manifest: RunManifest,
+    pub manifest: Option<RunManifest>,
     pub replay: bool,
+    pub folded: Option<FoldedRow>,
+}
+
+impl Landing {
+    /// The committed manifest, which every landing but a folded replay holds.
+    pub fn committed(&self) -> Result<&RunManifest> {
+        self.manifest.as_ref().ok_or_else(|| {
+            let key = self.folded.as_ref().map(|r| r.run_key.as_str()).unwrap_or_default();
+            ContextError::Invalid(format!("run `{key}` replayed a folded run, whose manifest a collection removed"))
+        })
+    }
+
+    /// [`Landing::committed`], owned.
+    pub fn into_committed(self) -> Result<RunManifest> {
+        self.committed()?;
+        Ok(self.manifest.expect("committed() found the manifest"))
+    }
 }
 
 /// [`land_batches`], with `commit_point` run once the manifest exists: the step that makes
@@ -532,8 +599,8 @@ pub fn commit_batches(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
-) -> Result<RunManifest> {
-    commit_run(store, decl, batches, ctx, position, precommit, commit_point).map(|l| l.manifest)
+) -> Result<Landing> {
+    commit_run(store, decl, batches, ctx, position, precommit, commit_point)
 }
 
 fn commit_run(
@@ -557,6 +624,9 @@ fn commit_run(
     for batch in &rewritten {
         producer_columns(&rows_schema(batch.rows.iter(), &batch.types)?)?;
     }
+    // Digested after the writer rules and before vintage retention, whose history a committed
+    // run of these rows changes (`store.lay-out.run-digest`).
+    let digest = batch_digest(&rewritten, position);
     let per_batch = rewritten.len() > 1 || position.pipeline_id.is_some();
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     // A vintage table's commit lock holds the vintage comparison beside the file-list
@@ -575,6 +645,11 @@ fn commit_run(
     let types = column_types(store, decl, batches)?;
     if manifest_path.exists() {
         return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
+    }
+    // A run whose manifest a collection removed still names its key among the folded runs.
+    let key = format!("{}/{}", ctx.injection.run_id, ctx.node);
+    if let Some((_, row)) = store.folded_runs(&decl.name, |k| k == key)?.into_iter().next() {
+        return folded_replay(&key, row, &digest);
     }
     let site = reconcile(store, decl, batches, &ctx.node, &ctx.injection, per_batch, None, Some(ctx.committed_at))?;
 
@@ -600,8 +675,8 @@ fn commit_run(
         parts.push(PartEntry::new(name, store.sealing().key_version()));
     }
     let _published = ticket.as_ref().map(|ticket| ticket.publish(store)).transpose()?;
-    match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[])? {
-        Some(manifest) => Ok(Landing { manifest, replay: false }),
+    match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[], Some(digest))? {
+        Some(manifest) => Ok(Landing { manifest: Some(manifest), replay: false, folded: None }),
         None => replay(store, &manifest_path, &types, batches, ctx, position, per_batch),
     }
 }
@@ -636,7 +711,7 @@ fn engine_owned(table: &str) -> bool {
 
 /// Land `batch` into a table of an engine-held namespace, which every producer landing
 /// refuses as `StoreReservedTableName`.
-pub(crate) fn land_engine_owned(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<RunManifest> {
+pub(crate) fn land_engine_owned(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<Landing> {
     struct Reset;
     impl Drop for Reset {
         fn drop(&mut self) {
@@ -905,6 +980,7 @@ fn create_manifest(
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
     group_root: Option<&str>,
     schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
+    batch_digest: Option<String>,
 ) -> Result<Option<RunManifest>> {
     if position.replace_frontier && (!parts.is_empty() || decl.write_mode() != WriteMode::Replace) {
         return Err(ContextError::Invalid(format!("table `{}`: an empty replacement frontier requires a no-part replacing run", decl.name)));
@@ -924,6 +1000,7 @@ fn create_manifest(
         commit_seq: Some(commit_seq),
         group_root: group_root.map(str::to_string),
         schema_diffs: schema_diffs.to_vec(),
+        batch_digest,
     };
     std::fs::create_dir_all(&site.node_dir).at(&site.node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
@@ -1203,6 +1280,7 @@ fn commit_parts_inner(
         if manifest_path.exists() {
             return Err(already_committed(&ctx.node, &ctx.injection.run_id));
         }
+        folded_staged(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
         for name in parts {
             if !is_path_segment(name) || !stage_dir.join(name).is_file() {
                 return Err(ContextError::Invalid(format!("run `{}` commits part `{name}`, which no stage wrote on node `{}`", ctx.injection.run_id, ctx.node)));
@@ -1266,7 +1344,7 @@ fn commit_parts_inner(
             entries.push(PartEntry::new(name, store.sealing().key_version()));
         }
         let _published = ticket.as_ref().map(|ticket| ticket.publish(store)).transpose()?;
-        create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
+        create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs, None)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
     })();
     if committed.is_err() && !manifest_path.exists() {
         for path in &written {
@@ -1314,11 +1392,13 @@ pub struct LandSession<'a> {
 }
 
 /// One session landing: the committed manifest, whether it replayed a run already
-/// committed, and the outcome of the pass it fired.
+/// committed, the folded-runs row a replay of a collected run carries instead of its
+/// manifest, and the outcome of the pass it fired.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionLanding {
-    pub manifest: RunManifest,
+    pub manifest: Option<RunManifest>,
     pub replay: bool,
+    pub folded: Option<FoldedRow>,
     pub fold: Option<contextful_core::store::fold::FoldOutcome>,
 }
 
@@ -1356,12 +1436,12 @@ impl<'a> LandSession<'a> {
         let ctx = RunContext { node: self.node.clone(), injection, committed_at };
         let landing = land_run(&self.store, &self.decl, std::slice::from_ref(batch), &ctx, position, precommit)?;
         if landing.replay {
-            return Ok(SessionLanding { manifest: landing.manifest, replay: true, fold: None });
+            return Ok(SessionLanding { manifest: landing.manifest, replay: true, folded: landing.folded, fold: None });
         }
         // A snapshot corpus folds each capture as it lands (`store.snapshot.capture`).
         if self.decl.snapshot.is_some() {
             self.recount()?;
-            return Ok(SessionLanding { manifest: landing.manifest, replay: false, fold: None });
+            return Ok(SessionLanding { manifest: landing.manifest, replay: false, folded: None, fold: None });
         }
         let observed = self.observe()?;
         if observed == (self.seen.0.clone(), self.seen.1 + 1) {
@@ -1381,7 +1461,7 @@ impl<'a> LandSession<'a> {
         } else {
             None
         };
-        Ok(SessionLanding { manifest: landing.manifest, replay: false, fold })
+        Ok(SessionLanding { manifest: landing.manifest, replay: false, folded: None, fold })
     }
 
     /// The pointer's ETag and the committed-run listing's size, reading no manifest.

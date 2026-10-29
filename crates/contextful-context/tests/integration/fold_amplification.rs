@@ -74,7 +74,7 @@ struct Cost {
 
 impl Cost {
     fn add(&mut self, f: &Fixture, table: &str, landing: &SessionLanding) {
-        self.landed += landed_bytes(f, &landing.manifest);
+        self.landed += landed_bytes(f, landing.manifest.as_ref().unwrap());
         match &landing.fold {
             Some(FoldOutcome::Folded { .. }) => {
                 self.written += snapshot_bytes(f, table);

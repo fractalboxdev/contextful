@@ -33,6 +33,7 @@ mod redaction;
 mod reserve;
 mod rows;
 mod run_commit;
+mod run_digest;
 mod run_record;
 mod session;
 mod skipped_runs;

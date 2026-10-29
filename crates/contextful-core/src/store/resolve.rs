@@ -3,9 +3,10 @@
 
 use super::bound_time::Bound;
 use super::declare::WriteMode;
-use super::lay_out::{RunManifest, SnapshotId, SnapshotManifest};
+use super::lay_out::{FoldedRow, RunManifest, SnapshotId, SnapshotManifest};
 use super::StoreError;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, OnceLock};
 
 /// What the tree holds for one table, read from its pointer and manifests.
 #[derive(Debug, Clone, Default)]
@@ -33,19 +34,27 @@ pub struct TableState {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FoldedSet {
     pub at: usize,
-    pub rows: BTreeMap<String, SnapshotId>,
-    /// The same rows by folding snapshot.
-    by_snapshot: BTreeMap<SnapshotId, Vec<String>>,
+    /// The index's rows by run key, shared with the cache that validated them.
+    pub rows: Arc<BTreeMap<String, FoldedRow>>,
+    /// The same run keys by folding snapshot, built on first use.
+    by_snapshot: OnceLock<BTreeMap<SnapshotId, Vec<String>>>,
 }
 
 impl FoldedSet {
     /// The index's `rows`, read at `chain[at]`.
-    pub fn new(at: usize, rows: BTreeMap<String, SnapshotId>) -> Self {
-        let mut by_snapshot: BTreeMap<SnapshotId, Vec<String>> = BTreeMap::new();
-        for (run, snapshot) in &rows {
-            by_snapshot.entry(snapshot.clone()).or_default().push(run.clone());
-        }
-        FoldedSet { at, rows, by_snapshot }
+    pub fn new(at: usize, rows: Arc<BTreeMap<String, FoldedRow>>) -> Self {
+        FoldedSet { at, rows, by_snapshot: OnceLock::new() }
+    }
+
+    /// The run keys each snapshot folds.
+    fn by_snapshot(&self) -> &BTreeMap<SnapshotId, Vec<String>> {
+        self.by_snapshot.get_or_init(|| {
+            let mut by: BTreeMap<SnapshotId, Vec<String>> = BTreeMap::new();
+            for (run, row) in self.rows.iter() {
+                by.entry(row.snapshot_id.clone()).or_default().push(run.clone());
+            }
+            by
+        })
     }
 }
 
@@ -83,7 +92,7 @@ impl TableState {
             Some(ix) => {
                 let id = &self.chain[i].snapshot_id;
                 let walked = self.chain[i..ix.at.max(i)].iter().flat_map(|s| s.includes_runs.iter().map(String::as_str));
-                walked.chain(ix.rows.iter().filter(|(_, s)| *s <= id).map(|(k, _)| k.as_str())).collect()
+                walked.chain(ix.rows.iter().filter(|(_, r)| r.snapshot_id <= *id).map(|(k, _)| k.as_str())).collect()
             }
         }
     }
@@ -91,7 +100,7 @@ impl TableState {
     /// The runs `chain[i]` itself folds.
     fn own(&self, i: usize) -> Vec<&str> {
         match &self.index {
-            Some(ix) if i >= ix.at => ix.by_snapshot.get(&self.chain[i].snapshot_id).map_or_else(Vec::new, |runs| runs.iter().map(String::as_str).collect()),
+            Some(ix) if i >= ix.at => ix.by_snapshot().get(&self.chain[i].snapshot_id).map_or_else(Vec::new, |runs| runs.iter().map(String::as_str).collect()),
             _ => self.chain[i].includes_runs.iter().map(String::as_str).collect(),
         }
     }

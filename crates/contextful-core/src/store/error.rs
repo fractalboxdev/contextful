@@ -91,7 +91,7 @@ pub enum StoreError {
     /// A commit outwaited its table's commit lock or a lower value's publication. (`store.reserve.commit-wait`)
     #[error("StoreCommitLockTimeout: {0}")]
     StoreCommitLockTimeout(String),
-    /// A run id already committed on its node lands again as other than its replay. (`store.lay-out.run-conflict`)
+    /// A run id already committed on its node, or folded under its run key, lands again as other than its replay. (`store.lay-out.run-conflict`)
     #[error("StoreRunConflict: {0}")]
     StoreRunConflict(String),
     /// Two observed types for one column have no supertype in the lattice. (`store.reconcile.incompatible`)

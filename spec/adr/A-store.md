@@ -406,6 +406,18 @@ Kept manifests make a chain whole, and a read walking it grows with history. Eac
 
 Revisit: reading a snapshot's segments dominates a cold read.
 
+## run-digest — A folded run replays by the digest of its landing
+
+A collection removes a folded run's manifest and parts, so a retry after a lost acknowledgement finds no manifest to compare its rows against, and a new landing reusing the key reads as folded and its rows vanish. Each landing records the SHA-256 of its producer rows, column types and position, and the folded-runs row carries it beside the run's row count. A re-landing whose key the folded runs name replays on an equal digest and conflicts otherwise. A row without a digest, or a key only a walked snapshot names, conflicts, since nothing tells a retry from a reuse. A staged commit records none: its rows never sit in memory together. A receive attempt whose run row never closed settles with the folded row's count.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Digest on the manifest and the folded-runs row *(chosen)* | — | One hash per landing, and a read of the pointer's snapshot and its index per landing; a session validates each index once. |
+| Keep every folded run manifest | Collection | Manifests grow with history again. |
+| Read a folded key as a replay | Correct rows | A new batch reusing a key folds into nothing. |
+
+Revisit: the per-landing index read dominates a high-rate one-shot landing path.
+
 ## unpushed-run-marked — An unpushed run is marked in the execution database
 
 On a disposable disk a run commits locally before its push, so a failed push leaves the run on a disk the next release discards. The execution database is already durable.

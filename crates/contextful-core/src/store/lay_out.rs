@@ -378,6 +378,11 @@ pub struct RunManifest {
     /// Nested columns downgraded while this run staged its committed parts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub schema_diffs: Vec<SchemaDiff>,
+    /// The SHA-256 of the landing's producer rows, column types and position, which a
+    /// re-landing of the run after its manifest is gone compares (`store.lay-out.run-digest`).
+    /// A staged commit records none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -505,6 +510,12 @@ pub struct FoldedRow {
     pub committed_at: Option<Instant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_seq: Option<i64>,
+    /// The run manifest's `batch_digest`; absent on a row for a run that recorded none.
+    #[serde(default, rename = "digest", skip_serializing_if = "Option::is_none")]
+    pub batch_digest: Option<String>,
+    /// The rows the run's parts held, where its manifest was on disk when the row was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rows: Option<u64>,
 }
 
 impl SnapshotManifest {

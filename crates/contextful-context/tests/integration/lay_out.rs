@@ -93,7 +93,7 @@ fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
 }
 
 /// Any other landing under a run id committed on its node raises `StoreRunConflict` and changes nothing.
-// spec: store.lay-out.run-conflict@d0645711
+// spec: store.lay-out.run-conflict@d8b7388b
 #[test]
 fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
     use contextful_context::land::{land_batches, Batch, Position, RunContext};

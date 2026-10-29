@@ -824,3 +824,30 @@ fn a_member_resent_after_its_group_tore_replays_the_group() {
     assert_eq!(landed, serde_json::json!([["s1", "1"], ["s2", "1"], ["s3", "1"]]), "every row lands once");
     assert_eq!(spooled(dir.path()), 0);
 }
+
+/// A batch whose attempt committed while its run row never closed, resent after the run folded and a collection
+/// removed its manifest, replays with the rows its folded-runs row records, and lands nothing twice.
+// spec: store.lay-out.folded-committed@0b067027
+#[test]
+fn a_batch_resent_after_its_torn_run_folded_replays() {
+    use contextful_context::fold::{collect, fold};
+    let dir = receiving(4096, 4);
+    let first = receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(first.status.success(), "{}", stderr(&first));
+    let run = answer(&first)["tables"][0]["run_id"].as_str().unwrap().to_string();
+    tear(dir.path(), &run);
+
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"otel_spans\"\nretain_runs = \"1m\"\n").unwrap().remove(0);
+    let now = |s: &str| contextful_core::time::Instant::parse(s).unwrap();
+    fold(&store, &decl, now("2030-01-01T00:05:00Z")).unwrap();
+    collect(&store, &decl, now("2030-01-01T00:20:00Z")).unwrap();
+    assert_eq!(store.committed_runs("otel_spans").unwrap().iter().filter(|m| m.run_id == run).count(), 0, "the collection removes the run's manifest");
+
+    let again = send(receiver_at(dir.path(), "flush-1", "2030-01-01T00:30:00Z"), &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(again.status.success(), "{}", stderr(&again));
+    let again = answer(&again);
+    assert_eq!((again["tables"][0]["outcome"].as_str(), again["tables"][0]["run_id"].as_str()), (Some("replayed"), Some(run.as_str())), "{again}");
+    assert_eq!(again["tables"][0]["rows"], 1, "{again}");
+    assert_eq!(rows(dir.path(), "SELECT id, count(*) FROM otel_spans GROUP BY id ORDER BY id"), serde_json::json!([["s1", "1"]]));
+}
