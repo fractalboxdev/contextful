@@ -19,7 +19,7 @@ const MANIFEST: &str = "manifest.json";
 /// The hex signature over [`manifest_message`] beside it.
 const MANIFEST_SIGNATURE: &str = "manifest.sig";
 /// The key the write probe targets under each other owner's prefix.
-pub const PROBE: &str = "clean-room-probe";
+const PROBE: &str = "clean-room-probe";
 /// An ETag no object carries: the probe's condition never holds.
 const PROBE_ETAG: &str = "clean-room-probe-never-matches";
 
