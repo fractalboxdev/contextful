@@ -88,12 +88,6 @@ fn revalidate(request: &EraseRequest<'_>) -> Result<()> {
     (request.boundary)(request.admission.authority()).map_err(|error| ContextError::Invalid(error.to_string()))
 }
 
-/// A missing signer or live Forget boundary refuses before any table content reads.
-pub fn erase_subject(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
-    if !matches!(request.selector, EraseSelector::Subject(_)) { return Err(unsupported("subject erasure requires a subject selector")); }
-    erase(store, request)
-}
-
 /// Subject and key-set selectors enter the same admitted publication adapter.
 pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
     erase_declared(store, &DeclarationSet::from_tables(request.declarations), request)

@@ -1718,7 +1718,7 @@ fn mint(root: &Path, action: &str, table: &str) -> String {
 /// The project's awakeable registry over its run directory, the one `serve` resolves through.
 fn registry(root: &Path) -> contextful_engine::awake::Registry {
     let dir = root.join(".contextful/run/research");
-    contextful_engine::awake::Registry::open(&dir, contextful_engine::Journal::open(&dir))
+    contextful_engine::awake::Registry::open(&dir, contextful_engine::Journal::over(contextful_engine::stores::FileJournalStore::open(&dir), contextful_engine::stores::FileBlobStore::open(&dir)))
 }
 
 /// A credential of `subject`, admitted for reads of every table.

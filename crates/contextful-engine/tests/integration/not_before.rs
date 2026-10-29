@@ -15,6 +15,7 @@ use contextful_engine::cancel::{Cadence as KeeperCadence, Keeper};
 use contextful_engine::drive::{job_scope, Drive, ItemPolicy, ItemReport, ItemStatus};
 use contextful_engine::scheduler::{Dispatch, Entry, Scheduler};
 use contextful_engine::{Engine, EngineError, Journal, LocalCatalog};
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -197,7 +198,7 @@ fn open(run_id: &str, attempts: u32) -> OpenExecution {
 fn restarted(rig: &Rig) -> Engine {
     Engine {
         catalog: Arc::new(LocalCatalog::open(rig.dir.path(), Arc::new(rig.clock.clone()))),
-        journal: Journal::open(rig.dir.path()),
+        journal: Journal::over(FileJournalStore::open(rig.dir.path()), FileBlobStore::open(rig.dir.path())),
         awakeables: None,
         keeper: Keeper::new(KeeperCadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }),
         emitter: None,

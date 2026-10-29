@@ -5,9 +5,10 @@ use contextful_core::run::suspend::AwakeableState;
 use contextful_core::run::RunError;
 use contextful_engine::awake::{AwakeError, Awaited, Registry};
 use contextful_engine::Journal;
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 
 fn registry(dir: &std::path::Path) -> Registry {
-    Registry::open(dir, Journal::open(dir))
+    Registry::open(dir, Journal::over(FileJournalStore::open(dir), FileBlobStore::open(dir)))
 }
 
 fn unknown<T: std::fmt::Debug>(out: Result<T, AwakeError>, token: &str) {

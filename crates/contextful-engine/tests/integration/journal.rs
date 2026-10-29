@@ -41,7 +41,7 @@ fn key() -> EntryKey {
 #[test]
 fn a_crash_before_the_write_re_enters_and_the_record_then_stands() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let effects = AtomicUsize::new(0);
     // The process dies after the effect and before the write.
     let died = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -97,7 +97,7 @@ fn a_racing_caller_waits_for_the_first_callers_value() {
         assert_eq!(case.phase(1), expected, "{}", case.show());
     }
     // Each segment of the key names its own entry.
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     for other in [EntryKey::new("x-1", "step", b"null"), EntryKey::new("x-0", "other", b"null"), EntryKey::new("x-0", "step", b"\"p1\"")] {
         assert!(j.row(&other).unwrap().is_none());
     }
@@ -111,7 +111,7 @@ const RACERS: u64 = 8;
 #[test]
 fn racers_on_one_key_run_the_effect_once_and_read_equal_bytes() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let mut state = RACE_SEED;
     let mut most = 0usize;
     for iteration in 0..RACE_ITERATIONS {
@@ -194,7 +194,7 @@ fn a_claim_whose_holder_lapsed_is_taken_over() {
 #[test]
 fn concurrent_blob_writers_converge_on_one_file() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let value = vec![7u8; INLINE_CUTOFF_BYTES + 10];
     let sha = sha256_hex(&value);
     std::thread::scope(|s| {
@@ -213,7 +213,7 @@ fn concurrent_blob_writers_converge_on_one_file() {
 #[test]
 fn every_step_kind_places_its_value_by_the_one_cutoff() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let at_cutoff = vec![b'a'; INLINE_CUTOFF_BYTES];
     let over = vec![b'b'; INLINE_CUTOFF_BYTES + 1];
     let stored = |k: &EntryKey| match j.row(k).unwrap() {
@@ -234,7 +234,7 @@ fn every_step_kind_places_its_value_by_the_one_cutoff() {
         assert!(stored(&small).blob().is_none(), "{label}: a value at the cutoff stays inline");
         assert_eq!(stored(&large).blob(), Some(sha256_hex(&over).as_str()), "{label}: one byte past it is a blob");
     }
-    let registry = Registry::open(dir.path(), Journal::open(dir.path()));
+    let registry = Registry::open(dir.path(), Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())));
     let now = Instant::parse("2030-01-01T00:00:01Z").unwrap();
     for (payload, blob) in [(&at_cutoff, false), (&over, true)] {
         let a = registry.suspend("x-1", "upload", "2030-01-01T00:00:00Z", 60).unwrap();
@@ -250,7 +250,7 @@ fn every_step_kind_places_its_value_by_the_one_cutoff() {
 #[test]
 fn a_missing_blob_refuses_rather_than_reading_empty() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let big = vec![b'x'; INLINE_CUTOFF_BYTES + 1];
     j.step(&key(), "run-a", &live, &Never, &always, &mut || Ok(big.clone())).unwrap();
     let sha = sha256_hex(&big);
@@ -270,7 +270,7 @@ fn a_missing_blob_refuses_rather_than_reading_empty() {
 fn the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day() {
     assert_eq!((BLOB_SWEEP_INTERVAL_SECS, BLOB_SWEEP_GRACE_SECS), (86_400, 3_600));
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let recorded = vec![b'r'; INLINE_CUTOFF_BYTES + 1];
     j.step(&key(), "run-a", &live, &Never, &always, &mut || Ok(recorded.clone())).unwrap();
     for name in ["orphan", "awaited"] {
@@ -295,7 +295,7 @@ fn the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day() {
 #[test]
 fn a_failed_effect_releases_its_claim_and_an_unjournaled_value_leaves_no_row() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let failed = j.step(&key(), "run-a", &live, &Never, &always, &mut || Err(Failure::new(contextful_core::run::FailureTag::Transient, "reset")));
     assert!(matches!(failed, Err(StepError::Failed(_))));
     assert!(j.row(&key()).unwrap().is_none());
@@ -307,7 +307,7 @@ fn a_failed_effect_releases_its_claim_and_an_unjournaled_value_leaves_no_row() {
 #[test]
 fn a_released_claim_keeps_its_lock_file() {
     let dir = tempfile::tempdir().unwrap();
-    let j = Journal::open(dir.path());
+    let j = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
     let failed = j.step(&key(), "run-a", &live, &Never, &always, &mut || Err(Failure::new(contextful_core::run::FailureTag::Transient, "reset")));
     assert!(failed.is_err());
     let lock = dir.path().join("journal/x-1").join(format!("{}.lock", key().digest()));
@@ -320,7 +320,7 @@ fn a_released_claim_keeps_its_lock_file() {
 #[test]
 fn a_journal_on_exfat_records_a_step_and_replays_it() {
     let volume = contextful_fs::test_volume::ExfatVolume::mount();
-    let j = Journal::open(&volume.path().join("journal"));
+    let j = Journal::over(FileJournalStore::open(&volume.path().join("journal")), FileBlobStore::open(&volume.path().join("journal")));
     let effects = AtomicUsize::new(0);
     let mut effect = || {
         effects.fetch_add(1, Ordering::SeqCst);

@@ -8,6 +8,7 @@ use contextful_core::run::{Failure, RunError};
 use contextful_core::time::Instant;
 use contextful_engine::cancel::Keeper;
 use contextful_engine::{Engine, Journal};
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 use contextful_pg::PgCatalog;
 use std::collections::BTreeMap;
 use std::sync::{
@@ -123,7 +124,7 @@ fn takeover_after_the_last_cooperative_read_refuses_provider_dispatch() {
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine {
         catalog: gate.clone(),
-        journal: Journal::open(dir.path()),
+        journal: Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())),
         awakeables: None,
         keeper: Keeper::default(),
         emitter: None,
@@ -178,7 +179,7 @@ fn durable_guard_serializes_takeover_and_keeps_run_metadata_reentrant() {
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine {
         catalog: db.clone(),
-        journal: Journal::open(dir.path()),
+        journal: Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())),
         awakeables: None,
         keeper: Keeper::default(),
         emitter: None,
@@ -371,7 +372,7 @@ fn actual_destination_commit_retains_admission_after_precommit() {
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine {
         catalog: db.clone(),
-        journal: Journal::open(dir.path()),
+        journal: Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())),
         awakeables: None,
         keeper: Keeper::new(contextful_engine::cancel::Cadence { poll:Duration::from_millis(5),renew:Duration::from_millis(5) }),
         emitter: None,

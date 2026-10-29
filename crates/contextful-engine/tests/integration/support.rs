@@ -12,6 +12,7 @@ use contextful_core::run::{Failure, RunError};
 use contextful_core::time::Instant;
 use contextful_engine::cancel::{Cadence, Keeper};
 use contextful_engine::{Engine, EngineError, Journal, LocalCatalog, RunSpec};
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 use serde_json::{json, Value};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -54,7 +55,7 @@ impl Rig {
     pub fn new() -> Rig {
         let dir = tempfile::tempdir().unwrap();
         let clock = SetClock::new(T0);
-        let journal = Journal::open(dir.path());
+        let journal = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
         let catalog = Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone())));
         let engine = Engine { catalog, journal, awakeables: None, keeper: Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }), emitter: None, worlds: Vec::new() };
         Rig { dir, clock, engine }
