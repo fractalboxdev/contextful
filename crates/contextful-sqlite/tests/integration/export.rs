@@ -319,6 +319,7 @@ fn source_history_stays_bounded_per_publication() {
             run: format!("b{b:04}"),
             input: serde_json::to_value(&watermark).unwrap(),
             frontiers: [("run_counts".to_string(), format!("snapshot-{b:04}"))].into(),
+            commit_seq: b as i64,
         }
     };
     for b in 1..=BUILDS {
@@ -345,15 +346,22 @@ fn source_history_stays_bounded_per_publication() {
     contextful_eval::record::emit("source-history-bytes", bytes as f64, BUILDS, SEED);
 }
 
-/// The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: the latest run recorded again with different bytes refuses, and a completion naming another run replaces it.
-// spec: run.export.group-source-latest@0e86a410
+/// The sqlite publication ledger keeps 1 completion per publication, the latest: the
+/// latest run recorded again with different bytes refuses, an earlier run recorded after a
+/// later one refuses, and a later run replaces it.
+// spec: run.export.group-source-latest@83bd0098
 #[test]
 fn the_publication_ledger_keeps_only_the_latest_completion() {
     use contextful_sqlite::{PublicationLedger, SourcePublication};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("machine.sqlite");
     let ledger = PublicationLedger::open(&path).unwrap();
-    let completion = |run: &str, frontier: &str| SourcePublication { run: run.into(), input: json!({"build": run}), frontiers: [("items".into(), frontier.into())].into() };
+    let completion = |run: &str, frontier: &str| SourcePublication {
+        run: run.into(),
+        input: json!({"build": run}),
+        frontiers: [("items".into(), frontier.into())].into(),
+        commit_seq: run.strip_prefix("run-").and_then(|i| i.parse::<i64>().ok()).map_or(0, |i| i + 1),
+    };
     for i in 0..50 {
         ledger.record_source("projection", &completion(&format!("run-{i}"), &format!("f{i}"))).unwrap();
     }
@@ -367,6 +375,14 @@ fn the_publication_ledger_keeps_only_the_latest_completion() {
     ledger.record_source("projection", &completion("run-49", "f49")).unwrap();
     assert!(ledger.record_source("projection", &completion("run-49", "other")).is_err());
     assert_eq!(ledger.source("projection").unwrap(), Some(completion("run-49", "f49")));
+    // An earlier run replayed after the latest refuses and leaves its history untouched.
+    let replayed = ledger.record_source("projection", &completion("run-10", "f49")).unwrap_err();
+    assert!(replayed.message.contains("PublicationIncompatible"), "{}", replayed.message);
+    assert_eq!(ledger.source("projection").unwrap(), Some(completion("run-49", "f49")));
+    assert_eq!(rows("source-history"), 1);
+    let history: String = rusqlite::Connection::open(&path).unwrap()
+        .query_row("SELECT namespace FROM coordinated_publication WHERE role = 'source-history' AND name = 'projection'", [], |r| r.get(0)).unwrap();
+    assert_eq!(history, "run-49");
 }
 
 /// Both machine-local ledgers count a stage and each acknowledgement into the outbox's version, stamp the

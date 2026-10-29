@@ -341,6 +341,14 @@ pub struct SourcePublication {
     pub run: String,
     pub input: Value,
     pub frontiers: BTreeMap<String, String>,
+    /// The greatest output `commit_seq` the run landed, zero when it landed none. A ledger
+    /// written without it reads as zero, and zero serializes as absent, so its digest holds.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub commit_seq: i64,
+}
+
+fn is_zero(seq: &i64) -> bool {
+    *seq == 0
 }
 
 impl SourcePublication {
@@ -352,12 +360,21 @@ impl SourcePublication {
         ))
     }
 
-    /// A producer run records one frontier: recorded again over `latest`, the ledger's
-    /// latest completion, it must carry identical bytes; a completion naming another run
-    /// replaces `latest` (`run.export.group-source-latest`).
+    /// A completion with bytes other than `latest`, the ledger's latest, refuses when it
+    /// names the latest run or the outputs it landed order at or below the latest's; any
+    /// other replaces `latest` (`run.export.group-source-latest`).
     pub fn check_history(&self, latest: Option<&SourcePublication>) -> Result<(), ExportError> {
-        if latest.is_some_and(|prior| prior.run == self.run && prior != self) {
+        let Some(prior) = latest.filter(|prior| *prior != self) else {
+            return Ok(());
+        };
+        if prior.run == self.run {
             return Err(invalid("producer run carries different frontier bytes"));
+        }
+        if self.commit_seq > 0 && self.commit_seq <= prior.commit_seq {
+            return Err(invalid(format!(
+                "producer run `{}` landed outputs through commit {}, at or below latest run `{}` at commit {}",
+                self.run, self.commit_seq, prior.run, prior.commit_seq
+            )));
         }
         Ok(())
     }

@@ -864,6 +864,7 @@ fn a_watermark_over_the_run_record_stays_bounded_after_n_runs() {
         run: built.build_id.clone(),
         input: watermark.clone(),
         frontiers: [("run_counts".to_string(), built.build_id.clone())].into(),
+        commit_seq: 0,
     };
     let completion_bytes = serde_json::to_vec(&completion).unwrap().len();
     eprintln!("watermark over {units} unit runs: {ids} ids, {bytes} B; source completion {completion_bytes} B");

@@ -251,6 +251,7 @@ fn a_producer_frontier_survives_replacement_and_refuses_rewritten_history() {
         run: "run-1".into(),
         input: json!({"snapshot": 1}),
         frontiers: BTreeMap::from([("items".into(), "f1".into()), ("notes".into(), "f2".into())]),
+        commit_seq: 1,
     };
     sender.record_source("projection", &source).unwrap();
     sender.record_source("projection", &source).unwrap();
@@ -296,6 +297,7 @@ fn a_version_two_execution_schema_gains_the_publication_table_on_initialize() {
     D1PublicationLedger::connect(&fixture.endpoint).unwrap();
 }
 
+// spec: run.export.group-source-latest@83bd0098
 #[test]
 fn the_d1_ledger_keeps_only_the_latest_completion() {
     let fixture = start();
@@ -304,19 +306,30 @@ fn the_d1_ledger_keeps_only_the_latest_completion() {
         run: run.into(),
         input: json!({"build": run}),
         frontiers: BTreeMap::from([("items".into(), frontier.into())]),
+        commit_seq: run.strip_prefix("run-").and_then(|i| i.parse::<i64>().ok()).map_or(0, |i| i + 1),
     };
     for i in 0..20 {
         sender.record_source("projection", &completion(&format!("run-{i}"), &format!("f{i}"))).unwrap();
     }
-    let history = D1::connect(&fixture.endpoint)
-        .unwrap()
-        .query("SELECT namespace FROM contextful_publication WHERE role = 'source-history' AND name = 'projection'", vec![])
-        .unwrap();
-    assert_eq!(history.rows.len(), 1, "{:?}", history.rows);
+    let history = || {
+        D1::connect(&fixture.endpoint)
+            .unwrap()
+            .query("SELECT namespace FROM contextful_publication WHERE role = 'source-history' AND name = 'projection'", vec![])
+            .unwrap()
+            .rows
+    };
+    assert_eq!(history().len(), 1, "{:?}", history());
     assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
     sender.record_source("projection", &completion("run-19", "f19")).unwrap();
     assert!(sender.record_source("projection", &completion("run-19", "other")).is_err());
     assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
+    // An earlier run replayed after the latest refuses and leaves its history untouched.
+    let replayed = sender.record_source("projection", &completion("run-4", "f19")).unwrap_err();
+    assert!(replayed.message.contains("PublicationIncompatible"), "{}", replayed.message);
+    assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
+    let rows = history();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert!(format!("{:?}", rows[0]).contains("run-19"), "{rows:?}");
 }
 
 // spec: run.export.group-d1-acknowledge@b1a56a70
