@@ -13,6 +13,22 @@ fn execution_admission_orders_leases_and_refuses_conflicting_fences() {
     assert!(ExecutionAdmission::new(Vec::new(), vec![lease("a", 1), lease("a", 2)], false).is_err());
 }
 
+/// An admission carries the journal entry its callback sends under and the destination's
+/// declared deduplication window, `none` by default.
+#[test]
+fn execution_admission_carries_its_guarded_effect() {
+    use contextful_core::coordinate::ExecutionAdmission;
+    use contextful_core::run::journal::EntryKey;
+    let bare = ExecutionAdmission::new(Vec::new(), Vec::new(), false).unwrap();
+    assert!(bare.effect().is_none());
+    let entry = EntryKey::new("execution", "pull", b"input");
+    let admission = bare.with_effect(entry.clone(), Some(600));
+    let effect = admission.effect().expect("an admitted effect");
+    assert_eq!(effect.entry, entry);
+    assert_eq!(effect.window_secs, Some(600));
+    assert_eq!(effect.idempotency_key(), entry.idempotency_key());
+}
+
 /// `success`, and a failure that wrote no batch, release the owner; every other status holds it.
 // spec: run.own.pin-release@dbab6ab5
 #[test]

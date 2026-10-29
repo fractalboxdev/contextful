@@ -163,7 +163,8 @@ fn an_initialize_batch_dropped_on_first_touch_resends() {
         "contextful_execution_schema", "contextful_recovery", "contextful_lease", "contextful_scope",
         "contextful_run", "contextful_journal", "contextful_blob", "contextful_sweep",
         "contextful_awakeable", "contextful_export", "contextful_guard", "contextful_reconciliation",
-        "contextful_publication",
+        "contextful_publication", "contextful_callback_guard", "contextful_guard_holder",
+        "contextful_guard_reconciliation",
     ];
     let tables = json!({"rows": names.map(|name| json!({"name": name})), "changes": 0}).to_string();
     let frontier = json!({"project": "research", "generation": "g1", "objects": []}).to_string();

@@ -12,6 +12,8 @@ mod awakeable;
 pub use awakeable::D1AwakeableStore;
 mod catalog;
 pub use catalog::D1Catalog;
+mod guard;
+pub use guard::{draw_identity, EvidenceClass, GuardView, GUARD_PARENT_VAR};
 mod blob;
 pub use blob::D1BlobStore;
 mod export;
@@ -63,7 +65,7 @@ fn reads(sql: &str) -> bool {
 }
 
 /// A complete backup carries these D1 tables and its R2 objects together.
-pub const EXECUTION_SCHEMA_VERSION: i64 = 3;
+pub const EXECUTION_SCHEMA_VERSION: i64 = 4;
 const TABLES: &[(&str, &str)] = &[
     ("contextful_execution_schema", "CREATE TABLE IF NOT EXISTS contextful_execution_schema (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)"),
     ("contextful_recovery", "CREATE TABLE IF NOT EXISTS contextful_recovery (id INTEGER PRIMARY KEY CHECK (id = 1), project TEXT NOT NULL, generation TEXT NOT NULL, frontier_sha256 TEXT NOT NULL)"),
@@ -78,7 +80,17 @@ const TABLES: &[(&str, &str)] = &[
     ("contextful_guard", "CREATE TABLE IF NOT EXISTS contextful_guard (scope TEXT PRIMARY KEY, token TEXT NOT NULL, admitted_at INTEGER NOT NULL)"),
     ("contextful_reconciliation", "CREATE TABLE IF NOT EXISTS contextful_reconciliation (token TEXT PRIMARY KEY, evidence TEXT NOT NULL, reconciled_at INTEGER NOT NULL)"),
     ("contextful_publication", PUBLICATION_TABLE),
+    ("contextful_callback_guard", CALLBACK_GUARD_TABLE),
+    ("contextful_guard_holder", GUARD_HOLDER_TABLE),
+    ("contextful_guard_reconciliation", GUARD_RECONCILIATION_TABLE),
 ];
+/// Each guard's recorded identity; `contextful_guard` holds one row per protected owner
+/// scope or lease key (`run.callback-guard.identity`).
+const CALLBACK_GUARD_TABLE: &str = "CREATE TABLE IF NOT EXISTS contextful_callback_guard (token TEXT PRIMARY KEY, holder TEXT NOT NULL, execution_id TEXT NOT NULL, attempt TEXT, entry_key TEXT NOT NULL, idempotency_key TEXT NOT NULL, admitted_at INTEGER NOT NULL, window_us INTEGER, publication INTEGER NOT NULL, scopes TEXT NOT NULL, runs TEXT NOT NULL, leases TEXT NOT NULL)";
+/// Each engine's holder identity and the exit it records (`run.callback-guard.holder-gone`).
+const GUARD_HOLDER_TABLE: &str = "CREATE TABLE IF NOT EXISTS contextful_guard_holder (holder TEXT PRIMARY KEY, parent TEXT, pid INTEGER NOT NULL, started_at INTEGER NOT NULL, exited_at INTEGER)";
+/// The audit row each manual reconciliation appends (`run.callback-guard.manual`).
+const GUARD_RECONCILIATION_TABLE: &str = "CREATE TABLE IF NOT EXISTS contextful_guard_reconciliation (token TEXT PRIMARY KEY, evidence TEXT NOT NULL, operator TEXT NOT NULL, reconciled_at INTEGER NOT NULL)";
 /// Indexes a reader relies on; each is created with its table and on every later
 /// initialization, so a database predating one gains it. The run record's start instant is
 /// text, so its index orders the integer it spells (`run.record.history-window`).
@@ -136,10 +148,16 @@ impl D1 {
             vec![],
         )?;
         if !existing.rows.is_empty() {
-            // Schema 2 lacks only the coordinated publication table.
+            // Schema 2 lacks the coordinated publication table and schema 3 the scoped guard
+            // tables; a schema-3 database still holding its `global` guard stays at 3
+            // (`run.callback-guard.legacy-guard`).
             let mut statements = vec![
                 Statement { sql: PUBLICATION_TABLE, params: vec![] },
+                Statement { sql: CALLBACK_GUARD_TABLE, params: vec![] },
+                Statement { sql: GUARD_HOLDER_TABLE, params: vec![] },
+                Statement { sql: GUARD_RECONCILIATION_TABLE, params: vec![] },
                 Statement { sql: "UPDATE contextful_execution_schema SET version = 3 WHERE id = 1 AND version = 2", params: vec![] },
+                Statement { sql: "UPDATE contextful_execution_schema SET version = 4 WHERE id = 1 AND version = 3 AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", params: vec![] },
             ];
             statements.extend(INDEXES.iter().map(|sql| Statement { sql, params: vec![] }));
             self.initialize_batch(&statements)?;
@@ -187,13 +205,14 @@ impl D1 {
             "SELECT version FROM contextful_execution_schema WHERE id = 1",
             vec![],
         )?;
-        if version
-            .rows
-            .first()
-            .and_then(|row| row.get("version"))
-            .and_then(Value::as_i64)
-            != Some(EXECUTION_SCHEMA_VERSION)
-        {
+        let version = version.rows.first().and_then(|row| row.get("version")).and_then(Value::as_i64);
+        if version != Some(EXECUTION_SCHEMA_VERSION) {
+            if version == Some(3) {
+                let legacy = self.query("SELECT token FROM contextful_guard WHERE scope = 'global'", vec![])?;
+                if let Some(token) = legacy.rows.first().and_then(|row| row.get("token")).and_then(Value::as_str) {
+                    return Err(format!("ExecutionSchemaIncompatible: schema-3 callback guard `{token}` remains; reconcile it with the release that wrote it, then run `contextful storage initialize`"));
+                }
+            }
             return Err("ExecutionSchemaIncompatible".into());
         }
         self.recovery_objects(project, generation)?;

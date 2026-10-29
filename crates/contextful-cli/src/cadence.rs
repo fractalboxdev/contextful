@@ -1272,13 +1272,49 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
 struct Children {
     live: Mutex<BTreeMap<u32, Child>>,
     closed: AtomicBool,
+    #[cfg(feature = "d1-catalog")]
+    holders: Option<GuardHolders>,
+}
+
+/// The identity a `cloudflare-d1` serve's children register their guard holders under, and
+/// the catalog recording each reaped child's exit (`run.callback-guard.holder-gone`).
+#[cfg(feature = "d1-catalog")]
+struct GuardHolders {
+    parent: String,
+    catalog: contextful_d1::D1Catalog,
 }
 
 impl Children {
+    /// The children of a serve process, each registering its D1 guard holder under the
+    /// serve's identity when the storage profile is `cloudflare-d1`.
+    fn for_storage() -> Result<Self> {
+        #[cfg(feature = "d1-catalog")]
+        if let Some(crate::storage::Remote::D1 { endpoint, .. }) = crate::storage::remote()? {
+            let catalog = contextful_d1::D1Catalog::connect(&endpoint)?;
+            return Ok(Self { holders: Some(GuardHolders { parent: contextful_d1::draw_identity(), catalog }), ..Self::default() });
+        }
+        Ok(Self::default())
+    }
+
+    /// Record that reaped child `pid`'s guard holders are gone.
+    fn exited(&self, pid: u32) {
+        #[cfg(feature = "d1-catalog")]
+        if let Some(holders) = &self.holders {
+            if let Err(e) = holders.catalog.record_child_exit(&holders.parent, pid) {
+                eprintln!("warning: recording the guard holder exit of child {pid}: {e}");
+            }
+        }
+        let _ = pid;
+    }
+
     /// Start `cmd` as a tracked child in its own process group; refused once [`Children::end_all`] has run.
     fn spawn(&self, cmd: &mut Command) -> std::io::Result<(u32, Option<ChildStdout>, Option<ChildStderr>)> {
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(cmd, 0);
+        #[cfg(feature = "d1-catalog")]
+        if let Some(holders) = &self.holders {
+            cmd.env(contextful_d1::GUARD_PARENT_VAR, &holders.parent);
+        }
         let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
         if self.closed.load(Ordering::SeqCst) {
             return Err(std::io::Error::other("serve is stopping and starts no child"));
@@ -1298,6 +1334,8 @@ impl Children {
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         live.remove(&pid);
+                        drop(live);
+                        self.exited(pid);
                         return Ok(status);
                     }
                     Ok(None) => {}
@@ -1329,6 +1367,7 @@ impl Children {
             }
             if kill {
                 let _ = child.wait();
+                self.exited(*pid);
             }
         }
         running
@@ -1746,7 +1785,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     // serves (`surface.reside.region-mismatch`).
     crate::reside::enforce(&l, &text)?;
     let w = wire_at(&l.project, &project.now)?;
-    let children = Arc::new(Children::default());
+    let children = Arc::new(Children::for_storage()?);
     let reaper = Reaper(children.clone());
     let dispatch: Arc<dyn Dispatch> = match &control.relay {
         Some(relay) if !control.workers.is_empty() => worker_dispatch(relay, &control.workers)?,

@@ -113,6 +113,7 @@ fn a_postgres_url_cannot_impersonate_the_d1_private_binding() {
 // spec: run.journal.corpus-unavailable@5e1619bd
 // spec: run.journal.d1-backup@076183a0
 // spec: run.journal.d1-profile@c06243f4
+// spec: run.callback-guard.inspect@9e37be9b
 #[test]
 #[cfg(all(feature = "d1-catalog", feature = "s3-sync"))]
 fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
@@ -195,17 +196,39 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     s3.seed(corpus_key, corpus_bytes);
     let recovered = invoke(&["storage", "check", "--project", "research"]);
     assert!(recovered.status.success(), "{}", String::from_utf8_lossy(&recovered.stderr));
-    let token = "a".repeat(64);
-    db.query("INSERT INTO contextful_guard (scope, token, admitted_at) VALUES ('global', ?, 1)", vec![serde_json::json!(token)]).unwrap();
+    // A publication guard whose holder crashed after its lease lapsed.
+    use contextful_core::coordinate::{Catalog, ExecutionAdmission, LeaseKey};
+    let holder = contextful_d1::D1Catalog::connect(&format!("http://127.0.0.1:{d1_port}")).unwrap();
+    let lease = holder.acquire(&LeaseKey::Cadence("delivery".into()), "exporter", 1).unwrap().unwrap();
+    let entry = contextful_core::run::journal::EntryKey::new("export:receiver", "delivery", b"batch-1");
+    let admission = ExecutionAdmission::new(vec![], vec![lease], true).unwrap().with_effect(entry.clone(), None);
+    std::mem::forget(holder.execution_guard(&admission).unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(1100));
     let guarded = invoke(&["storage", "guard", "--project", "research"]);
     assert!(guarded.status.success(), "{}", String::from_utf8_lossy(&guarded.stderr));
     let state: serde_json::Value = serde_json::from_slice(&guarded.stdout).unwrap();
-    assert_eq!(state["token"], token);
-    let cleared = invoke(&["storage", "reconcile-guard", "--project", "research", "--token", &token, "--evidence", "idempotency:fixture-retry"]);
+    let guards = state["guards"].as_array().unwrap();
+    assert_eq!(guards.len(), 1, "{state}");
+    let guard = &guards[0];
+    assert_eq!(guard["lease_keys"], serde_json::json!(["cadence.delivery"]));
+    assert_eq!(guard["holder"], holder.holder_identity());
+    assert_eq!(guard["idempotency_key"], entry.idempotency_key());
+    assert_eq!(guard["entry_key"]["step_label"], "delivery");
+    assert_eq!(guard["window"], "none");
+    assert_eq!(guard["class"], "receipt-required");
+    for key in ["token", "scopes", "execution", "attempt", "admitted_at"] {
+        assert!(guard.get(key).is_some(), "`storage guard` prints `{key}`: {guard}");
+    }
+    let token = guard["token"].as_str().unwrap().to_string();
+    let reconcile = |evidence: &str| invoke(&["storage", "reconcile-guard", "--project", "research", "--token", &token, "--evidence", evidence, "--operator", "on-call"]);
+    let refused = reconcile("idempotency:fixture-retry");
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("ExecutionGuardEvidenceMismatch"), "{}", String::from_utf8_lossy(&refused.stderr));
+    let cleared = reconcile(&format!("receipt:{}:delivery-1", entry.idempotency_key()));
     assert!(cleared.status.success(), "{}", String::from_utf8_lossy(&cleared.stderr));
     let guard_after = invoke(&["storage", "guard", "--project", "research"]);
     let state: serde_json::Value = serde_json::from_slice(&guard_after.stdout).unwrap();
-    assert!(state["token"].is_null());
+    assert_eq!(state["guards"], serde_json::json!([]));
     let config_path = store.join("config.toml");
     let config = std::fs::read_to_string(&config_path).unwrap();
     std::fs::write(&config_path, config.replace(&s3.endpoint, "http://127.0.0.1:1")).unwrap();

@@ -300,10 +300,11 @@ impl Remote {
             if bound["rows"][0]["project"] != "research" || bound["rows"][0]["generation"] != recovery {
                 return Err("ConformanceRecoveryMismatch".into());
             }
-            // A schema-2 binding gains the publication table at `storage initialize`.
+            // A schema-2 binding gains the publication table, and a schema-3 one the scoped
+            // guard tables, at `storage initialize`.
             let present = |table: &str| tables["rows"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == table));
-            let deletes: Vec<_> = ["contextful_guard", "contextful_reconciliation", "contextful_export", "contextful_publication", "contextful_awakeable", "contextful_sweep", "contextful_blob", "contextful_journal", "contextful_run", "contextful_scope", "contextful_lease"].into_iter()
-                .filter(|table| *table != "contextful_publication" || present(table))
+            let deletes: Vec<_> = ["contextful_guard", "contextful_callback_guard", "contextful_guard_holder", "contextful_guard_reconciliation", "contextful_reconciliation", "contextful_export", "contextful_publication", "contextful_awakeable", "contextful_sweep", "contextful_blob", "contextful_journal", "contextful_run", "contextful_scope", "contextful_lease"].into_iter()
+                .filter(|table| !matches!(*table, "contextful_publication" | "contextful_callback_guard" | "contextful_guard_holder" | "contextful_guard_reconciliation") || present(table))
                 .map(|table| serde_json::json!({"sql":format!("DELETE FROM {table}"),"params":[]})).collect();
             let bytes = serde_json::to_vec(&deletes).map_err(|_| "ConformanceStorageResetFailed")?;
             let response = ureq::post(&format!("{endpoint}/batch")).header("content-type", "application/json").send(bytes.as_slice()).map_err(|_| "ConformanceStorageResetFailed")?;

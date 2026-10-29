@@ -1,6 +1,7 @@
-//! Conditional D1 lease writes and a durable callback guard.
+//! Conditional D1 lease writes, each refusing while a callback guard protects its row.
 
-use crate::{Statement, D1};
+use crate::D1;
+use crate::guard::{lease_row, owner_row, Holder};
 use contextful_core::coordinate::{
     Cas, Catalog, CursorRow, ExecutionAdmission, ExecutionGuard, Lease, LeaseKey, LeaseRow,
 };
@@ -10,17 +11,19 @@ use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
-const NOW_US: &str = "CAST((julianday('now') - 2440587.5) * 86400000000 AS INTEGER)";
-static NEXT_GUARD: AtomicU64 = AtomicU64::new(0);
+pub(crate) const NOW_US: &str = "CAST((julianday('now') - 2440587.5) * 86400000000 AS INTEGER)";
+
+/// The predicate a transfer of one row carries: no guard protects it.
+const UNGUARDED: &str = "NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = ?)";
 
 pub struct D1Catalog {
-    db: D1,
+    pub(crate) db: D1,
+    pub(crate) holder: Arc<Holder>,
 }
 
-fn storage(error: impl std::fmt::Display) -> Failure {
+pub(crate) fn storage(error: impl std::fmt::Display) -> Failure {
     Failure::new(FailureTag::Storage, format!("D1 catalog: {error}"))
 }
 
@@ -40,43 +43,29 @@ fn ttl_us(seconds: u64) -> i64 {
         .saturating_mul(1_000_000)
 }
 
-struct Guard {
-    endpoint: String,
-    token: String,
-}
-impl ExecutionGuard for Guard {}
-impl Drop for Guard {
-    fn drop(&mut self) {
-        if let Ok(db) = D1::connect(&self.endpoint) {
-            let _ = db.query(
-                "DELETE FROM contextful_guard WHERE scope = 'global' AND token = ?",
-                vec![json!(self.token)],
-            );
-        }
-    }
-}
-
 impl D1Catalog {
     pub fn connect(endpoint: &str) -> Result<Self, Failure> {
         let db = D1::connect(endpoint).map_err(storage)?;
         db.health().map_err(storage)?;
-        Ok(Self { db })
+        Ok(Self { holder: Holder::draw(&db.endpoint), db })
+    }
+
+    pub(crate) fn now_at(&self) -> Result<Instant, Failure> {
+        Catalog::now(self)
     }
 
     /// Acquire `key` whatever its current holder or expiry, advancing the fence so every
     /// write predicated on the prior holder's lease stops matching.
     pub fn take_over(&self, key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Lease, Failure> {
         let key = key.spelling();
-        self.assert_mutable()?;
-        self.db.query("INSERT OR IGNORE INTO contextful_lease (key, fence) SELECT ?, 0 WHERE NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", vec![json!(key)]).map_err(storage)?;
-        let sql = format!("UPDATE contextful_lease SET holder = ?, expires_us = {NOW_US} + ?, fence = fence + 1 WHERE key = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global') RETURNING fence, expires_us");
-        let result = self
-            .db
-            .query(&sql, vec![json!(holder), json!(ttl_us(ttl_secs)), json!(key)])
-            .map_err(storage)?;
-        let row = result.rows.first().ok_or_else(|| {
-            Failure::new(FailureTag::Transient, "execution callback guard blocks D1 lease or owner transfer")
-        })?;
+        let row = lease_row(&key);
+        self.db.query(&format!("INSERT OR IGNORE INTO contextful_lease (key, fence) SELECT ?, 0 WHERE {UNGUARDED}"), vec![json!(key), json!(row)]).map_err(storage)?;
+        let sql = format!("UPDATE contextful_lease SET holder = ?, expires_us = {NOW_US} + ?, fence = fence + 1 WHERE key = ? AND {UNGUARDED} RETURNING fence, expires_us");
+        let result = self.transfer(&row, &sql, vec![json!(holder), json!(ttl_us(ttl_secs)), json!(key), json!(row)])?;
+        let Some(row) = result.rows.first() else {
+            self.unguarded(&row)?;
+            return Err(Failure::new(FailureTag::Transient, "D1 lease takeover matched no row"));
+        };
         Ok(Lease {
             key,
             holder: holder.into(),
@@ -85,88 +74,16 @@ impl D1Catalog {
         })
     }
 
-    /// An orphaned callback guard remains visible until its external effect is resolved.
-    pub fn pending_guard(&self) -> Result<Option<String>, Failure> {
-        let rows = self
-            .db
-            .query(
-                "SELECT token FROM contextful_guard WHERE scope = 'global'",
-                vec![],
-            )
-            .map_err(storage)?
-            .rows;
-        rows.first()
-            .map(|row| {
-                row.get("token")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-                    .ok_or_else(|| storage("missing guard token"))
-            })
-            .transpose()
-    }
-
-    /// A reconciled provider receipt or stable idempotency key admits a later owner.
-    pub fn reconcile_guard(&self, token: &str, evidence: &str) -> Result<(), Failure> {
-        if token.len() != 64
-            || !token.bytes().all(|b| b.is_ascii_hexdigit())
-            || evidence.len() > 512
-            || !(evidence.starts_with("idempotency:") || evidence.starts_with("receipt:"))
-            || evidence
-                .split_once(':')
-                .is_none_or(|(_, value)| value.trim().is_empty())
-        {
-            return Err(storage("ExecutionReconciliationEvidenceInvalid"));
-        }
-        let insert = format!("INSERT INTO contextful_reconciliation (token, evidence, reconciled_at) SELECT token, ?, {NOW_US} FROM contextful_guard WHERE scope = 'global' AND token = ?");
-        let statements = [
-            Statement {
-                sql: &insert,
-                params: vec![json!(evidence), json!(token)],
-            },
-            Statement {
-                sql: "DELETE FROM contextful_guard WHERE scope = 'global' AND token = ?",
-                params: vec![json!(token)],
-            },
-        ];
-        let changed = self.db.batch(&statements).map_err(storage)?;
-        if changed.len() != 2 || changed[0].changes != 1 || changed[1].changes != 1 {
-            return Err(storage("ExecutionReconciliationGuardMoved"));
-        }
-        Ok(())
-    }
-
-    fn guard_held(&self) -> Result<bool, Failure> {
-        Ok(!self
-            .db
-            .query(
-                "SELECT 1 FROM contextful_guard WHERE scope = 'global'",
-                vec![],
-            )
-            .map_err(storage)?
-            .rows
-            .is_empty())
-    }
-
-    fn assert_mutable(&self) -> Result<(), Failure> {
-        if self.guard_held()? {
-            Err(Failure::new(
-                FailureTag::Transient,
-                "execution callback guard blocks D1 lease or owner transfer",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
     fn scope_key(scope: &OwnerScope) -> Result<String, Failure> {
         serde_json::to_string(scope).map_err(storage)
     }
 
     fn seed_scope(&self, scope: &OwnerScope) -> Result<(), Failure> {
         let key = Self::scope_key(scope)?;
+        let row = owner_row(scope)?;
         let cursor = serde_json::to_string(&CursorRow::default()).map_err(storage)?;
-        self.db.query("INSERT OR IGNORE INTO contextful_scope (scope, version, cursor) SELECT ?, 0, ? WHERE NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", vec![json!(key), json!(cursor)]).map_err(storage)?;
-        self.assert_mutable()
+        self.db.query(&format!("INSERT OR IGNORE INTO contextful_scope (scope, version, cursor) SELECT ?, 0, ? WHERE {UNGUARDED}"), vec![json!(key), json!(cursor), json!(row)]).map_err(storage)?;
+        Ok(())
     }
 
     fn scope_row(&self, scope: &OwnerScope) -> Result<Option<Value>, Failure> {
@@ -240,113 +157,7 @@ impl Catalog for D1Catalog {
         &self,
         admission: &ExecutionAdmission,
     ) -> Result<Box<dyn ExecutionGuard>, Failure> {
-        let mut sql = format!("INSERT INTO contextful_guard (scope, token, admitted_at) SELECT 'global', ?, {NOW_US} WHERE NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')");
-        let nonce = NEXT_GUARD.fetch_add(1, Ordering::SeqCst);
-        let token = format!(
-            "{:x}",
-            Sha256::digest(format!(
-                "{}:{}:{}",
-                std::process::id(),
-                nonce,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_err(storage)?
-                    .as_nanos()
-            ))
-        );
-        let mut args = vec![json!(token)];
-        for expected in admission.owners() {
-            let scope = Self::scope_key(&expected.scope)?;
-            let owner_query = self
-                .db
-                .query(
-                    "SELECT owner FROM contextful_scope WHERE scope = ?",
-                    vec![json!(scope)],
-                )
-                .map_err(storage)?;
-            let owner_text = owner_query
-                .rows
-                .first()
-                .and_then(|r| r.get("owner"))
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    Failure::new(FailureTag::Transient, "execution admission was superseded")
-                })?;
-            let owner: ExecutionOwner = serde_json::from_str(owner_text).map_err(storage)?;
-            if owner.execution_id != expected.execution_id
-                || owner.pins != expected.pins
-                || (expected.scope.host_id().is_some()
-                    && owner.attempts.last() != Some(&expected.run_id))
-            {
-                return Err(Failure::new(
-                    FailureTag::Transient,
-                    "execution admission was superseded",
-                ));
-            }
-            let run_query = self
-                .db
-                .query(
-                    "SELECT row FROM contextful_run WHERE run_id = ?",
-                    vec![json!(expected.run_id)],
-                )
-                .map_err(storage)?;
-            let run_text = run_query
-                .rows
-                .first()
-                .and_then(|r| r.get("row"))
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    Failure::new(
-                        FailureTag::Transient,
-                        "execution attempt no longer admits the callback",
-                    )
-                })?;
-            let run: RunRow = serde_json::from_str(run_text).map_err(storage)?;
-            let now = self.now()?;
-            if run.execution_id != expected.execution_id
-                || !run.status.is_in_flight()
-                || !run.owner.as_ref().is_some_and(|o| !o.expired(now))
-                || (!admission.publication && run.stop.is_some())
-            {
-                return Err(Failure::new(
-                    FailureTag::Transient,
-                    "execution attempt no longer admits the callback",
-                ));
-            }
-            let owner_expiry_us = i64::try_from(
-                run.owner
-                    .as_ref()
-                    .expect("validated owner")
-                    .lease_expires_at
-                    .unix_nanos()
-                    / 1000,
-            )
-            .map_err(storage)?;
-            sql.push_str(
-                " AND EXISTS (SELECT 1 FROM contextful_scope WHERE scope = ? AND owner = ?)",
-            );
-            args.extend([json!(scope), json!(owner_text)]);
-            sql.push_str(&format!(" AND EXISTS (SELECT 1 FROM contextful_run WHERE run_id = ? AND row = ?) AND ? > {NOW_US}"));
-            args.extend([
-                json!(expected.run_id),
-                json!(run_text),
-                json!(owner_expiry_us),
-            ]);
-        }
-        for lease in admission.leases() {
-            sql.push_str(&format!(" AND EXISTS (SELECT 1 FROM contextful_lease WHERE key = ? AND holder = ? AND fence = ? AND expires_us > {NOW_US})"));
-            args.extend([json!(lease.key), json!(lease.holder), json!(lease.fence)]);
-        }
-        if self.db.query(&sql, args).map_err(storage)?.changes != 1 {
-            return Err(Failure::new(
-                FailureTag::Transient,
-                "execution admission was superseded or another callback holds D1 guard",
-            ));
-        }
-        Ok(Box::new(Guard {
-            endpoint: self.db.endpoint.clone(),
-            token,
-        }))
+        self.admit(admission)
     }
 
     fn now(&self) -> Result<Instant, Failure> {
@@ -370,16 +181,10 @@ impl Catalog for D1Catalog {
         ttl_secs: u64,
     ) -> Result<Option<Lease>, Failure> {
         let key = key.spelling();
-        self.assert_mutable()?;
-        self.db.query("INSERT OR IGNORE INTO contextful_lease (key, fence) SELECT ?, 0 WHERE NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", vec![json!(key)]).map_err(storage)?;
-        let sql = format!("UPDATE contextful_lease SET holder = ?, expires_us = {NOW_US} + ?, fence = fence + 1 WHERE key = ? AND (holder IS NULL OR expires_us IS NULL OR expires_us <= {NOW_US}) AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global') RETURNING fence, expires_us");
-        let result = self
-            .db
-            .query(
-                &sql,
-                vec![json!(holder), json!(ttl_us(ttl_secs)), json!(key)],
-            )
-            .map_err(storage)?;
+        let row = lease_row(&key);
+        self.db.query(&format!("INSERT OR IGNORE INTO contextful_lease (key, fence) SELECT ?, 0 WHERE {UNGUARDED}"), vec![json!(key), json!(row)]).map_err(storage)?;
+        let sql = format!("UPDATE contextful_lease SET holder = ?, expires_us = {NOW_US} + ?, fence = fence + 1 WHERE key = ? AND (holder IS NULL OR expires_us IS NULL OR expires_us <= {NOW_US}) AND {UNGUARDED} RETURNING fence, expires_us");
+        let result = self.transfer(&row, &sql, vec![json!(holder), json!(ttl_us(ttl_secs)), json!(key), json!(row)])?;
         if let Some(row) = result.rows.first() {
             return Ok(Some(Lease {
                 key,
@@ -388,14 +193,15 @@ impl Catalog for D1Catalog {
                 expires_at: instant(number(row, "expires_us")?)?,
             }));
         }
-        self.assert_mutable()?;
+        self.unguarded(&row)?;
         Ok(None)
     }
 
     fn release(&self, lease: &Lease) -> Result<(), Failure> {
-        let result = self.db.query("UPDATE contextful_lease SET holder = NULL, expires_us = NULL WHERE key = ? AND fence = ? AND holder = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", vec![json!(lease.key), json!(lease.fence), json!(lease.holder)]).map_err(storage)?;
+        let row = lease_row(&lease.key);
+        let result = self.db.query(&format!("UPDATE contextful_lease SET holder = NULL, expires_us = NULL WHERE key = ? AND fence = ? AND holder = ? AND {UNGUARDED}"), vec![json!(lease.key), json!(lease.fence), json!(lease.holder), json!(row)]).map_err(storage)?;
         if result.changes == 0 {
-            self.assert_mutable()?
+            self.unguarded(&row)?
         }
         Ok(())
     }
@@ -492,12 +298,14 @@ impl Catalog for D1Catalog {
             json!(Self::scope_key(scope)?),
             json!(expected_version),
         ];
-        let mut sql = "UPDATE contextful_scope SET cursor = ?, version = version + 1 WHERE scope = ? AND version = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')".to_string();
+        let row = owner_row(scope)?;
+        args.push(json!(row));
+        let mut sql = format!("UPDATE contextful_scope SET cursor = ?, version = version + 1 WHERE scope = ? AND version = ? AND {UNGUARDED}");
         Self::fence_condition(&mut sql, &mut args, fence);
         if self.db.query(&sql, args).map_err(storage)?.changes == 1 {
             return Ok(Cas::Applied);
         }
-        self.assert_mutable()?;
+        self.unguarded(&row)?;
         if self.cursor_at(scope)?.version != expected_version {
             return Ok(Cas::VersionMoved);
         }
@@ -517,9 +325,10 @@ impl Catalog for D1Catalog {
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure> {
         self.seed_scope(&owner.scope)?;
         let body = serde_json::to_string(owner).map_err(storage)?;
-        let result = self.db.query("UPDATE contextful_scope SET owner = ? WHERE scope = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", vec![json!(body), json!(Self::scope_key(&owner.scope)?)]).map_err(storage)?;
+        let row = owner_row(&owner.scope)?;
+        let result = self.transfer(&row, &format!("UPDATE contextful_scope SET owner = ? WHERE scope = ? AND {UNGUARDED}"), vec![json!(body), json!(Self::scope_key(&owner.scope)?), json!(row)])?;
         if result.changes != 1 {
-            self.assert_mutable()?;
+            self.unguarded(&row)?;
             return Err(storage("owner row missing"));
         }
         Ok(())
@@ -534,6 +343,7 @@ impl Catalog for D1Catalog {
     ) -> Result<Cas, Failure> {
         self.seed_scope(scope)?;
         let expected_version = cursor.as_ref().map(|(_, expected)| *expected);
+        let row = owner_row(scope)?;
         let mut args = Vec::new();
         let mut sql = "UPDATE contextful_scope SET ".to_string();
         if let Some((mut next, expected)) = cursor {
@@ -542,28 +352,32 @@ impl Catalog for D1Catalog {
                 .ok_or_else(|| storage("cursor version exhausted"))?;
             sql.push_str("cursor = ?, version = version + 1, ");
             args.push(json!(serde_json::to_string(&next).map_err(storage)?));
-            sql.push_str("owner = CASE WHEN json_extract(owner, '$.execution_id') = ? THEN NULL ELSE owner END, retired = CASE WHEN ? = '' THEN retired ELSE ? END WHERE scope = ? AND version = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')");
+            sql.push_str("owner = CASE WHEN json_extract(owner, '$.execution_id') = ? THEN NULL ELSE owner END, retired = CASE WHEN ? = '' THEN retired ELSE ? END WHERE scope = ? AND version = ? AND ");
+            sql.push_str(UNGUARDED);
             args.extend([
                 json!(execution_id),
                 json!(execution_id),
                 json!(execution_id),
                 json!(Self::scope_key(scope)?),
                 json!(expected),
+                json!(row),
             ]);
         } else {
-            sql.push_str("owner = CASE WHEN json_extract(owner, '$.execution_id') = ? THEN NULL ELSE owner END, retired = CASE WHEN ? = '' THEN retired ELSE ? END WHERE scope = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')");
+            sql.push_str("owner = CASE WHEN json_extract(owner, '$.execution_id') = ? THEN NULL ELSE owner END, retired = CASE WHEN ? = '' THEN retired ELSE ? END WHERE scope = ? AND ");
+            sql.push_str(UNGUARDED);
             args.extend([
                 json!(execution_id),
                 json!(execution_id),
                 json!(execution_id),
                 json!(Self::scope_key(scope)?),
+                json!(row),
             ]);
         }
         Self::fence_condition(&mut sql, &mut args, fence);
         if self.db.query(&sql, args).map_err(storage)?.changes == 1 {
             return Ok(Cas::Applied);
         }
-        self.assert_mutable()?;
+        self.unguarded(&row)?;
         if let Some(expected) = expected_version {
             if self.cursor_at(scope)?.version != expected {
                 return Ok(Cas::VersionMoved);

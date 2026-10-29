@@ -19,6 +19,7 @@ mod m15;
 mod m17;
 mod m19;
 mod m24;
+mod m25;
 mod e2e;
 mod issue98;
 mod issue98_body;
