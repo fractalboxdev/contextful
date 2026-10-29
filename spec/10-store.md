@@ -691,6 +691,8 @@ A lazy store pulls metadata and fetches each data part and folded run manifest w
   *A-store#index-walk*
 - `husks-fetched` — A full chain walk, or one meeting no valid index, fetches the table's skipped collected snapshot manifests through the part source at the first it reaches; local retention and a walk past a valid index end there.
   *A-store#index-walk*
+- `husks-staleness` — A model's staleness check reads its head snapshot, each input's snapshots from the pointer down to the watermark snapshot, and the runs folded beneath through {{store.lay-out.folded-index-walk}}, fetching a skipped manifest only on that path.
+  *A-store#index-walk*
 - `skipped-record` — Each pull clearing its refusals rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.
   *because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone*
 - `folded-runs-fetched` — Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.

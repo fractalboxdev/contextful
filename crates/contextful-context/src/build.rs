@@ -45,8 +45,7 @@ pub use materialize::{admit_statements, build, build_guarded, build_released, mo
 
 /// The section of the snapshot the model's pointer names, when that build published one.
 pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSection>> {
-    let (chain, _) = store.chain(model)?;
-    Ok(chain.into_iter().next().and_then(|m| m.publish))
+    Ok(store.current_snapshot(model)?.and_then(|m| m.publish))
 }
 
 const ATTEMPTS_DIR: &str = "build-attempts";
@@ -156,9 +155,10 @@ pub fn status(store: &Store, model: &str, now: Instant) -> Result<serde_json::Va
 }
 
 /// Per watermark input, the commit instants of the runs the build did not include
-/// (`run.publish.staleness`), under [`input_waiting`] over the watermark snapshot chain's
-/// `includes_runs`, and each published build above the watermark snapshot of an input that
-/// is a model.
+/// (`run.publish.staleness`), under [`input_waiting`] over the runs the watermark snapshot's
+/// chain folds, and each published build above the watermark snapshot of an input that is a
+/// model. Each walk reads down to the watermark snapshot or the first valid folded-runs index
+/// (`store.pull.husks-staleness`).
 fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<Option<Instant>>>> {
     let mut out = BTreeMap::new();
     for (table, frontier) in &watermark.inputs {
@@ -166,16 +166,22 @@ fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<
             out.insert(table.clone(), Vec::new());
             continue;
         }
+        let mark = frontier.snapshot_id.clone().map(SnapshotId::try_from).transpose().map_err(ContextError::Invalid)?;
         let mut included: BTreeSet<String> = BTreeSet::new();
-        if let Some(id) = &frontier.snapshot_id {
-            let id = SnapshotId::try_from(id.clone()).map_err(ContextError::Invalid)?;
-            if store.snapshot_dir(table, &id)?.join(MANIFEST_FILE).exists() {
-                let (chain, _) = store.chain_from(table, id)?;
-                included.extend(chain.into_iter().flat_map(|m| m.includes_runs));
+        if let Some(id) = &mark {
+            // A collected snapshot a lazy pull skipped stays part of the chain (`store.pull.husks-skipped`).
+            if store.snapshot_dir(table, id)?.join(MANIFEST_FILE).exists() || store.skipped_snapshots(table)?.contains(&id.to_string()) {
+                included = store.folded_keys_from(table, id.clone())?;
             }
         }
         let runs = store.committed_runs(table)?;
-        let (chain, _) = store.chain(table)?;
+        // Every snapshot below the watermark snapshot folds only runs in `included`
+        // (`store.pull.husks-staleness`).
+        let (chain, _) = store.chain_down_to(table, mark.as_ref())?;
+        let folded = match chain.first() {
+            Some(head) => store.folded_keys_from(table, head.snapshot_id.clone())?,
+            None => BTreeSet::new(),
+        };
         // A model input lands no run; each published build above the watermark snapshot waits
         // instead (`run.publish.staleness-model-input`).
         let rebuilds: Vec<Option<Instant>> = chain
@@ -184,7 +190,7 @@ fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<
             .filter(|m| m.publish.is_some())
             .map(|m| Some(m.created_at))
             .collect();
-        let mut waits = input_waiting(frontier, watermark.at, &included, &runs, &chain);
+        let mut waits = input_waiting(frontier, watermark.at, &included, &folded, &runs, &chain);
         waits.extend(rebuilds);
         out.insert(table.clone(), waits);
     }

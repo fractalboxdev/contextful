@@ -5,6 +5,7 @@
 use crate::support::{at, decl, Fixture};
 use contextful_context::build::{build, current_section, hold, holds, manifests, status, BuildRequest, Built};
 use contextful_context::read::{Face, ReadFault};
+use contextful_context::Store;
 use contextful_core::pipeline::declare::{collect, ManifestFile};
 use contextful_core::pipeline::model::{
     collect_models, BuildEntry, ContractHistoryEntry, HoldRecord, ModelSpec, Receipt, BUILDS_LOG, CONTRACT_HISTORY_LOG, HOLDS_LOG,
@@ -530,6 +531,137 @@ fn a_model_reading_a_model_ages_by_its_rebuilds() {
     // A rebuild over the current frontier clears it.
     p.build(WEEKLY, "2030-04-02T01:00:00Z").unwrap();
     assert_eq!(status(&p.fx.store, "weekly", at("2030-05-01T00:00:00Z")).unwrap()["stale_inputs"], json!([]));
+}
+
+/// A part source restoring stashed snapshot manifests, recording every path a walk asks for.
+#[derive(Debug)]
+struct Husks {
+    root: PathBuf,
+    stash: Vec<(String, Vec<u8>)>,
+    asked: std::sync::Mutex<Vec<String>>,
+}
+
+impl contextful_core::store::object::PartSource for Husks {
+    fn hold(&self, files: &[String]) -> Result<contextful_core::store::object::PartHold, contextful_core::store::StoreError> {
+        self.asked.lock().unwrap().extend(files.iter().cloned());
+        for (rel, bytes) in &self.stash {
+            if files.contains(rel) {
+                std::fs::write(self.root.join(rel), bytes).unwrap();
+            }
+        }
+        Ok(contextful_core::store::object::PartHold(std::sync::Arc::new(())))
+    }
+}
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let dest = to.join(path.file_name().unwrap());
+        if path.is_dir() { copy_tree(&path, &dest) } else { std::fs::copy(&path, &dest).map(|_| ()).unwrap() }
+    }
+}
+
+/// A copy of `whole`'s store as a lazy pull leaves it: each snapshot manifest `husks` names stays in the bucket,
+/// listed in `.skipped-runs.json`, and comes home through the part source the copy reads through.
+fn lazy_copy(whole: &Store, husks: &[(&str, contextful_core::store::lay_out::SnapshotId)]) -> (tempfile::TempDir, Store, std::sync::Arc<Husks>) {
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    copy_tree(whole.root(), &root);
+    let mut stash = Vec::new();
+    for (table, id) in husks {
+        let path = whole.snapshot_dir(table, id).unwrap().join(MANIFEST_FILE);
+        let rel = path.strip_prefix(whole.root()).unwrap().to_string_lossy().replace('\\', "/");
+        std::fs::remove_file(root.join(&rel)).unwrap();
+        stash.push((rel, std::fs::read(&path).unwrap()));
+    }
+    let record = SkippedRuns { manifests: stash.iter().map(|(rel, _)| rel.clone()).collect() };
+    std::fs::write(root.join(SKIPPED_RUNS_FILE), serde_json::to_vec(&record).unwrap()).unwrap();
+    let source = std::sync::Arc::new(Husks { root: root.clone(), stash, asked: Default::default() });
+    let store = Store::open(dir.path(), "research").unwrap().with_part_source(source.clone());
+    (dir, store, source)
+}
+
+/// The instant `days` days and `hours` hours after 2030-01-01T00:00:00Z.
+fn day(days: u64, hours: u64) -> String {
+    at("2030-01-01T00:00:00Z").plus_secs(days * 86_400 + hours * 3600).to_rfc3339_nanos()
+}
+
+/// A store declaring `[sync]` whose `events` chain, declared with `retain`, holds ten daily folds, the model `daily`
+/// built after the third and the sixth, and one run landed after the last fold. Returns the snapshot each build's
+/// watermark names.
+fn history(retain: &str) -> (Project, Vec<contextful_core::store::lay_out::SnapshotId>) {
+    let p = Project { fx: Fixture::synced() };
+    let d = decl(&format!("name = \"events\"{retain}"));
+    let mut marks = Vec::new();
+    for i in 0..10 {
+        p.land(&format!("p{i}"), json!([{"day": format!("d{i}"), "v": i}]), &day(i, 0));
+        contextful_context::fold::fold(&p.fx.store, &d, at(&day(i, 1))).unwrap();
+        if i == 2 || i == 5 {
+            let built = p.build(MODEL, &day(i, 2)).unwrap();
+            let id = built.watermark.inputs["events"].snapshot_id.clone().expect("the build read a snapshot");
+            marks.push(contextful_core::store::lay_out::SnapshotId::try_from(id).unwrap());
+        }
+    }
+    p.land("late", json!([{"day": "d99", "v": 1}]), &day(9, 12));
+    (p, marks)
+}
+
+/// The `events` declarations a history folds under: keeping every run manifest, and collecting each two days old, so
+/// the runs folded after a build wait on `None` (`run.publish.staleness-collected-run`).
+const RETAIN: [&str; 2] = ["", "\nretain_runs = \"2d\""];
+
+/// What `build status` answers for `daily` at each instant worth asking: before and after `max_lag` passes the runs
+/// folded after the build.
+fn answers(store: &Store) -> Vec<Value> {
+    [day(5, 3), day(6, 12), day(7, 2), day(9, 0), day(12, 0)].iter().map(|t| status(store, "daily", at(t)).unwrap()).collect()
+}
+
+/// A lazy store whose collected snapshot manifests below the watermark snapshot stayed in the bucket answers a model's
+/// staleness as the store holding them, and asks its part source for none.
+// spec: store.pull.husks-staleness@6068bdc5
+#[test]
+fn a_staleness_check_on_a_lazy_store_fetches_no_husk() {
+    for retain in RETAIN {
+        let (p, marks) = history(retain);
+        let watermark = &marks[1];
+        let (events, _) = p.fx.store.chain("events").unwrap();
+        let (daily, _) = p.fx.store.chain("daily").unwrap();
+        assert!(events.len() >= 10 && daily.len() == 2, "{} {}", events.len(), daily.len());
+        let below = events.iter().skip_while(|s| &s.snapshot_id != watermark).skip(1);
+        let mut husks: Vec<(&str, contextful_core::store::lay_out::SnapshotId)> = below.map(|s| ("events", s.snapshot_id.clone())).collect();
+        assert!(husks.len() >= 5, "{husks:?}");
+        husks.push(("daily", daily[1].snapshot_id.clone()));
+        let (_dir, lazy, source) = lazy_copy(&p.fx.store, &husks);
+        let whole = answers(&p.fx.store);
+        assert!(whole.iter().any(|a| a["stale"] == true), "{whole:?}");
+        assert!(!retain.is_empty() || whole.iter().any(|a| a["stale"] == false), "{whole:?}");
+        assert_eq!(answers(&lazy), whole);
+        assert_eq!(*source.asked.lock().unwrap(), Vec::<String>::new(), "the staleness check fetched a husk");
+        for (rel, _) in &source.stash {
+            assert!(!lazy.root().join(rel).exists(), "`{rel}` came home");
+        }
+    }
+}
+
+/// A watermark snapshot that is itself a husk, older than the head's index, answers through the walk: the check
+/// fetches the skipped manifests and answers as the store holding them.
+// spec: store.pull.husks-staleness@6068bdc5
+#[test]
+fn a_watermark_snapshot_below_the_head_index_answers_through_the_walk() {
+    for retain in RETAIN {
+        let (p, _) = history(retain);
+        let (events, _) = p.fx.store.chain("events").unwrap();
+        let husks: Vec<(&str, contextful_core::store::lay_out::SnapshotId)> = events.iter().skip(1).map(|s| ("events", s.snapshot_id.clone())).collect();
+        assert!(husks.len() >= 9, "{husks:?}");
+        let (_dir, lazy, source) = lazy_copy(&p.fx.store, &husks);
+        let whole = answers(&p.fx.store);
+        assert!(whole.iter().any(|a| a["stale"] == true), "{whole:?}");
+        assert!(!retain.is_empty() || whole.iter().any(|a| a["stale"] == false), "{whole:?}");
+        assert_eq!(answers(&lazy), whole);
+        assert!(!source.asked.lock().unwrap().is_empty(), "the walk fetched the husks");
+    }
 }
 
 /// A hold is a {{type:contextful_core::pipeline::model::HoldRecord}} committed as `holds/<build id>.json` in the

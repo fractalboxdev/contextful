@@ -5214,6 +5214,18 @@
       "group": "lazy parts"
     },
     {
+      "id": "store.pull.husks-staleness",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "husks-staleness",
+      "kind": "behavior",
+      "statement": "A model's staleness check reads its head snapshot, each input's snapshots from the pointer down to the watermark snapshot, and the runs folded beneath through {{store.lay-out.folded-index-walk}}, fetching a skipped manifest only on that path.",
+      "why": "A-store#index-walk",
+      "file": "spec/10-store.md",
+      "line": 692,
+      "group": "lazy parts"
+    },
+    {
       "id": "store.pull.skipped-record",
       "contract": "store",
       "operation": "pull",
@@ -34662,6 +34674,7 @@
     "A-store#index-walk": [
       "store.pull.husks-skipped",
       "store.pull.husks-fetched",
+      "store.pull.husks-staleness",
       "store.collect.index-walk",
       "store.merge.collected-index"
     ],
@@ -35403,6 +35416,10 @@
     [
       "store.pull.husks-skipped",
       "store.pull.lazy-parts"
+    ],
+    [
+      "store.pull.husks-staleness",
+      "store.lay-out.folded-index-walk"
     ],
     [
       "store.pull.folded-runs-fetched",
@@ -70178,6 +70195,22 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/husks.rs",
         "name": "a_warm_lazy_pull_after_a_gap_adopts_the_head",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.pull.husks-staleness": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/build.rs",
+        "name": "a_staleness_check_on_a_lazy_store_fetches_no_husk",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/build.rs",
+        "name": "a_watermark_snapshot_below_the_head_index_answers_through_the_walk",
         "verdict": "performed",
         "proved": false
       }
