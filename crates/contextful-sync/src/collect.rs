@@ -691,6 +691,8 @@ fn referenced(table_key: &str, retained: &[SnapshotManifest]) -> BTreeSet<String
                 out.insert(format!("{table_key}/{SNAPSHOTS_DIR}/{}/{path}", segment.snapshot_id));
             }
         }
+        // Every folded-runs segment a retained snapshot names stays (`store.fold.folded-index`).
+        out.extend(s.folded_runs.iter().flat_map(|f| &f.segments).map(|seg| format!("{table_key}/{}", seg.location(&s.snapshot_id))));
     }
     out
 }

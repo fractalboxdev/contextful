@@ -128,7 +128,7 @@ fn four_parts_of_one_tier_merge_into_one() {
 
 /// Collection keeps the parts and sidecar segments a retained snapshot references and removes the rest of the
 /// collected snapshot's directory, manifest included.
-// spec: store.fold.reference-retention@98478eb2
+// spec: store.fold.reference-retention@44e6f5f5
 #[test]
 fn collection_keeps_a_part_a_retained_snapshot_carries() {
     let f = Fixture::new();

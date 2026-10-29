@@ -211,7 +211,7 @@ fn a_part_carried_by_reference_resolves_under_its_origin() {
     let plain = serde_json::to_value(&delta).unwrap();
     assert!(plain.get("origin").is_none() && plain.get("rows").is_none());
     assert_eq!(FormatVersion::default().to_string(), "1.0");
-    assert_eq!(FormatVersion::CURRENT.to_string(), "2.0");
+    assert_eq!(FormatVersion::CURRENT.to_string(), "2.1");
 }
 
 /// The skipped-runs record is a store-root dot file, which no push uploads, and a table's

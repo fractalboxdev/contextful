@@ -92,7 +92,7 @@ fn an_append_folds_the_run_record_once_its_trigger_fires() {
         unit(i);
     }
     let state = f.store.state(&record).unwrap();
-    assert_eq!(state.chain.len(), 1, "one pass folded the run record");
+    assert_eq!(f.store.chain(RUN_RECORD_TABLE).unwrap().0.len(), 1, "one pass folded the run record");
     assert_eq!(state.chain[0].includes_runs.len(), 50);
     assert!(state.unfolded_runs().is_empty());
     let read = history(&f.store, Bounds::default()).unwrap();
@@ -109,18 +109,18 @@ fn an_append_folds_the_run_record_once_its_trigger_fires() {
         unit(i);
     }
     std::fs::remove_dir_all(&lock).unwrap();
-    assert_eq!(f.store.state(&record).unwrap().chain.len(), 1, "the failed pass published nothing");
+    assert_eq!(f.store.chain(RUN_RECORD_TABLE).unwrap().0.len(), 1, "the failed pass published nothing");
     assert_eq!(history(&f.store, Bounds::default()).unwrap().len(), 50);
     unit(50);
     let state = f.store.state(&record).unwrap();
-    assert_eq!(state.chain.len(), 2, "the next append ran the pass");
+    assert_eq!(f.store.chain(RUN_RECORD_TABLE).unwrap().0.len(), 2, "the next append ran the pass");
     assert_eq!(state.unfolded_runs().len(), 1, "the plan row's pass folded 51 runs; the commit row follows it");
 
     // 6 h after the previous pass, one append fires the next.
     let late = base.plus_secs(7 * 3600);
     append(&f.store, &node, &row("r-late", RunStatus::Running, Phase::Plan, &late.to_rfc3339()), late).unwrap();
     let state = f.store.state(&record).unwrap();
-    assert_eq!(state.chain.len(), 3);
+    assert_eq!(f.store.chain(RUN_RECORD_TABLE).unwrap().0.len(), 3);
     assert!(state.unfolded_runs().is_empty());
     assert_eq!(history(&f.store, Bounds::default()).unwrap().len(), 52);
 }

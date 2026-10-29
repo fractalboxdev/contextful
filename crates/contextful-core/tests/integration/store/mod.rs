@@ -58,5 +58,6 @@ pub fn snapshot(created: &str, parent: Option<&SnapshotId>, includes: &[&str]) -
         fence: None,
         commit_seq: None,
         publish: None,
+        folded_runs: None,
     }
 }

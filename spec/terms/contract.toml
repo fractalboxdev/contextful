@@ -17,8 +17,8 @@ gloss = "Execution, storage and query components, their shared contracts, build 
 
 [contract.store]
 title = "The store and its sync"
-files = ["spec/10-store.md", "spec/11-snapshot.md", "spec/12-time.md", "spec/13-replica.md", "spec/14-drain.md", "spec/15-endpoint.md", "spec/16-collect.md"]
-titles = ["The store and its sync", "Snapshot corpora", "Time bounds", "Replicas", "Unpushed runs", "Bucket endpoints and leases", "Bucket collection"]
+files = ["spec/10-store.md", "spec/11-snapshot.md", "spec/12-time.md", "spec/13-replica.md", "spec/14-drain.md", "spec/15-endpoint.md", "spec/16-collect.md", "spec/17-merge.md"]
+titles = ["The store and its sync", "Snapshot corpora", "Time bounds", "Replicas", "Unpushed runs", "Bucket endpoints and leases", "Bucket collection", "Bucket manifest merges"]
 gloss = "Parquet parts, manifests and the catalog; snapshot commit, declaration, reserved columns, time bases, compaction; the bucket wire format, leases and replicas."
 
 [contract.read]

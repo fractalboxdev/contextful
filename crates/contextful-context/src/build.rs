@@ -946,6 +946,7 @@ mod materialize {
                 fence: None,
                 commit_seq: Some(commit_seq),
                 publish: section,
+                folded_runs: None,
             };
             let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
             store.metadata_files().replace(&staging.join(MANIFEST_FILE), &bytes)?;

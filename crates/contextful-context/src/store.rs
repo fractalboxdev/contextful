@@ -937,44 +937,124 @@ impl Store {
         Ok((chain, false))
     }
 
+    /// The pointer's chain as a read under `bound` needs it, and the folded-runs index it
+    /// stops at (`store.lay-out.folded-index-valid`): newest first, ending at the first
+    /// snapshot whose index reads valid, or past it at the first created at or before `bound`.
+    /// Without a valid index the walk reads the whole chain. The flag says the chain ends at a
+    /// parent no longer on disk.
+    fn chain_for(&self, table: &str, bound: Option<contextful_core::store::bound_time::Bound>) -> Result<(Vec<SnapshotManifest>, bool, Option<contextful_core::store::resolve::FoldedSet>)> {
+        self.walk_chain(table, Vec::new(), None, bound)
+    }
+
+    /// [`Store::chain_for`] continued past `chain`'s last snapshot, or from the pointer when
+    /// `chain` is empty, keeping `index` where one is already read: each index validates once.
+    fn walk_chain(
+        &self,
+        table: &str,
+        mut chain: Vec<SnapshotManifest>,
+        mut index: Option<contextful_core::store::resolve::FoldedSet>,
+        bound: Option<contextful_core::store::bound_time::Bound>,
+    ) -> Result<(Vec<SnapshotManifest>, bool, Option<contextful_core::store::resolve::FoldedSet>)> {
+        let mut seen: std::collections::BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+        let mut next = match chain.last() {
+            Some(last) => last.parent.clone(),
+            None => self.pointer(table)?.map(|(ptr, _)| ptr.snapshot_id),
+        };
+        while let Some(id) = next {
+            if !seen.insert(id.to_string()) {
+                return Err(StoreError::StoreManifestUnreadable(format!(
+                    "table `{table}`: snapshot {id} is its own ancestor; the parent chain does not terminate"
+                ))
+                .into());
+            }
+            let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
+            let bytes = match self.metadata().read_optional(&path)? {
+                Some(b) => b,
+                None if !chain.is_empty() => return Ok((chain, true, index)),
+                None => return Err(ContextError::Invalid(format!("{}: missing snapshot manifest", path.display()))),
+            };
+            if let Some(v) = FormatVersion::declared(&bytes) {
+                v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+            }
+            let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?;
+            next = m.parent.clone();
+            if index.is_none() {
+                if let Some(rows) = crate::fold::folded::read(self, table, &m) {
+                    index = Some(contextful_core::store::resolve::FoldedSet::new(chain.len(), rows));
+                }
+            }
+            let reached = bound.is_none_or(|b| b.admits(m.created_at));
+            chain.push(m);
+            if index.is_some() && reached {
+                break;
+            }
+        }
+        Ok((chain, false, index))
+    }
+
     /// Everything an unbounded read or a fold resolves against, for one table: the run
     /// manifests on disk, without fetching any a lazy pull skipped.
     pub fn state(&self, decl: &TableDecl) -> Result<TableState> {
+        self.state_bounded(decl, None)
+    }
+
+    /// [`Store::state`], its chain read as far as a read under `bound` needs it.
+    fn state_bounded(&self, decl: &TableDecl, bound: Option<contextful_core::store::bound_time::Bound>) -> Result<TableState> {
+        let (chain, parent_collected, index) = self.chain_for(&decl.name, bound)?;
+        self.table_state(decl, chain, parent_collected, index)
+    }
+
+    /// The table's state over a chain already read, with the run manifests on disk now.
+    fn table_state(
+        &self,
+        decl: &TableDecl,
+        chain: Vec<SnapshotManifest>,
+        parent_collected: bool,
+        index: Option<contextful_core::store::resolve::FoldedSet>,
+    ) -> Result<TableState> {
         let table = decl.name.as_str();
         let runs = self.local_runs_held(table)?.0;
-        let (chain, parent_collected) = self.chain(table)?;
-        let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
-        let run_collected = chain.iter().flat_map(|s| &s.includes_runs).any(|r| !present.contains(r.as_str()));
-        Ok(TableState {
+        let mut state = TableState {
             table: table.to_string(),
             write_mode: decl.write_mode(),
             runs,
             chain,
-            history_collected: parent_collected || run_collected,
+            history_collected: parent_collected,
             collected: BTreeSet::new(),
-        })
+            index,
+        };
+        if !state.chain.is_empty() {
+            let present: BTreeSet<String> = state.runs.iter().map(RunManifest::key).collect();
+            state.history_collected |= state.folded(0).iter().any(|r| !present.contains(*r));
+        }
+        Ok(state)
     }
 
     /// [`Store::state`] for a read bounded by `as_of`: one resolving before the pointer's
     /// snapshot first fetches the folded runs a lazy pull skipped (`store.pull.folded-runs-fetched`).
     pub fn state_at(&self, decl: &TableDecl, as_of: Option<contextful_core::store::bound_time::Bound>) -> Result<TableState> {
-        let state = self.state(decl)?;
-        match as_of {
-            Some(b) if state.chain.first().is_none_or(|s| !b.admits(s.created_at)) => {
-                self.fetch_skipped(&decl.name, None, Leave::Folded)?;
-                let mut state = self.state(decl)?;
-                // Collected snapshots sit behind every retained one: from the first, the rest are.
-                let mut beyond = false;
-                for s in state.chain.iter().skip(1) {
-                    beyond = beyond || self.snapshot_collected(&decl.name, s)?;
-                    if beyond {
-                        state.collected.insert(s.snapshot_id.to_string());
-                    }
-                }
-                Ok(state)
-            }
-            _ => Ok(state),
+        let table = decl.name.as_str();
+        let (mut chain, mut parent_collected, mut index) = self.chain_for(table, None)?;
+        let Some(b) = as_of.filter(|b| chain.first().is_none_or(|s| !b.admits(s.created_at))) else {
+            return self.table_state(decl, chain, parent_collected, index);
+        };
+        self.fetch_skipped(table, None, Leave::Folded)?;
+        // The unbounded walk stops at the head's valid index; the bound may need snapshots past it.
+        if index.is_some() && !parent_collected && chain.last().is_some_and(|s| !b.admits(s.created_at)) {
+            (chain, parent_collected, index) = self.walk_chain(table, chain, index, as_of)?;
         }
+        let mut state = self.table_state(decl, chain, parent_collected, index)?;
+        // Collected snapshots sit behind every retained one: from the first, the rest are.
+        let mut beyond = false;
+        for s in state.chain.iter().skip(1) {
+            beyond = beyond || self.snapshot_collected(table, s)?;
+            if beyond {
+                state.collected.insert(s.snapshot_id.to_string());
+            }
+        }
+        Ok(state)
     }
 }
 

@@ -751,7 +751,7 @@ The enum at `crates/contextful-core/src/surface/delegate.rs`, named by `run.item
 | `A-run#host-registered-derive` | `run.own.host-scope`, `run.own.unclosed-execution`, `run.own.body-implementation`, `run.own.body-dependencies`, `run.own.rewind`, `run.own.rewind-unsafe`, `run.own.apply-retires-superseded`, `run.own.apply-retire-refused`, `run.own.checkpoint-commit`, `run.own.checkpoint-frontier`, `run.own.checkpoint-resume`, `run.own.checkpoint-scope`, `run.emit.task-version`, `run.emit.version-retained` |
 | `A-run#iceberg-audience` | `run.export-iceberg.audience`, `run.export-iceberg.namespace-shared`, `run.export-iceberg.caller-sql`, `run.export-iceberg.query-refused` |
 | `A-run#iceberg-overwrite-commit` | `run.export-iceberg.create`, `run.export-iceberg.overwrite`, `run.export-iceberg.commit-retry` |
-| `A-run#incremental-position-bound` | `store.merge.cursor-recency`, `store.lease.cursor-kind`, `run.advance.field-rename`, `run.advance.walk-position`, `run.advance.unorderable-position`, `run.seed.declaration-missing`, `run.seed.ceiling-breached`, `run.seed.ceiling-unevaluable`, `run.seed.source-changed` |
+| `A-run#incremental-position-bound` | `store.lease.cursor-kind`, `store.merge.cursor-recency`, `run.advance.field-rename`, `run.advance.walk-position`, `run.advance.unorderable-position`, `run.seed.declaration-missing`, `run.seed.ceiling-breached`, `run.seed.ceiling-unevaluable`, `run.seed.source-changed` |
 | `A-run#meter-reservation-holds` | `connector.meter.acquire-call` |
 | `A-run#minor-contract-bump` | `run.model.contract-major`, `run.model.contract-minor` |
 | `A-run#model-declared-sql` | `run.model.model-block`, `run.model.build-id`, `run.publish.hold` |

@@ -3,9 +3,9 @@
 
 use super::bound_time::Bound;
 use super::declare::WriteMode;
-use super::lay_out::{RunManifest, SnapshotManifest};
+use super::lay_out::{RunManifest, SnapshotId, SnapshotManifest};
 use super::StoreError;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What the tree holds for one table, read from its pointer and manifests.
 #[derive(Debug, Clone, Default)]
@@ -23,6 +23,30 @@ pub struct TableState {
     /// Chain snapshots a collection reduced to their `_manifest.json`, by id: the chain still
     /// names their folded runs, and no read resolves to them (`store.fold.manifest-kept`).
     pub collected: BTreeSet<String>,
+    /// The rows of the valid folded-runs index the walk stopped at, when it found one: the
+    /// chain then ends there or at the read's bound (`store.lay-out.folded-index`).
+    pub index: Option<FoldedSet>,
+}
+
+/// Each run a valid folded-runs index lists, with the snapshot folding it, read at
+/// `chain[at]` (`store.lay-out.folded-index`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FoldedSet {
+    pub at: usize,
+    pub rows: BTreeMap<String, SnapshotId>,
+    /// The same rows by folding snapshot.
+    by_snapshot: BTreeMap<SnapshotId, Vec<String>>,
+}
+
+impl FoldedSet {
+    /// The index's `rows`, read at `chain[at]`.
+    pub fn new(at: usize, rows: BTreeMap<String, SnapshotId>) -> Self {
+        let mut by_snapshot: BTreeMap<SnapshotId, Vec<String>> = BTreeMap::new();
+        for (run, snapshot) in &rows {
+            by_snapshot.entry(snapshot.clone()).or_default().push(run.clone());
+        }
+        FoldedSet { at, rows, by_snapshot }
+    }
 }
 
 /// The snapshot and runs one read covers.
@@ -51,9 +75,25 @@ impl Resolution<'_> {
 
 impl TableState {
     /// Runs folded into the snapshot at `chain[i]` or any ancestor of it, by
-    /// [`RunManifest::key`].
+    /// [`RunManifest::key`]: the `includes_runs` walked down to the index, then the index's
+    /// rows folded at or before `chain[i]`, snapshot ids sorting in commit order.
     pub fn folded(&self, i: usize) -> BTreeSet<&str> {
-        self.chain[i..].iter().flat_map(|s| s.includes_runs.iter().map(String::as_str)).collect()
+        match &self.index {
+            None => self.chain[i..].iter().flat_map(|s| s.includes_runs.iter().map(String::as_str)).collect(),
+            Some(ix) => {
+                let id = &self.chain[i].snapshot_id;
+                let walked = self.chain[i..ix.at.max(i)].iter().flat_map(|s| s.includes_runs.iter().map(String::as_str));
+                walked.chain(ix.rows.iter().filter(|(_, s)| *s <= id).map(|(k, _)| k.as_str())).collect()
+            }
+        }
+    }
+
+    /// The runs `chain[i]` itself folds.
+    fn own(&self, i: usize) -> Vec<&str> {
+        match &self.index {
+            Some(ix) if i >= ix.at => ix.by_snapshot.get(&self.chain[i].snapshot_id).map_or_else(Vec::new, |runs| runs.iter().map(String::as_str).collect()),
+            _ => self.chain[i].includes_runs.iter().map(String::as_str).collect(),
+        }
     }
 
     /// Resolve the read's FROM-source. Unbounded, it is the current snapshot plus the
@@ -68,7 +108,7 @@ impl TableState {
         // A snapshot whose successors fold a run absent here answers no bound before them: the
         // run may have committed inside the bound (`store.bound-time.as-of-unretained`).
         let present: BTreeSet<String> = self.runs.iter().map(RunManifest::key).collect();
-        let gapped = self.chain.iter().position(|s| s.includes_runs.iter().any(|r| !present.contains(r))).map_or(self.chain.len(), |j| j + 1);
+        let gapped = (0..self.chain.len()).find(|i| self.own(*i).iter().any(|r| !present.contains(*r))).map_or(self.chain.len(), |j| j + 1);
         let retained = collected.min(gapped);
         let unretained = match at {
             Some(i) => i >= retained,
