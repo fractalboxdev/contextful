@@ -524,6 +524,8 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *A-store#bucket-collect*
 - `hold-renewal` — A hold record `holds/<build-id>.json` and a table's `holds.jsonl` commit as `schema.json` does, merged into the bucket's copy, a hold record keeping the later `expires_at`; a pull merges a hold record alike.
   *because a renewal rewrites a hold in place, and an immutable key refuses the rewrite*
+- `build-ledger` — A model's `builds.jsonl` and `contract-history.jsonl` commit as `schema.json` does, merged into the bucket's copy as the union of lines by build id, the later line keeping a shared id; a pull merges alike.
+  *because each build appends a line, an immutable key refuses the grown file, and two nodes building one model both keep their lines*
 - `run-state` — `sync push` and `sync manifest --emit` first write `nodes/<node-id>/run-state.json`, recording each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root*
 - `run-state-upload` — A push uploads its node's run state whatever digest the bucket manifest lists.

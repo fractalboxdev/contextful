@@ -420,6 +420,29 @@ fn a_bucket_first_hold_keeps_its_build_through_a_collect() {
     refused(&run(p, &["build", "hold", "--for", "30d", "daily", &builds[0], "--by", "ops", "--now", "2030-03-02T00:00:00Z"]), "ModelBuildCollected");
 }
 
+/// A store that pushes after each build keeps pushing: the push after the second build succeeds, and the bucket's
+/// `builds.jsonl` lists both builds.
+// spec: store.push.build-ledger@e82e9da3
+#[test]
+fn a_push_after_each_build_lists_every_build_in_the_bucket() {
+    let dir = project();
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    let config = p.join(".contextful/context/research/config.toml");
+    let existing = std::fs::read_to_string(&config).unwrap_or_default();
+    std::fs::write(&config, format!("{existing}\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display())).unwrap();
+    let mut builds = Vec::new();
+    for (i, now) in ["2030-01-01T01:00:00Z", "2030-01-01T02:00:00Z"].into_iter().enumerate() {
+        std::fs::write(p.join("more.jsonl"), format!("{{\"day\":\"e{i}\"}}\n")).unwrap();
+        stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", &format!("r{}", i + 2), "--site-id", "site-a", "--now", now]));
+        builds.push(build(p, now)["build_id"].as_str().unwrap().to_string());
+        stdout(&run(p, &["sync", "push", "--project", "research", "--now", now]));
+    }
+    let held = std::fs::read_to_string(bucket.path().join("context-team/team/research/tables/daily/builds.jsonl")).unwrap();
+    let listed: Vec<String> = held.lines().map(|l| serde_json::from_str::<Value>(l).unwrap()["build_id"].as_str().unwrap().to_string()).collect();
+    assert_eq!(listed, builds, "the bucket's ledger lists both builds: {held}");
+}
+
 /// On a store declaring `[sync]`, a hold the bucket refuses to take is undone locally and the command fails, so no
 /// hold exists only on the local disk.
 #[test]

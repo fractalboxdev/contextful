@@ -136,8 +136,9 @@ enum KeyClass {
     Owned,
     /// Another node owns it: never pushed from here.
     Foreign,
-    /// Unowned and merged by its rule: a table's `schema.json`, and a hold record or hold log a
-    /// renewal rewrites in place (`store.push.hold-renewal`).
+    /// Unowned and merged by its rule: a table's `schema.json`, a hold record or hold log a
+    /// renewal rewrites in place (`store.push.hold-renewal`), and a model's build ledger each
+    /// build grows (`store.push.build-ledger`).
     Mergeable,
     /// Unowned and written once: a snapshot's files.
     Immutable,
@@ -147,7 +148,7 @@ fn class(key: &str, me: &str) -> KeyClass {
     match owner_of(key) {
         Some(o) if o == me => KeyClass::Owned,
         Some(_) => KeyClass::Foreign,
-        None if key.ends_with("/schema.json") || is_hold_record(key) || is_holds_log(key) => KeyClass::Mergeable,
+        None if key.ends_with("/schema.json") || is_hold_record(key) || is_holds_log(key) || build_ledger(key).is_some() => KeyClass::Mergeable,
         None => KeyClass::Immutable,
     }
 }
@@ -173,6 +174,65 @@ pub(crate) fn is_hold_record(key: &str) -> bool {
 /// Whether `key` is a table's hold log, `.../tables/<table>/holds.jsonl`.
 fn is_holds_log(key: &str) -> bool {
     key.split('/').nth(1) == Some("tables") && key.ends_with(&format!("/{}", contextful_core::pipeline::model::HOLDS_LOG))
+}
+
+/// A model's build ledger: `builds.jsonl` or `contract-history.jsonl` under its table directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuildLedger {
+    Builds,
+    ContractHistory,
+}
+
+/// The build ledger `key` names, `.../tables/<model>/builds.jsonl` or `contract-history.jsonl`.
+fn build_ledger(key: &str) -> Option<BuildLedger> {
+    use contextful_core::pipeline::model::{BUILDS_LOG, CONTRACT_HISTORY_LOG};
+    if key.split('/').nth(1) != Some("tables") {
+        return None;
+    }
+    let file = key.rsplit('/').next()?;
+    match file {
+        _ if file == BUILDS_LOG => Some(BuildLedger::Builds),
+        _ if file == CONTRACT_HISTORY_LOG => Some(BuildLedger::ContractHistory),
+        _ => None,
+    }
+}
+
+/// The union of two ledger texts by build id (`store.push.build-ledger`): of two lines naming one
+/// build the one later by `order`, then by text, stays, and lines run by `order` then build id. A
+/// line no entry type reads drops, as regeneration drops it. The union and the choice are
+/// commutative, so two nodes merging in either order hold one ledger.
+fn union_by_build<T: serde::de::DeserializeOwned>(a: &str, b: &str, id: impl Fn(&T) -> &str, order: impl Fn(&T) -> Instant) -> String {
+    let mut kept: BTreeMap<String, (Instant, &str)> = BTreeMap::new();
+    for line in a.lines().chain(b.lines()) {
+        let Ok(entry) = serde_json::from_str::<T>(line) else { continue };
+        let candidate = (order(&entry), line);
+        kept.entry(id(&entry).to_string()).and_modify(|held| *held = (*held).max(candidate)).or_insert(candidate);
+    }
+    let mut lines: Vec<(Instant, String, &str)> = kept.into_iter().map(|(id, (at, line))| (at, id, line)).collect();
+    lines.sort();
+    lines.into_iter().map(|(_, _, line)| format!("{line}\n")).collect()
+}
+
+/// Two copies of a build ledger merged as [`union_by_build`] merges them; where the union equals a
+/// copy's text, that copy's bytes stand.
+fn merge_build_ledger(codec: &MetadataFiles<'_>, ledger: BuildLedger, path: &Path, a: &[u8], b: &[u8]) -> Result<Vec<u8>> {
+    use contextful_core::pipeline::model::{BuildEntry, ContractHistoryEntry};
+    let text = |bytes: &[u8]| -> Result<String> {
+        let plain = codec.open_bytes(path, bytes)?;
+        String::from_utf8(plain).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", path.display()))))
+    };
+    let (x, y) = (text(a)?, text(b)?);
+    let merged = match ledger {
+        BuildLedger::Builds => union_by_build::<BuildEntry>(&x, &y, |e| &e.build_id, |e| e.completed_at),
+        BuildLedger::ContractHistory => union_by_build::<ContractHistoryEntry>(&x, &y, |e| &e.build_id, |e| e.built_at),
+    };
+    if merged == x {
+        return Ok(a.to_vec());
+    }
+    if merged == y {
+        return Ok(b.to_vec());
+    }
+    Ok(codec.seal_bytes(path, merged.as_bytes())?)
 }
 
 /// The table a key under `<project>/tables/` belongs to: the segments up to the table's
@@ -1618,7 +1678,7 @@ impl Syncer {
                     }
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
-                let merged = match (local.is_some(), schema || is_hold_record(key)) {
+                let merged = match (local.is_some(), schema || is_hold_record(key) || build_ledger(key).is_some()) {
                     (true, true) => {
                         let mine = std::fs::read(&path).map_err(|e| io(&path, e))?;
                         merge_shared_bytes(&self.store.metadata_files(), key, &path, &mine, &bytes)?
@@ -2144,10 +2204,14 @@ fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Opti
 }
 
 /// Two copies `a` and `b` of the unowned rewritable key `key` merged by its rule: a schema column
-/// by column, a hold record to the later `expires_at`, and a hold log to `b`.
+/// by column, a hold record to the later `expires_at`, a build ledger line by line, and a hold
+/// log to `b`.
 fn merge_shared_bytes(codec: &MetadataFiles<'_>, key: &str, path: &Path, a: &[u8], b: &[u8]) -> Result<Vec<u8>> {
     if key.ends_with("/schema.json") {
         return merge_schema_bytes(codec, path, a, b);
+    }
+    if let Some(ledger) = build_ledger(key) {
+        return merge_build_ledger(codec, ledger, path, a, b);
     }
     if !is_hold_record(key) {
         return Ok(b.to_vec());

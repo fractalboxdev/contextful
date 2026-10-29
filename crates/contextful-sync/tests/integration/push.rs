@@ -1309,3 +1309,48 @@ fn a_push_lists_the_digest_of_the_bytes_it_uploaded() {
     assert_eq!(entry.sha256, held);
     assert!(!std::fs::read_to_string(&record).unwrap().contains(&stale), "the push drops the stale record");
 }
+
+/// One `builds.jsonl` line for build `id`, completed at `completed`.
+fn build_line(id: &str, completed: &str) -> String {
+    json!({
+        "build_id": id, "started_at": completed, "completed_at": completed, "status": "published", "contract_version": "1.0.0",
+        "schema_fingerprint": "fp", "partitions_unfilled": [], "disclosure_digest": "dd"
+    })
+    .to_string()
+}
+
+/// The build ids of a `builds.jsonl` copy, in line order.
+fn build_ids(text: &str) -> Vec<String> {
+    text.lines().map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()["build_id"].as_str().unwrap().to_string()).collect()
+}
+
+/// Two nodes building one model each push its grown `builds.jsonl`: every push succeeds, the bucket's copy is the
+/// union of both nodes' lines in completion order, and a pull on either node shows every build.
+// spec: store.push.build-ledger@e82e9da3
+#[test]
+fn two_nodes_building_one_model_both_keep_their_builds() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let c = node("ingest-c", b.clone(), "");
+    let ledger = |n: &crate::support::Node| n.root().join("tables/daily/builds.jsonl");
+    let write = |n: &crate::support::Node, lines: &[(&str, &str)]| {
+        std::fs::create_dir_all(ledger(n).parent().unwrap()).unwrap();
+        std::fs::write(ledger(n), lines.iter().map(|(id, t)| build_line(id, t) + "\n").collect::<String>()).unwrap();
+    };
+    write(&a, &[("build-a1", "2030-01-01T00:10:00Z")]);
+    write(&c, &[("build-c1", "2030-01-01T00:20:00Z")]);
+    a.syncer.push(at(NOW)).unwrap();
+    c.syncer.push(at(NOW)).unwrap();
+    write(&a, &[("build-a1", "2030-01-01T00:10:00Z"), ("build-a2", "2030-01-01T00:30:00Z")]);
+    a.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    let every = ["build-a1", "build-c1", "build-a2"];
+    let held = String::from_utf8(b.get("team/research/tables/daily/builds.jsonl").unwrap().unwrap().0).unwrap();
+    assert_eq!(build_ids(&held), every, "the bucket's ledger lists both nodes' builds: {held}");
+    let listed = manifest(b.as_ref()).entries["research/tables/daily/builds.jsonl"].sha256.clone();
+    assert_eq!(listed, contextful_core::run::journal::sha256_hex(held.as_bytes()), "the manifest lists the merged copy");
+    for n in [&a, &c] {
+        n.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
+        assert_eq!(build_ids(&std::fs::read_to_string(ledger(n)).unwrap()), every, "a pull on `{}` shows every build", n.syncer.node);
+    }
+}
