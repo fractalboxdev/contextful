@@ -622,8 +622,10 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because a bucket gathers parts with every landing, and a pointer read listing them grows with the store's history*
 - `pointer-advance` — Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
   *A-store#replica-read-whole*
-- `pointer-adopt` — Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot, whatever its fence, and warns, so runs only the replaced snapshot folded fold again against the bucket's head.
+- `pointer-adopt` — Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot, whatever its fence, and warns, once {{store.pull.local-fold-unrecoverable}} admits its branch, so the branch's runs fold again against the bucket's head.
   *because a fold outside a lease writes no fence, and a local snapshot off the bucket's chain misses every run the bucket's head folded*
+- `local-fold-unrecoverable` — A branch back to the bucket's chain or a root that folds a run neither on disk, listed in the bucket nor folded on that chain, or meets an absent manifest, raises `SyncLocalFoldUnrecoverable` naming the runs, and the pointer stays.
+  *because those rows otherwise live only in the replaced snapshot's parts, which collection deletes once no pointer names them*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before their first read, a failed pull stopping the command.

@@ -6,6 +6,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::object::{ObjectError, ObjectStore};
 use contextful_core::store::sync::{BucketManifest, Tombstone};
+use contextful_core::store::StoreError;
 use contextful_sync::{PullScope, SyncError};
 use serde_json::json;
 use std::sync::Arc;
@@ -231,11 +232,9 @@ fn ids(n: &crate::support::Node) -> Vec<i64> {
     ids
 }
 
-/// Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot,
-/// whatever its fence, and warns, so runs only the replaced snapshot folded fold again against the bucket's head.
-// spec: store.pull.pointer-adopt@96d8433f
-#[test]
-fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
+/// Two nodes after B went away: A folded run-2 into the bucket's head, then retention removed run-2 and a push
+/// tombstoned it, so only the head's parts carry its row. Returns the head's snapshot id.
+fn while_away() -> (tempfile::TempDir, crate::support::Node, crate::support::Node, String) {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
     let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
@@ -243,23 +242,33 @@ fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
     folded(&a, NOW);
     a.syncer.push(at(NOW)).unwrap();
     c.syncer.pull(&PullScope::default()).unwrap();
-
-    // While B is away, A folds run-2 into the bucket's head, then retention removes run-2 and a push
-    // tombstones it, so only the head's parts carry its row.
     a.land("run-2", json!([{"id": 2}]), "2030-01-01T02:00:00Z");
     let head = folded(&a, "2030-01-01T03:00:00Z");
     a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
     contextful_context::fold::collect(&a.syncer.store, &TableDecl::named("filings"), at("2030-01-20T00:00:00Z")).unwrap();
     a.syncer.push(at("2030-01-20T00:00:00Z")).unwrap();
     assert!(manifest(b.as_ref()).tombstones.keys().any(|k| k.contains("/runs/run-2/")), "the push tombstones run-2");
+    (dir, a, c, head)
+}
 
+fn local_pointer(n: &crate::support::Node) -> String {
+    let pointer: serde_json::Value = serde_json::from_slice(&std::fs::read(n.root().join("tables/filings/_pointer.json")).unwrap()).unwrap();
+    pointer["snapshot_id"].as_str().unwrap().to_string()
+}
+
+/// Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot,
+/// whatever its fence, and warns, once every run its branch folds is on disk, listed in the bucket or folded on
+/// the bucket's chain, so those runs fold again against the bucket's head.
+// spec: store.pull.pointer-adopt@189469ea
+#[test]
+fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
+    let (_dir, _a, c, head) = while_away();
     // B folds outside a lease before its first pull: a later snapshot at the bucket's fence, off its chain.
     c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
     let local = folded(&c, "2030-01-21T01:00:00Z");
     assert!(local > head);
     let report = c.syncer.pull(&PullScope::default()).unwrap();
-    let pointer: serde_json::Value = serde_json::from_slice(&std::fs::read(c.root().join("tables/filings/_pointer.json")).unwrap()).unwrap();
-    assert_eq!(pointer["snapshot_id"], json!(head));
+    assert_eq!(local_pointer(&c), head);
     assert!(report.discarded.iter().any(|w| w.contains(&local) && w.contains(&head)), "{:?}", report.discarded);
     assert_eq!(ids(&c), [1, 2, 3], "run-3 reads unfolded against the head");
 
@@ -269,6 +278,42 @@ fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
     assert_eq!(chain[1].snapshot_id.to_string(), head);
     assert_eq!(chain[0].includes_runs, ["run-3/ingest-b"]);
     assert_eq!(ids(&c), [1, 2, 3]);
+}
+
+/// A local branch folding a run neither on disk, listed in the bucket nor folded on the bucket's chain, or ending
+/// at a missing manifest, makes pull raise `SyncLocalFoldUnrecoverable`, naming the runs, and keep the local pointer.
+// spec: store.pull.local-fold-unrecoverable@7e8f1715
+#[test]
+fn a_pull_keeps_a_local_fold_whose_runs_only_its_parts_hold() {
+    let (_dir, _a, c, head) = while_away();
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let local = folded(&c, "2030-01-21T01:00:00Z");
+    // Retention removes run-3, which the local snapshot folds and no push ever carried.
+    contextful_context::fold::collect(&c.syncer.store, &TableDecl::named("filings"), at("2030-02-01T00:00:00Z")).unwrap();
+    assert!(!c.root().join("tables/filings/data/runs/run-3").exists());
+    // A push never carries the pointer of a snapshot descending from none the bucket names.
+    assert!(c.syncer.push(at("2030-02-01T00:00:00Z")).unwrap().pointers.is_empty());
+    let err = c.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(
+        matches!(&err, SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(m)) if m.contains("run-3/ingest-b") && m.contains(&local) && m.contains(&head)),
+        "{err}"
+    );
+    assert_eq!(local_pointer(&c), local, "the local pointer stays");
+    assert_eq!(ids(&c), [1, 3], "run-3's row stays readable from the local snapshot");
+}
+
+/// A local branch whose walk meets a missing manifest before the bucket's chain or a root refuses, whatever its runs.
+#[test]
+fn a_pull_keeps_a_local_branch_ending_at_a_missing_manifest() {
+    let (_dir, _a, c, _head) = while_away();
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let first = folded(&c, "2030-01-21T01:00:00Z");
+    c.land("run-4", json!([{"id": 4}]), "2030-01-21T02:00:00Z");
+    let local = folded(&c, "2030-01-21T03:00:00Z");
+    std::fs::remove_file(c.root().join(format!("tables/filings/data/snapshots/{first}/_manifest.json"))).unwrap();
+    let err = c.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(matches!(&err, SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(m)) if m.contains(&first)), "{err}");
+    assert_eq!(local_pointer(&c), local);
 }
 
 fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
