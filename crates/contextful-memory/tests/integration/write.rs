@@ -300,3 +300,31 @@ fn a_credential_shaped_value_is_refused_before_it_lands() {
     assert_eq!(claims.iter().map(|c| c.object.as_str()).collect::<Vec<_>>(), ["Lee"]);
     assert!(claims.iter().all(|c| c.subject == "acme" && c.scope.is_none()), "{claims:?}");
 }
+
+/// A memory landing retried after its run folded and a collection removed the run's manifest replays from the
+/// folded-runs row: it lands no run again, and the table holds its rows once.
+// spec: store.lay-out.run-folded-replay@9265556b
+#[test]
+fn a_memory_landing_retried_after_its_run_folded_replays() {
+    use contextful_memory::claims::{Landing, Writer};
+    let f = Fixture::new();
+    let writer = f.writer();
+    let w = Writer::of(&writer);
+    let node = NodeId::parse("memory-a").unwrap();
+    let table = "research/notes";
+    let rows = || vec![serde_json::json!({"note_id": "n1", "body": "first"}).as_object().unwrap().clone()];
+    let landing = |now: &str| Landing { node: &node, at: at(now), writer: &w, run_id: "memory-retry".into(), boundary: &super::synthesize::admit, taint: None };
+    landing("2030-01-10T00:00:00Z").commit_rows(&f.face, table, rows(), Default::default()).unwrap();
+    let store = f.face.store();
+    assert!(store.committed_runs(table).unwrap().iter().any(|m| m.run_id == "memory-retry"), "the first landing commits the run");
+    let decl = f.face.decl(table);
+    contextful_context::fold::fold(store, &decl, at("2030-01-10T01:00:00Z")).unwrap();
+    contextful_context::fold::collect(store, &decl, at("2030-01-30T00:00:00Z")).unwrap();
+    let manifest = store.table_dir(table).unwrap().join("data/runs/memory-retry/memory-a/_manifest.json");
+    assert!(!manifest.exists(), "the collection removes the run's manifest");
+
+    // A retry after a lost acknowledgement carries a later instant and the same rows.
+    landing("2030-01-31T00:00:00Z").commit_rows(&f.face, table, rows(), Default::default()).unwrap();
+    assert!(!manifest.exists(), "the replay lands no run again");
+    assert!(store.committed_runs(table).unwrap().iter().all(|m| m.run_id != "memory-retry"));
+}

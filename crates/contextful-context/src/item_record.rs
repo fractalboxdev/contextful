@@ -64,5 +64,5 @@ pub fn append(store: &Store, node: &NodeId, site_id: &str, execution_id: &str, r
     getrandom::fill(&mut nonce).map_err(|e| ContextError::Invalid(format!("item record nonce: {e}")))?;
     let store_run = format!("item-{}-{}", at.unix_nanos(), crate::store::hex(&nonce));
     let injection = Injection { run_id: store_run, site_id: site_id.into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None };
-    land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at }).map(Some)
+    land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at }).and_then(crate::land::Landing::into_committed).map(Some)
 }

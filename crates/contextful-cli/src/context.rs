@@ -255,13 +255,29 @@ fn land_session(
         let landing = session
             .land(&Batch { rows: batch.rows, types: types.clone() }, injection(batch.run_id), committed_at, &Position::default(), precommit)
             .with_context(|| format!("stdin line {n}"))?;
-        let (m, verb) = (&landing.manifest, if landing.replay { "replayed" } else { "committed" });
-        if !landing.replay { crate::queue::announce(store, &table, &m.run_id, m.commit_seq); }
-        let folded = landing.fold.map(|f| format!("; {f}")).unwrap_or_default();
-        writeln!(out, "{table}: {verb} {} on {} ({} parts, {rows} rows){folded}", m.run_id, m.node_id, m.parts.len())?;
+        let verb = if landing.replay { "replayed" } else { "committed" };
+        if let Some(m) = landing.manifest.as_ref().filter(|_| !landing.replay) {
+            crate::queue::announce(store, &table, &m.run_id, m.commit_seq);
+        }
+        let pass = landing.fold.map(|f| format!("; {f}")).unwrap_or_default();
+        writeln!(out, "{table}: {verb} {}{pass}", landed(landing.manifest.as_ref(), landing.folded.as_ref(), rows))?;
         out.flush()?;
     }
     Ok(())
+}
+
+/// What one landing reports of its run: the manifest's run, node and parts, or, for a replay
+/// of a run a collection removed, the snapshot its folded-runs row names
+/// (`store.lay-out.run-folded-replay`).
+fn landed(manifest: Option<&contextful_core::store::lay_out::RunManifest>, folded: Option<&contextful_core::store::lay_out::FoldedRow>, rows: usize) -> String {
+    match (manifest, folded) {
+        (Some(m), _) => format!("{} on {} ({} parts, {rows} rows)", m.run_id, m.node_id, m.parts.len()),
+        (None, Some(r)) => {
+            let (run, node) = r.run_key.split_once('/').unwrap_or((r.run_key.as_str(), ""));
+            format!("{run} on {node} (folded into snapshot {}, {rows} rows)", r.snapshot_id)
+        }
+        (None, None) => format!("a run ({rows} rows)"),
+    }
 }
 
 /// The pass a one-shot land runs after its commit: one when the table's trigger fires, as a
@@ -456,14 +472,17 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let ctx = RunContext { node, injection: injection(run_id), committed_at: now(at)? };
             let (decl, committed_at) = (o.decl(&table), ctx.committed_at);
             let l = land_run(&o.store, &decl, std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
-            let (m, verb) = (&l.manifest, if l.replay { "replayed" } else { "committed" });
-            let pass = if l.replay { None } else {
-                crate::queue::announce(&o.store, &table, &m.run_id, m.commit_seq);
-                land_pass(&o.store, &store, &decl, committed_at)?
+            let verb = if l.replay { "replayed" } else { "committed" };
+            let pass = match l.manifest.as_ref().filter(|_| !l.replay) {
+                Some(m) => {
+                    crate::queue::announce(&o.store, &table, &m.run_id, m.commit_seq);
+                    land_pass(&o.store, &store, &decl, committed_at)?
+                }
+                None => None,
             };
             let failed = pass.as_ref().is_some_and(FoldOutcome::is_failure);
             let pass = pass.map(|f| format!("; {f}")).unwrap_or_default();
-            println!("{table}: {verb} {} on {} ({} parts, {} rows){pass}", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
+            println!("{table}: {verb} {}{pass}", landed(l.manifest.as_ref(), l.folded.as_ref(), batch.rows.len()));
             if failed {
                 bail!("{table}: the run committed and its pass failed");
             }

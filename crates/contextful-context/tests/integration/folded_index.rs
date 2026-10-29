@@ -98,7 +98,7 @@ fn head(f: &Fixture) -> SnapshotManifest {
 
 /// Across 60 folds, with tier merges and retention collecting superseded snapshots, every read answers from the
 /// index exactly as the chain walk does, at every snapshot.
-// spec: store.lay-out.folded-index@d3939f74
+// spec: store.lay-out.folded-index@9b96e03e
 #[test]
 fn the_index_answers_every_bound_as_the_walk_does() {
     let f = Fixture::synced();

@@ -79,7 +79,7 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
 - `snapshot-manifest` — A snapshot's `_manifest.json` holds a `lay_out::SnapshotManifest`, and each entry of `parts` and `indexes` carries its `key_version`.
 - `ancestors` — A snapshot manifest records `ancestors`, its parent then the parent's `ancestors`, at most 256 entries; a root, or a child of a parent lacking the field, records none.
   *because retention collects superseded snapshots, and a push decides descent from the snapshot's own manifest*
-- `folded-index` — A snapshot manifest's `folded_runs` names Parquet segments whose rows list each run its chain folds, by run key and folding snapshot with commit instant and `_commit_seq`, and `through`, the snapshot they describe.
+- `folded-index` — A snapshot manifest's `folded_runs` names Parquet segments whose rows list each run its chain folds, by run key and folding snapshot with commit instant, `_commit_seq`, `batch_digest` and row count, and `through`, the snapshot they describe.
   *A-store#folded-index*
 - `folded-index-valid` — A reader trusts `folded_runs` only where it decodes, `through` names its snapshot and every segment reads at its recorded digest and row count, and otherwise walks, so the index never names fewer runs than the walk.
   *A-store#folded-index*
@@ -109,8 +109,14 @@ A run commits through its manifest, and a repeated landing replays or refuses.
 - `run-manifest` — A run commits by conditionally creating its node directory's `_manifest.json`, a `lay_out::RunManifest` whose `node_id` equals the directory's node segment.
 - `run-replay` — Re-landing an unlogged run committed on its node, at its manifest's position with rows reconstructing its parts column for column, writes nothing and returns the committed manifest as a replay.
   *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
-- `run-conflict` — Any other landing under a run id committed on its node raises `StoreRunConflict` and changes nothing.
+- `run-conflict` — Any other landing under a run id committed on its node or folded under its run key raises `StoreRunConflict`, naming the run, and changes nothing; a folded row without `batch_digest` predates digests and always conflicts.
   *because other rows under a committed id are another run*
+- `run-digest` — A landing's run manifest records `batch_digest`, the SHA-256 of its batches' producer rows and fixed column types after writer rules, and of its position; injected columns and the commit instant stay outside it.
+  *A-store#run-digest*
+- `run-folded-replay` — Re-landing a run whose manifest is gone and whose key the table's folded runs name, with an equal `batch_digest`, writes nothing and returns a replay carrying the folded-runs row in place of a manifest.
+  *A-store#run-digest*
+- `folded-committed` — `Store::committed_rows` answers a run whose manifest a collection removed from its folded-runs rows, summing their row counts; a run only a walked snapshot names, or one without a count, reads as uncommitted.
+  *A-store#run-digest*
 - `run-id-shape` — A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; landing and request-ledger append reject any other before writing a file.
   *because a run id is interpolated into run directories and request-ledger filenames*
 - `uncommitted-run` — A node directory without `_manifest.json` holds an uncommitted run, whose parts file lists exclude; a leased pipeline's run also waits for its commit-log entry.

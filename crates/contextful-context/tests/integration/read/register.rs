@@ -299,7 +299,7 @@ fn a_preview_reads_the_named_file_alone() {
         committed_at: at("2030-01-11T00:00:00Z"),
     };
     let decl = TableDecl::named("research/vendor");
-    let m = land_batches(&r.store, &decl, &[batch(&["v2", "v3"]), batch(&["v4"])], &ctx, &Position::default(), &|| Ok(())).unwrap();
+    let m = land_batches(&r.store, &decl, &[batch(&["v2", "v3"]), batch(&["v4"])], &ctx, &Position::default(), &|| Ok(())).unwrap().manifest.unwrap();
     assert_eq!(m.parts.len(), 2);
     let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
     let files = column(&r.face.files(&s, Bounds::default()).unwrap(), "path");

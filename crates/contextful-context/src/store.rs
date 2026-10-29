@@ -15,7 +15,7 @@ use contextful_core::store::reserve::COMMIT_LOCK_WAIT_SECS;
 use contextful_core::store::StoreError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use contextful_fs::tmp_sibling;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -72,6 +72,9 @@ fn registered_part_source(root: &Path) -> Option<Arc<dyn PartSource>> {
 pub(crate) struct SchemaCache {
     held: std::sync::Mutex<std::collections::HashMap<String, (FileVersion, Schema)>>,
     reads: std::sync::atomic::AtomicUsize,
+    /// Each valid folded-runs index this store read, by `<table>/<snapshot id>`: a snapshot's
+    /// manifest and segments never change, so one validation serves every later landing.
+    indexes: std::sync::Mutex<std::collections::HashMap<String, Arc<BTreeMap<String, contextful_core::store::lay_out::FoldedRow>>>>,
 }
 
 /// A file's version as one stat reports it: length, modification instant and file
@@ -815,7 +818,31 @@ impl Store {
             }
             rows = Some(total);
         }
-        Ok(rows)
+        if rows.is_some() {
+            return Ok(rows);
+        }
+        // A run whose manifest a collection removed commits on through its folded-runs row
+        // (`store.lay-out.folded-committed`).
+        let prefix = format!("{run_id}/");
+        let folded = self.folded_runs(table, |key| key.starts_with(&prefix))?;
+        if folded.is_empty() || folded.iter().any(|(_, row)| row.as_ref().and_then(|r| r.rows).is_none()) {
+            return Ok(None);
+        }
+        Ok(Some(folded.iter().filter_map(|(_, row)| row.as_ref().and_then(|r| r.rows)).fold(0u64, u64::saturating_add)))
+    }
+
+    /// The runs `table`'s pointer folds whose key `wanted` admits, each with its folded-runs
+    /// row where the chain's valid index lists it, `None` where only a walked snapshot's
+    /// `includes_runs` names it (`store.lay-out.folded-index-walk`).
+    pub(crate) fn folded_runs(&self, table: &str, wanted: impl Fn(&str) -> bool) -> Result<Vec<(String, Option<contextful_core::store::lay_out::FoldedRow>)>> {
+        let (chain, _, index) = self.chain_for(table, None)?;
+        let walked = index.as_ref().map_or(chain.len(), |ix| ix.at);
+        let mut out: Vec<(String, Option<contextful_core::store::lay_out::FoldedRow>)> =
+            chain[..walked].iter().flat_map(|s| s.includes_runs.iter()).filter(|k| wanted(k)).map(|k| (k.clone(), None)).collect();
+        if let Some(ix) = index {
+            out.extend(ix.rows.iter().filter(|(k, _)| wanted(k)).map(|(k, r)| (k.clone(), Some(r.clone()))));
+        }
+        Ok(out)
     }
 
     /// The manifest of `<run_dir>/<node_dir>` when it reads as committed: grouped manifests
@@ -981,7 +1008,7 @@ impl Store {
             })?;
             next = m.parent.clone();
             if index.is_none() {
-                if let Some(rows) = crate::fold::folded::read(self, table, &m) {
+                if let Some(rows) = self.folded_index(table, &m) {
                     index = Some(contextful_core::store::resolve::FoldedSet::new(chain.len(), rows));
                 }
             }
@@ -992,6 +1019,19 @@ impl Store {
             }
         }
         Ok((chain, false, index))
+    }
+
+    /// The rows of `m`'s folded-runs index when it reads valid (`store.lay-out.folded-index-valid`),
+    /// validated once per snapshot on a store holding a schema cache.
+    fn folded_index(&self, table: &str, m: &SnapshotManifest) -> Option<Arc<BTreeMap<String, contextful_core::store::lay_out::FoldedRow>>> {
+        let Some(cache) = &self.schema_cache else { return crate::fold::folded::read(self, table, m).map(Arc::new) };
+        let key = format!("{table}/{}", m.snapshot_id);
+        if let Some(rows) = cache.indexes.lock().expect("the schema cache is not poisoned").get(&key) {
+            return Some(rows.clone());
+        }
+        let rows = Arc::new(crate::fold::folded::read(self, table, m)?);
+        cache.indexes.lock().expect("the schema cache is not poisoned").insert(key, rows.clone());
+        Some(rows)
     }
 
     /// Everything an unbounded read or a fold resolves against, for one table: the run
