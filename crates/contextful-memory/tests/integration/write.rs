@@ -316,6 +316,7 @@ fn a_memory_landing_retried_after_its_run_folded_replays() {
     let landing = |now: &str| Landing { node: &node, at: at(now), writer: &w, run_id: "memory-retry".into(), boundary: &super::synthesize::admit, taint: None };
     landing("2030-01-10T00:00:00Z").commit_rows(&f.face, table, rows(), Default::default()).unwrap();
     let store = f.face.store();
+    assert!(store.committed_runs(table).unwrap().iter().any(|m| m.run_id == "memory-retry"), "the first landing commits the run");
     let decl = f.face.decl(table);
     contextful_context::fold::fold(store, &decl, at("2030-01-10T01:00:00Z")).unwrap();
     contextful_context::fold::collect(store, &decl, at("2030-01-30T00:00:00Z")).unwrap();
