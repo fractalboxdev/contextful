@@ -60,6 +60,10 @@ The derive source selects eligible parent rows each tick and limits each run's w
   *because a hash of the unit and the task decides membership without stored state, so every pass and every resumed pass selects one set*
 - `since` — `since`, an RFC 3339 instant, keeps a host task's parent rows whose `_ingested_at` falls at or after it, before the anti-join; a row without a readable `_ingested_at` is dropped, and another `since` refuses as {{run.declare.spec-invalid}}.
   *because a bound on landing time limits a pass to recent parents, and an unstamped row has no landing time to compare*
+- `filter` — `filter` keeps a host task's parent rows meeting every condition, a scalar testing equality and a list membership, before sampling; a column outside the key and declared columns, or a condition {{read.retrieve.filter-values}} or {{read.retrieve.filter-budget}} refuses, refuses as {{run.declare.spec-invalid}}.
+  *because conditions over columns the unit already carries narrow a pass without another read, and a column the task never reads holds nothing to compare*
+- `order` — `order_by`, the key or a declared column then `asc` or `desc`, orders a host task's outstanding units before {{run.select.rows-per-run}}, nulls last and ties by unit key; selection holds at most twice that budget in units.
+  *because a key tie-break gives every pass and every resumed pass one order, and cutting back whenever the buffer fills bounds memory below the parent count*
 - `attempts-per-unit` — `max_attempts` defaults to 3 attempts per unit. A non-positive value selects that default.
 - `seconds-per-run` — `max_seconds_per_run` bounds the serial unit loop at 300 s by default for `link_preview` and carries no default for `transcribe`.
 - `incomplete-unit` — If a parent row's key or media column is null, empty or whitespace, the derive source raises `DeriveUnitIncomplete`. The derive source skips the row and counts the row on the run record.

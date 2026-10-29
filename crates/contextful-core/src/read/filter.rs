@@ -109,4 +109,50 @@ impl Filter {
     pub fn is_empty(&self) -> bool {
         self.conditions.is_empty()
     }
+
+    /// Whether `row` meets every condition: its cell under each column matches one of
+    /// that condition's values, and a row lacking a column or holding null there meets
+    /// none. Text compares against the cell's text, an integer against an integral
+    /// number, a float against its numeric value and a boolean against its truth value,
+    /// as a ranked read's arm binds them in SQL.
+    // mirrors: read.retrieve.unsatisfiable-arm-drops
+    pub fn matches(&self, row: &Map<String, Value>) -> bool {
+        self.conditions
+            .iter()
+            .all(|c| row.get(&c.column).is_some_and(|cell| c.values.iter().any(|v| v.matches(cell))))
+    }
+}
+
+impl Scalar {
+    /// Whether one cell holds this value (`Filter::matches`).
+    fn matches(&self, cell: &Value) -> bool {
+        let number = || match cell {
+            Value::Number(n) => n.as_f64(),
+            Value::String(s) => s.trim().parse::<f64>().ok(),
+            _ => None,
+        };
+        match self {
+            Scalar::Text(t) => match cell {
+                Value::String(s) => s == t,
+                Value::Number(n) => n.to_string() == *t,
+                Value::Bool(b) => b.to_string() == *t,
+                _ => false,
+            },
+            Scalar::Integer(i) => match cell {
+                Value::Number(n) if n.as_i64().is_some() => n.as_i64() == Some(*i),
+                _ => number().is_some_and(|f| f.fract() == 0.0 && f == *i as f64),
+            },
+            Scalar::Float(f) => number() == Some(*f),
+            Scalar::Boolean(b) => match cell {
+                Value::Bool(v) => v == b,
+                Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+                    "true" | "t" => *b,
+                    "false" | "f" => !*b,
+                    _ => false,
+                },
+                Value::Number(n) => n.as_f64().is_some_and(|f| (f != 0.0) == *b),
+                _ => false,
+            },
+        }
+    }
 }

@@ -16,7 +16,9 @@ use contextful_core::run::derive::engine::{bound_confidence, check_advisory_zone
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, vendor_deadline, ChainAudit, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
-use contextful_core::run::derive::task::{host_revived, host_rows, ingested_since, join_units, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit, INGESTED_AT};
+use contextful_core::run::derive::task::{
+    host_revived, host_rows, ingested_since, join_units, keep_ordered, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit, INGESTED_AT,
+};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -855,9 +857,16 @@ impl HostDerive {
                 .into_iter()
                 .filter(|r| r.get(&self.config.parent_id_column).map(|k| seen.insert(k.to_string())).unwrap_or(true))
                 .collect();
-            let room = self.config.max_rows_per_run - sel.outstanding.len() as i64;
-            let batch = select_host(&fresh, &markers, &DeriveConfig { max_rows_per_run: room.max(0), ..self.config.clone() }, self.task.as_ref());
-            sel.outstanding.extend(batch.outstanding.into_iter().take(room.max(0) as usize));
+            let room = match &self.config.order_by {
+                // An ordered selection keeps the budget's top units across every batch (`run.select.order`).
+                Some(_) => self.config.max_rows_per_run,
+                None => (self.config.max_rows_per_run - sel.outstanding.len() as i64).max(0),
+            };
+            let batch = select_host(&fresh, &markers, &DeriveConfig { max_rows_per_run: room, ..self.config.clone() }, self.task.as_ref());
+            sel.outstanding.extend(batch.outstanding.into_iter().take(room as usize));
+            if let Some(order) = &self.config.order_by {
+                keep_ordered(&mut sel.outstanding, order, room as usize);
+            }
             sel.incomplete.extend(batch.incomplete);
             sel.counts.eligible += batch.counts.eligible;
             sel.counts.derived += batch.counts.derived;

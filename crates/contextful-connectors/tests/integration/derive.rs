@@ -1067,3 +1067,65 @@ fn a_since_selects_the_parents_landed_at_or_after_it() {
     seen.sort();
     assert_eq!(seen, ["after", "at", "offset"], "instants compare, not their spelling");
 }
+
+/// A reader counting past the in-memory scan bound, so selection streams its parents two rows per batch.
+struct Streamed(Vec<Row>);
+
+impl TableReader for Streamed {
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        if table == "documents" {
+            panic!("a parent table past the scan bound is never read whole");
+        }
+        Rows(Vec::new()).rows(table, columns)
+    }
+
+    fn row_count(&self, _table: &str) -> Result<Option<u64>, Failure> {
+        Ok(Some(1_000_001))
+    }
+
+    fn row_batches(&self, _table: &str, _columns: &[&str], each: &mut dyn FnMut(Vec<Row>) -> Result<(), Failure>) -> Result<(), Failure> {
+        self.0.chunks(2).try_for_each(|batch| each(batch.to_vec()))
+    }
+}
+
+/// A streamed parent scan filters each batch and holds at most twice the row budget in units, keeping the ordered top
+/// units across every batch.
+// spec: run.select.order@ef7605b4
+#[test]
+fn a_streamed_host_selection_filters_then_keeps_the_ordered_top_units_across_batches() {
+    use contextful_connectors::derive::HostDerive;
+    use contextful_core::run::derive::task::Tasks;
+    let task = Arc::new(Joined(Default::default()));
+    let mut tasks = Tasks::default();
+    tasks.register("join", task.clone()).unwrap();
+    let config = DeriveConfig::parse_with(
+        "docs",
+        &json!({
+            "task": "join", "source_table": "documents", "parent_id_column": "doc_id",
+            "filter": {"body": ["b", "c", "e", "f", "g"]}, "order_by": "body desc", "max_rows_per_run": 3
+        }),
+        &tasks,
+    )
+    .unwrap();
+    // The later batches hold the highest bodies; `h` sorts highest but the filter drops it.
+    let parents: Vec<Row> = ["a", "g", "b", "c", "h", "e", "f", "d"]
+        .iter()
+        .enumerate()
+        .map(|(i, body)| json!({"doc_id": format!("d{i}"), "body": body}).as_object().unwrap().clone())
+        .collect();
+    let derive = HostDerive {
+        pipeline_id: "docs".into(),
+        config,
+        task: task.clone(),
+        tables: Default::default(),
+        retention_columns: Default::default(),
+        reader: Box::new(Streamed(parents)),
+        available: None,
+    };
+    let counts = derive.plan().unwrap();
+    assert_eq!((counts.eligible, counts.outstanding), (5, 5), "the filter keeps five parents");
+    derive.stage(&Never).unwrap();
+    let seen: Vec<String> = task.0.lock().unwrap().iter().map(|(key, _, _)| key.clone()).collect();
+    assert!(!seen.is_empty(), "the pass derives units");
+    assert_eq!(seen, ["d1", "d6", "d5"], "bodies g, f, e: the top three across every batch, derived in order");
+}

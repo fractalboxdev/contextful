@@ -620,3 +620,195 @@ fn a_rate_outside_the_unit_interval_and_an_unreadable_since_refuse() {
         Err(RunError::PipelineUnknownConfigKey(m)) if m.contains("sample_rate")
     ));
 }
+
+/// A task whose units carry a body, a score and a language beside their key.
+struct Scored;
+
+impl DeriveTask for Scored {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into(), "score".into(), "lang".into()]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["words".into()]
+    }
+    fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+        Ok(Derived::new())
+    }
+}
+
+fn scored_tasks() -> Tasks {
+    let mut t = Tasks::default();
+    t.register("scored", Arc::new(Scored)).unwrap();
+    t
+}
+
+fn scored(extra: Value) -> Result<DeriveConfig, RunError> {
+    let mut cfg = json!({"task": "scored", "source_table": "documents", "parent_id_column": "doc_id"});
+    cfg.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+    DeriveConfig::parse_with("docs", &cfg, &scored_tasks())
+}
+
+/// Parent `d<i>`: a score of `i % 17` (null for every 13th), English for even `i`, French for every third odd one.
+fn scored_parents(n: usize) -> Vec<Row> {
+    (0..n)
+        .map(|i| {
+            let score = if i % 13 == 0 { Value::Null } else { json!(i % 17) };
+            let lang = if i % 2 == 0 {
+                "en"
+            } else if i % 3 == 0 {
+                "fr"
+            } else {
+                "de"
+            };
+            row(json!({"doc_id": format!("d{i:04}"), "body": "a b", "score": score, "lang": lang}))
+        })
+        .collect()
+}
+
+fn keys(sel: &contextful_core::run::derive::task::HostSelection) -> Vec<String> {
+    sel.outstanding.iter().map(|u| u.key.clone()).collect()
+}
+
+/// The parents, ranked by score descending with nulls last, ties broken by key ascending.
+fn ranked_desc(parents: &[Row]) -> Vec<String> {
+    let mut ranked: Vec<(Option<i64>, String)> = parents
+        .iter()
+        .map(|r| (r["score"].as_i64(), r["doc_id"].as_str().unwrap().to_string()))
+        .collect();
+    ranked.sort_by(|(a, ka), (b, kb)| match (a, b) {
+        (Some(a), Some(b)) => b.cmp(a).then(ka.cmp(kb)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => ka.cmp(kb),
+    });
+    ranked.into_iter().map(|(_, k)| k).collect()
+}
+
+/// `filter` keeps a host task's parent rows meeting every condition, a scalar testing equality and a list membership,
+/// before sampling.
+// spec: run.select.filter@64567a56
+#[test]
+fn a_filter_keeps_only_the_parents_it_matches() {
+    let parents = scored_parents(200);
+    let config = scored(json!({"filter": {"lang": ["en", "fr"], "score": 4}, "max_rows_per_run": 1000})).unwrap();
+    let sel = select_host(&parents, &[], &config, &Scored);
+    let expected: BTreeSet<String> = parents
+        .iter()
+        .filter(|r| ["en", "fr"].contains(&r["lang"].as_str().unwrap()) && r["score"] == json!(4))
+        .map(|r| r["doc_id"].as_str().unwrap().to_string())
+        .collect();
+    assert!(!expected.is_empty(), "the fixture holds matching parents");
+    assert_eq!(selected(&sel), expected, "every condition holds, a list is membership");
+    assert_eq!(sel.counts.eligible, expected.len() as u64, "a parent the filter drops is no eligible unit");
+
+    let truthy = vec![
+        row(json!({"doc_id": "t", "body": "a", "score": 1, "lang": true})),
+        row(json!({"doc_id": "f", "body": "a", "score": 1, "lang": false})),
+        row(json!({"doc_id": "n", "body": "a", "score": 1})),
+    ];
+    let config = scored(json!({"filter": {"lang": true, "score": 1.0}})).unwrap();
+    assert_eq!(keys(&select_host(&truthy, &[], &config, &Scored)), ["t"], "a boolean tests truth, a float the numeric value");
+    let by_key = scored(json!({"filter": {"doc_id": "f"}})).unwrap();
+    assert_eq!(keys(&select_host(&truthy, &[], &by_key, &Scored)), ["f"], "the key column is filterable");
+}
+
+/// A filter or order over a column outside the key and declared columns, or a condition the filter's shape refuses,
+/// refuses as `PipelineSpecInvalid` at config read; a built-in task reads neither key.
+// spec: run.select.filter@64567a56
+// spec: run.select.order@ef7605b4
+#[test]
+fn a_filter_or_order_beyond_the_declared_columns_refuses_at_config_read() {
+    for filter in [json!({"title": "x"}), json!({"lang": null}), json!({"lang": []}), json!({"lang": {"en": 1}}), json!(["lang"]), json!({"": "x"})] {
+        match scored(json!({ "filter": filter })) {
+            Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("filter"), "{filter}: {m}"),
+            other => panic!("{filter}: {other:?}"),
+        }
+    }
+    match scored(json!({"filter": {"title": "x"}})) {
+        Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("`title`") && m.contains("doc_id, body, score, lang"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    match scored(json!({"filter": {"lang": []}})) {
+        Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("FilterBudgetExceeded"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    for order in [json!("title desc"), json!("score sideways"), json!("score desc extra"), json!(""), json!(3)] {
+        match scored(json!({ "order_by": order })) {
+            Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("order_by"), "{order}: {m}"),
+            other => panic!("{order}: {other:?}"),
+        }
+    }
+    for order in ["score", "score asc", "score desc", "doc_id DESC"] {
+        assert!(scored(json!({ "order_by": order })).is_ok(), "{order}");
+    }
+    for key in ["filter", "order_by"] {
+        let mut built_in = json!({"engine": "w", "source_table": "documents", "media_column": "path", "parent_id_column": "doc_id"});
+        built_in[key] = if key == "filter" { json!({"path": "x"}) } else { json!("path desc") };
+        assert!(matches!(
+            DeriveConfig::parse("docs", &built_in),
+            Err(RunError::PipelineUnknownConfigKey(m)) if m.contains(key)
+        ));
+    }
+}
+
+/// `order_by` orders a host task's outstanding units before {{run.select.rows-per-run}}, nulls last and ties by unit
+/// key, so every pass and every resumed pass cuts one set.
+// spec: run.select.order@ef7605b4
+#[test]
+fn an_order_by_desc_selects_the_top_n_and_the_same_n_on_resume() {
+    let parents = scored_parents(300);
+    let config = scored(json!({"order_by": "score desc", "max_rows_per_run": 10})).unwrap();
+    let ranked = ranked_desc(&parents);
+    let first = select_host(&parents, &[], &config, &Scored);
+    assert_eq!(first.outstanding.len(), 10);
+    assert_eq!(keys(&first), ranked[..10], "the top 10 by score, ties by key");
+    assert_eq!(first.counts.outstanding, 300, "the counts cover every outstanding unit, not the cut");
+
+    let mut reversed = parents.clone();
+    reversed.reverse();
+    assert_eq!(keys(&select_host(&reversed, &[], &config, &Scored)), ranked[..10], "the scan order decides nothing");
+    assert_eq!(keys(&select_host(&parents, &[], &config, &Scored)), ranked[..10], "a resumed pass with no landed marker selects the same 10");
+
+    let markers: Vec<Row> = first.outstanding.iter().flat_map(|u| host_rows(u, "scored", &Scored, Ok(Derived::new()))["units"].clone()).collect();
+    assert_eq!(keys(&select_host(&parents, &markers, &config, &Scored)), ranked[10..20], "the next tick selects the next 10");
+
+    let asc = scored(json!({"order_by": "score asc", "max_rows_per_run": 300})).unwrap();
+    let ascending = keys(&select_host(&parents, &[], &asc, &Scored));
+    let nulls: BTreeSet<String> = parents.iter().filter(|r| r["score"].is_null()).map(|r| r["doc_id"].as_str().unwrap().to_string()).collect();
+    assert!(!nulls.is_empty(), "the fixture holds null scores");
+    let tail: BTreeSet<String> = ascending[ascending.len() - nulls.len()..].iter().cloned().collect();
+    assert_eq!(tail, nulls, "nulls sort last ascending too");
+    assert_eq!(parents.iter().find(|r| r["doc_id"] == json!(ascending[0])).unwrap()["score"], json!(0));
+}
+
+/// The filter, the sample, the order and the row budget compose in that order into one set, whatever the scan order.
+// spec: run.select.filter@64567a56
+// spec: run.select.order@ef7605b4
+#[test]
+fn a_filter_an_order_and_a_sample_select_one_deterministic_set() {
+    let parents = scored_parents(2_000);
+    let config = scored(json!({
+        "filter": {"lang": "en"}, "order_by": "score desc", "sample_rate": 0.5, "max_rows_per_run": 25
+    }))
+    .unwrap();
+    let rate = contextful_core::run::derive::config::SampleRate::new(0.5).unwrap();
+    let kept: Vec<Row> = parents
+        .iter()
+        .filter(|r| r["lang"] == json!("en") && rate.keeps(r["doc_id"].as_str().unwrap(), "scored"))
+        .cloned()
+        .collect();
+    assert!(kept.len() > 25, "the filter and the sample leave more than the budget");
+    let expected = ranked_desc(&kept)[..25].to_vec();
+    let sel = select_host(&parents, &[], &config, &Scored);
+    assert_eq!(keys(&sel), expected, "filter, then sample, then order, then the cut");
+    assert_eq!(sel.counts.eligible, kept.len() as u64);
+    let mut reversed = parents.clone();
+    reversed.reverse();
+    assert_eq!(keys(&select_host(&reversed, &[], &config, &Scored)), expected, "a second pass in another scan order selects the same set");
+}
