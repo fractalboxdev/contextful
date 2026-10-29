@@ -1,6 +1,8 @@
 //! Size ratchets: the word ceilings of `corpus.anatomy.word-ceilings`, the advisory of
 //! `corpus.anatomy.long-operation`, and the unowned clauses of `corpus.state.unowned`.
 
+use std::collections::BTreeMap;
+
 use crate::{codes, Scratch};
 
 const STORE: &str = "spec/10-store.md";
@@ -67,11 +69,23 @@ fn a_contract_or_an_adr_one_word_over_its_ceiling_fails_lint() {
 #[test]
 fn state_prints_an_advisory_for_each_operation_over_its_clause_bound() {
     let s = Scratch::copy();
+    let mut held: BTreeMap<String, usize> = BTreeMap::new();
+    let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+    for c in lock["clauses"].as_array().unwrap() {
+        *held.entry(format!("{}.{}", c["contract"].as_str().unwrap(), c["operation"].as_str().unwrap())).or_default() += 1;
+    }
+    let (long, short): (BTreeMap<_, _>, BTreeMap<_, _>) = held.into_iter().partition(|(_, n)| *n > 30);
+    assert!(!long.is_empty() && !short.is_empty(), "{long:?} {short:?}");
+
     let out = s.cmd(&["state"]);
     assert!(out.status.success());
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.lines().any(|l| l.starts_with("advisory: `connector.source` holds ") && l.ends_with(" clauses, over 30")), "{err}");
-    assert!(!err.contains("`store.fold`"), "{err}");
+    let advised: BTreeMap<String, usize> = err
+        .lines()
+        .filter_map(|l| l.strip_prefix("advisory: `")?.strip_suffix(" clauses, over 30")?.split_once("` holds "))
+        .map(|(operation, n)| (operation.to_string(), n.parse().unwrap()))
+        .collect();
+    assert_eq!(advised, long, "{err}");
 }
 
 fn unowned(s: &Scratch) -> Vec<String> {

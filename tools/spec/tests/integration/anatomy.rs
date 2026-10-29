@@ -14,12 +14,15 @@ fn kind(lock: &serde_json::Value, id: &str) -> String {
     lock["clauses"].as_array().unwrap().iter().find(|c| c["id"] == id).map(|c| c["kind"].as_str().unwrap().to_string()).unwrap_or_default()
 }
 
-/// Insert `text` after the clause list of `## <operation>` in the store file.
+/// Insert `text` after the last clause list of `## <operation>` in the store file, past
+/// every `### <group>` the operation holds.
 fn after_list(s: &Scratch, operation: &str, text: &str) {
     let body = s.read(STORE);
     let at = body.find(&format!("## {operation}\n")).expect("operation section");
-    let list = at + body[at..].find("\n- `").expect("a clause list");
-    let end = list + body[list..].find("\n\n").unwrap();
+    let section = at + 1 + body[at + 1..].find("\n## ").unwrap_or(body.len() - at - 1);
+    let last = body[at..section].lines().rfind(|l| l.starts_with("- `") && l.contains("` — ")).expect("a clause list");
+    let item = at + body[at..section].rfind(&format!("\n{last}\n")).unwrap();
+    let end = item + body[item..].find("\n\n").unwrap();
     s.write(STORE, &format!("{}\n\n{text}{}", &body[..end], &body[end..]));
 }
 
@@ -131,13 +134,21 @@ fn lock_row(lock: &serde_json::Value, id: &str) -> serde_json::Value {
 fn a_group_heading_splits_a_list_without_changing_an_id() {
     let s = Scratch::copy();
     let before = s.clauses_of("store.fold");
+    let unsplit = lock(&s);
+    let at = before.iter().position(|id| id == "store.fold.lost-pointer").expect("the lost-pointer clause");
+    assert!(at > 0 && lock_row(&unsplit, &before[at]).get("group").is_none());
+    let grouped: Vec<(String, serde_json::Value)> =
+        before.iter().map(|id| (id.clone(), lock_row(&unsplit, id)["group"].clone())).filter(|(_, g)| !g.is_null()).collect();
     group_before(&s, "lost-pointer", "collection", "A pass that loses its pointer, and the staging it leaves behind.");
     assert!(codes(&s.lint("anatomy"), "SpecAnatomy").is_empty(), "{:?}", s.lint("anatomy"));
     let lock = lock(&s);
     assert_eq!(s.clauses_of("store.fold"), before);
     assert_eq!(lock_row(&lock, "store.fold.lost-pointer")["group"], "collection");
     assert_eq!(lock_row(&lock, "store.fold.supersedes")["group"], "collection");
-    assert!(lock_row(&lock, "store.fold.triggers").get("group").is_none());
+    assert!(lock_row(&lock, &before[at - 1]).get("group").is_none(), "the clause above the heading stays ungrouped");
+    for (id, group) in &grouped {
+        assert_eq!(&lock_row(&lock, id)["group"], group, "`{id}` keeps its group");
+    }
     assert_eq!(lock["groups"]["store.fold.collection"], "A pass that loses its pointer, and the staging it leaves behind.");
 }
 
