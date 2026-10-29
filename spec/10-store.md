@@ -452,8 +452,10 @@ Fold passes build, extend and rebuild each declared sidecar.
   *A-store#sidecar-s-builder*
 - `vector-by-fold` — Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the declared model where `embedding_model` exists, and records it in the snapshot manifest.
   *A-store#sidecar-names-id*
-- `graph` — A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.
+- `graph` — A vector sidecar is an HNSW graph over unit-length vectors stored as its declaration's `storage`, a {{type:contextful_core::store::index::VectorStorage}} defaulting to `f32`, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.
   *because a recall figure then replays from its snapshot*
+- `i8-storage` — An `i8` sidecar stores each vector as signed bytes and one `Float32` scale, its largest magnitude over 127, a zero vector taking scale 0; a probe's cosine lies within √dim × scale / 2 of the `Float32` cosine.
+  *because each element rounds by at most half a scale, and the unit-length query bounds their summed error*
 - `fulltext-by-fold` — Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term, recording it in the snapshot manifest.
   *A-store#sidecar-names-id*
 - `postings` — Each full-text segment is one file holding a sorted term dictionary and each term's row identifiers and positions, which readers binary-search mapped or decrypted.
@@ -707,7 +709,7 @@ A run manifest, a snapshot manifest and a table pointer, `lay_out::RunManifest`,
                 "table": "documents", "snapshot_id": "snapshot-01742054400000000000",
                 "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
                 "metric": "cosine", "m": 16, "ef_construction": 200,
-                "builder": "contextful-hnsw", "builder_version": 3, "row_count": 128400,
+                "builder": "contextful-hnsw", "builder_version": 4, "row_count": 128400,
                 "key_version": 3 },
               { "kind": "fulltext", "path": "indexes/fts-body-cjk",
                 "table": "documents", "snapshot_id": "snapshot-01742054400000000000", "column": "body",

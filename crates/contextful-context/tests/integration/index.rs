@@ -379,8 +379,11 @@ fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
     // A pass under this build's own builder, with nothing landed, publishes nothing.
     assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
 
-    // Builder version 2 laid out `Float32` vectors alone; this build rebuilds its sidecars.
-    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder_version", json!(2)), ("builder", json!("another-hnsw"))] {
+    // Builder version 2 laid out `Float32` vectors alone and version 3 no one-byte element
+    // width; this build rebuilds both.
+    let older = [("builder_version", json!(2)), ("builder_version", json!(3))];
+    assert_eq!(VECTOR_BUILDER_VERSION, 4);
+    for (key, value) in [[("builder_version", json!(VECTOR_BUILDER_VERSION + 1))].as_slice(), &older, &[("builder", json!("another-hnsw"))]].concat() {
         restamp(&f, "passages", key, value);
         let (before, before_dir) = current(&f, "passages");
         // Until the pass publishes, readers resolve the snapshot the old builder wrote.
@@ -549,10 +552,10 @@ fn collecting_a_snapshot_collects_its_sidecars() {
     assert!(!first_dir.exists() && !sidecar.exists());
 }
 
-/// A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its
-/// declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set
-/// yields a byte-identical graph.
-// spec: store.index.graph@fd35f83e
+/// A vector sidecar is an HNSW graph over unit-length vectors stored as its declaration's `storage`, a
+/// {{type:contextful_core::store::index::VectorStorage}} defaulting to `f32`, its layers seeded from the
+/// snapshot id and column, so one staged row set yields a byte-identical graph.
+// spec: store.index.graph@77661070
 #[test]
 fn one_staged_row_set_builds_one_byte_identical_graph() {
     let rows: Vec<Value> = (0..300)
@@ -616,10 +619,10 @@ fn fold_vectors(vectors: &[Vec<f32>], extra: &str) -> (Fixture, SnapshotManifest
     (f, m, dir)
 }
 
-/// A vector sidecar is an HNSW graph over unit-length vectors stored as `Float32`, or as `Float16` where its
-/// declaration's `storage` is `f16`, its layers seeded from the snapshot id and column, so one staged row set
-/// yields a byte-identical graph.
-// spec: store.index.graph@fd35f83e
+/// A vector sidecar is an HNSW graph over unit-length vectors stored as its declaration's `storage`, a
+/// {{type:contextful_core::store::index::VectorStorage}} defaulting to `f32`, its layers seeded from the
+/// snapshot id and column, so one staged row set yields a byte-identical graph.
+// spec: store.index.graph@77661070
 #[test]
 fn an_f16_sidecar_stores_its_vectors_in_half_the_bytes_of_its_f32_twin() {
     use contextful_core::store::index::VectorStorage;
@@ -683,6 +686,134 @@ fn a_vector_sidecar_stores_f32_unless_its_declaration_says_f16() {
     assert_eq!((entry(&after).storage, entry(&after).row_count), (VectorStorage::F16, 64));
     let sidecar = VectorSidecar::open(&after_dir, "passages", &after.indexes[0], &Sealing::Plaintext).unwrap();
     assert_eq!(sidecar.probe(&vectors[7], 1).unwrap()[0].id, "p7");
+}
+
+/// `v` scaled to unit length.
+fn unit(v: &[f32]) -> Vec<f32> {
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    v.iter().map(|x| x / norm).collect()
+}
+
+/// An `i8` graph's codes and scales: `count * dim` signed bytes after the 32-byte header,
+/// then `count` little-endian `Float32` scales.
+fn i8_sections(bytes: &[u8], count: usize, dim: usize) -> (Vec<i8>, Vec<f32>) {
+    let codes = bytes[32..32 + count * dim].iter().map(|&b| b as i8).collect();
+    let at = 32 + count * dim;
+    let scales = bytes[at..at + count * 4].chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+    (codes, scales)
+}
+
+/// An `i8` sidecar stores each vector as signed bytes and one `Float32` scale, its largest magnitude over 127, a
+/// zero vector taking scale 0; a probe's cosine lies within √dim × scale / 2 of the `Float32` cosine.
+// spec: store.index.i8-storage@0e8f1246
+#[test]
+fn an_i8_sidecar_stores_about_a_quarter_of_its_f32_twins_vector_bytes() {
+    use contextful_core::store::index::VectorStorage;
+    const N: usize = 500;
+    const DIM: usize = 64;
+    let vectors = seeded(N, DIM, 0x5eed_0018);
+    let (_wide_fixture, wide_m, wide_dir) = fold_vectors(&vectors, "");
+    let (_byte_fixture, byte_m, byte_dir) = fold_vectors(&vectors, "storage = \"i8\"\n");
+    let (wide, byte) = (entry(&wide_m), entry(&byte_m));
+    assert_eq!((wide.storage, byte.storage), (VectorStorage::F32, VectorStorage::I8));
+    // One byte per element and a 4-byte scale per vector: 68 of the 256 bytes per row.
+    assert_eq!((wide.stored_vector_bytes(), byte.stored_vector_bytes()), ((N * DIM * 4) as u64, (N * (DIM + 4)) as u64));
+    assert!(byte.stored_vector_bytes() * 100 <= wide.stored_vector_bytes() * 27);
+    let wide_bytes = std::fs::read(wide_dir.join(&wide.path).join(GRAPH_FILE)).unwrap();
+    let byte_bytes = std::fs::read(byte_dir.join(&byte.path).join(GRAPH_FILE)).unwrap();
+    // One snapshot id seeds both, so the layers match in size and only the vector section narrows.
+    assert_eq!(wide_bytes.len() - byte_bytes.len(), N * DIM * 4 - N * (DIM + 4));
+    // The header's element word records a width of 1.
+    assert_eq!(u32::from_le_bytes(byte_bytes[28..32].try_into().unwrap()), 1);
+    let own: Value = serde_json::from_slice(&std::fs::read(byte_dir.join(&byte.path).join("_manifest.json")).unwrap()).unwrap();
+    assert_eq!(own["storage"], "i8");
+
+    let (codes, node_scales) = i8_sections(&byte_bytes, N, DIM);
+    assert_eq!((codes.len(), node_scales.len()), (N * DIM, N));
+    // Nodes follow the staged row order; `scales[i]` is row `p{i}`'s.
+    let layout = contextful_context::vector::graph::Layout::parse(&byte_bytes).unwrap();
+    let mut scales = vec![f32::NAN; N];
+    for n in 0..N {
+        let i: usize = layout.id(&byte_bytes, n as u32).unwrap()[1..].parse().unwrap();
+        let u = unit(&vectors[i]);
+        let (row, scale) = (&codes[n * DIM..(n + 1) * DIM], node_scales[n]);
+        let largest = u.iter().fold(0f32, |a, x| a.max(x.abs()));
+        assert!((scale - largest / 127.0).abs() <= 1e-7, "p{i}: scale {scale} for largest {largest}");
+        // The largest magnitude takes the full code range; every element rounds to its nearest code.
+        assert_eq!(row.iter().map(|c| c.unsigned_abs()).max(), Some(127));
+        for (c, x) in row.iter().zip(&u) {
+            assert!((f32::from(*c) * scale - x).abs() <= scale / 2.0 + 1e-6, "p{i}: {c} for {x}");
+        }
+        scales[i] = scale;
+    }
+    assert!(scales.iter().all(|s| s.is_finite() && *s > 0.0));
+    let bound = |scale: f32| (DIM as f32).sqrt() * scale / 2.0 + 1e-5;
+    // Each row, probed with its own vector, is the nearest node, and every candidate's
+    // similarity sits within the clause's bound of the exact cosine.
+    let sidecar = VectorSidecar::open(&byte_dir, "passages", &byte_m.indexes[0], &Sealing::Plaintext).unwrap();
+    for (i, v) in vectors.iter().enumerate() {
+        let near = sidecar.probe(v, 10).unwrap();
+        assert_eq!(near.first().map(|c| c.id.clone()), Some(format!("p{i}")));
+        let q = unit(v);
+        for c in &near {
+            let j: usize = c.id[1..].parse().unwrap();
+            let exact: f32 = q.iter().zip(unit(&vectors[j])).map(|(a, b)| a * b).sum();
+            assert!((c.similarity - exact).abs() <= bound(scales[j]), "{}: {} against {exact}", c.id, c.similarity);
+        }
+    }
+    // One staged row set builds one byte-identical `i8` graph.
+    let (_again_fixture, again_m, again_dir) = fold_vectors(&vectors, "storage = \"i8\"\n");
+    assert!(std::fs::read(again_dir.join(&entry(&again_m).path).join(GRAPH_FILE)).unwrap() == byte_bytes);
+}
+
+/// A zero vector reaching the `i8` graph stores scale 0 and zero codes, and a search scores
+/// it 0 rather than dividing by zero or yielding NaN.
+// spec: store.index.i8-storage@0e8f1246
+#[test]
+fn an_i8_graph_stores_a_zero_vector_at_scale_zero_and_scores_it_finite() {
+    use contextful_context::vector::graph::{self, Layout, Params, UNSTAMPED};
+    use contextful_core::store::index::VectorStorage;
+    const DIM: usize = 4;
+    let vectors = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.6, 0.8, 0.0, 0.0];
+    let ids: Vec<String> = (0..3).map(|i| format!("p{i}")).collect();
+    let params = Params { storage: VectorStorage::I8, m: 16, ef_construction: 200, seed: 0x5eed_0000 };
+    let bytes = graph::build(&vectors, DIM, &ids, &[UNSTAMPED; 3], params);
+    let layout = Layout::parse(&bytes).unwrap();
+    assert_eq!((layout.storage, layout.count, layout.dim), (VectorStorage::I8, 3, DIM));
+    let (codes, scales) = i8_sections(&bytes, 3, DIM);
+    assert_eq!(scales.len(), 3);
+    assert!(scales.iter().all(|s| s.is_finite()), "{scales:?}");
+    assert_eq!(scales[1].to_bits(), 0f32.to_bits());
+    assert_eq!(&codes[DIM..2 * DIM], &[0i8; DIM]);
+    assert_eq!(&codes[..DIM], &[127, 0, 0, 0]);
+    let found = layout.search(&bytes, &[1.0, 0.0, 0.0, 0.0], 3, 16);
+    assert_eq!(found.len(), 3, "{found:?}");
+    assert!(found.iter().all(|(_, similarity)| similarity.is_finite()), "{found:?}");
+    let zero = found.iter().find(|(n, _)| *n == 1).map(|(_, s)| *s);
+    assert_eq!(zero, Some(0.0));
+    assert_eq!(found[0].0, 0);
+}
+
+/// A declaration switched from `f16` to `i8` rebuilds its sidecar with no landed run
+/// (`store.index.declared-unbuilt`), and the rebuilt graph answers at one byte per element.
+#[test]
+fn a_declaration_switched_from_f16_to_i8_rebuilds_its_sidecar() {
+    use contextful_core::store::fold::FoldOutcome;
+    use contextful_core::store::index::VectorStorage;
+    let vectors = seeded(64, 8, 0x5eed_0f18);
+    let (f, m, _dir) = fold_vectors(&vectors, "storage = \"f16\"\n");
+    assert_eq!(entry(&m).storage, VectorStorage::F16);
+    let byte = decl("name = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = 8\nstorage = \"i8\"\n");
+    let outcome = fold(&f.store, &byte, at("2030-01-01T02:00:00Z")).unwrap();
+    assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, rows: 64, .. }), "{outcome:?}");
+    let (after, after_dir) = current(&f, "passages");
+    assert_eq!(after.parent.as_ref(), Some(&m.snapshot_id));
+    let e = entry(&after);
+    assert_eq!((e.storage, e.row_count, e.stored_vector_bytes()), (VectorStorage::I8, 64, 64 * (8 + 4)));
+    let sidecar = VectorSidecar::open(&after_dir, "passages", &after.indexes[0], &Sealing::Plaintext).unwrap();
+    assert_eq!(sidecar.probe(&vectors[7], 1).unwrap()[0].id, "p7");
+    // The declaration now matches the build, so the next pass publishes nothing.
+    assert_eq!(fold(&f.store, &byte, at("2030-01-01T03:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
 }
 
 /// Two staged snapshot rows sharing an `id_column` value make fold raise `StoreIndexIdNotUnique`, naming the
@@ -788,6 +919,15 @@ fn vector_recall_at_10_holds_against_exact_search() {
 fn vector_recall_at_10_holds_on_f16_storage() {
     let recall = recall_at_10("storage = \"f16\"\n");
     assert!(recall >= 0.95, "f16 recall@10 {recall}");
+}
+
+/// An `i8` graph keeps recall@10 of at least 0.90 against exact `Float32` search on the same
+/// fixture.
+// spec: store.index.i8-storage@0e8f1246
+#[test]
+fn vector_recall_at_10_holds_on_i8_storage() {
+    let recall = recall_at_10("storage = \"i8\"\n");
+    assert!(recall >= 0.90, "i8 recall@10 {recall}");
 }
 
 pub const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";

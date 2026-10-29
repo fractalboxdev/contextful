@@ -76,8 +76,8 @@ fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
 }
 
 /// A vector block's `storage` names the element type its graph stores: `f32` unless
-/// declared, `f16` at half width. Any other value refuses the block, as does `storage` on a
-/// full-text block (`store.index.graph`).
+/// declared, `f16` at half width, `i8` at one byte. Any other value refuses the block, as
+/// does `storage` on a full-text block (`store.index.graph`).
 #[test]
 fn a_vector_block_stores_f32_unless_it_declares_f16() {
     let keyed = |extra: &str| table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}{extra}"));
@@ -87,12 +87,41 @@ fn a_vector_block_stores_f32_unless_it_declares_f16() {
     let half = keyed("storage = \"f16\"\n");
     assert_eq!(half.indexes()[0].storage(), VectorStorage::F16);
     assert!(half.canonical().contains("\"storage\":\"f16\""), "{}", half.canonical());
-    for bad in ["storage = \"i8\"", "storage = \"F16\"", "storage = 16"] {
+    let byte = keyed("storage = \"i8\"\n");
+    assert_eq!(byte.indexes()[0].storage(), VectorStorage::I8);
+    assert!(byte.canonical().contains("\"storage\":\"i8\""), "{}", byte.canonical());
+    for bad in ["storage = \"i4\"", "storage = \"I8\"", "storage = \"u8\"", "storage = \"F16\"", "storage = 16"] {
         let err = TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"passages\"\n{VECTOR}{bad}\n")).unwrap_err();
         assert!(err.to_string().contains("declaration malformed"), "{bad}: {err}");
     }
     let err = TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"passages\"\n{FULLTEXT}storage = \"f16\"\n")).unwrap_err();
     assert!(err.to_string().contains("`storage`"), "{err}");
+}
+
+/// An `i8` entry's stored vector bytes count one byte per element and a 4-byte `Float32`
+/// scale per vector, about a quarter of its `f32` twin's.
+// spec: store.index.i8-storage@0e8f1246
+#[test]
+fn an_i8_entry_counts_one_byte_per_element_and_a_scale_per_vector() {
+    let entry = |storage: &str| -> IndexEntry {
+        serde_json::from_value(serde_json::json!({
+            "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all", "table": "passages",
+            "snapshot_id": "snapshot-01742054400000000000", "column": "embedding", "id_column": "passage_id",
+            "model": "e5-small", "dim": 384, "metric": "cosine", "m": DEFAULT_M, "ef_construction": DEFAULT_EF_CONSTRUCTION,
+            "storage": storage, "builder": VECTOR_BUILDER, "builder_version": VECTOR_BUILDER_VERSION, "row_count": 1000, "key_version": 0
+        }))
+        .unwrap()
+    };
+    let bytes = |storage: &str| match entry(storage) {
+        IndexEntry::Vector(e) => (e.storage, e.stored_vector_bytes()),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(VectorStorage::I8.element_bytes(), 1);
+    assert_eq!(bytes("i8"), (VectorStorage::I8, 1000 * (384 + 4)));
+    assert_eq!(bytes("f32"), (VectorStorage::F32, 1000 * 384 * 4));
+    let (_, wide) = bytes("f32");
+    let (_, narrow) = bytes("i8");
+    assert!(narrow * 4 < wide * 26 / 25, "{narrow} of {wide}");
 }
 
 /// Without `valid_time`, `id_column` defaults to the table's single-column primary key; a table's sidecars share one
@@ -368,6 +397,7 @@ fn an_entry_is_built_as_a_declaration_only_under_its_identifier_and_parameters()
     assert!(!vector.built_as(&decl(&format!("{vec_block}ef_construction = 400\n")), "passage_id"));
     assert!(vector.built_as(&decl(&format!("{vec_block}storage = \"f32\"\n")), "passage_id"));
     assert!(!vector.built_as(&decl(&format!("{vec_block}storage = \"f16\"\n")), "passage_id"));
+    assert!(!vector.built_as(&decl(&format!("{vec_block}storage = \"i8\"\n")), "passage_id"));
     assert!(!fulltext.built_as(&decl(vec_block), "passage_id"));
     // An entry a newer builder records is left as written.
     let unrecognized: IndexEntry = serde_json::from_value(serde_json::json!({"kind": "sparse", "path": "indexes/sparse-body"})).unwrap();
@@ -417,6 +447,8 @@ fn a_sidecar_without_per_entry_availability_rebuilds() {
     }
     // A vector sidecar of builder version 2 stores `Float32` alone, so this build rebuilds it.
     assert!(entry("vector", 2).needs_rebuild());
+    // Version 3 reads no one-byte element width, so this build rebuilds its sidecars too.
+    assert!(entry("vector", 3).needs_rebuild());
     assert!(!entry("vector", VECTOR_BUILDER_VERSION).needs_rebuild());
     assert!(!entry("fulltext", FULLTEXT_BUILDER_VERSION).needs_rebuild());
 }
