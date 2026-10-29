@@ -6,7 +6,7 @@ use contextful_core::run::RunError;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::index::{
-    is_cjk, IndexEntry, IndexKind, Metric, Tokenizer, DEFAULT_EF_CONSTRUCTION, DEFAULT_M, FULLTEXT_BUILDER,
+    is_cjk, IndexEntry, IndexKind, Metric, Tokenizer, VectorStorage, DEFAULT_EF_CONSTRUCTION, DEFAULT_M, FULLTEXT_BUILDER,
     FULLTEXT_BUILDER_VERSION, VECTOR_BUILDER, VECTOR_BUILDER_VERSION,
 };
 use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
@@ -73,6 +73,26 @@ fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
     // A table without a declaration has no sidecar and omits the key.
     let plain = table("name = \"passages\"");
     assert!(plain.indexes().is_empty() && !plain.canonical().contains("indexes"));
+}
+
+/// A vector block's `storage` names the element type its graph stores: `f32` unless
+/// declared, `f16` at half width. Any other value refuses the block, as does `storage` on a
+/// full-text block (`store.index.graph`).
+#[test]
+fn a_vector_block_stores_f32_unless_it_declares_f16() {
+    let keyed = |extra: &str| table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}{extra}"));
+    assert_eq!(keyed("").indexes()[0].storage(), VectorStorage::F32);
+    assert!(!keyed("").canonical().contains("storage"), "{}", keyed("").canonical());
+    assert_eq!(keyed("storage = \"f32\"\n").indexes()[0].storage(), VectorStorage::F32);
+    let half = keyed("storage = \"f16\"\n");
+    assert_eq!(half.indexes()[0].storage(), VectorStorage::F16);
+    assert!(half.canonical().contains("\"storage\":\"f16\""), "{}", half.canonical());
+    for bad in ["storage = \"i8\"", "storage = \"F16\"", "storage = 16"] {
+        let err = TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"passages\"\n{VECTOR}{bad}\n")).unwrap_err();
+        assert!(err.to_string().contains("declaration malformed"), "{bad}: {err}");
+    }
+    let err = TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"passages\"\n{FULLTEXT}storage = \"f16\"\n")).unwrap_err();
+    assert!(err.to_string().contains("`storage`"), "{err}");
 }
 
 /// Without `valid_time`, `id_column` defaults to the table's single-column primary key; a table's sidecars share one
@@ -346,6 +366,8 @@ fn an_entry_is_built_as_a_declaration_only_under_its_identifier_and_parameters()
     assert!(!fulltext.built_as(&decl(fts_block), "digest"));
     assert!(!vector.built_as(&decl(&format!("{vec_block}m = 24\n")), "passage_id"));
     assert!(!vector.built_as(&decl(&format!("{vec_block}ef_construction = 400\n")), "passage_id"));
+    assert!(vector.built_as(&decl(&format!("{vec_block}storage = \"f32\"\n")), "passage_id"));
+    assert!(!vector.built_as(&decl(&format!("{vec_block}storage = \"f16\"\n")), "passage_id"));
     assert!(!fulltext.built_as(&decl(vec_block), "passage_id"));
     // An entry a newer builder records is left as written.
     let unrecognized: IndexEntry = serde_json::from_value(serde_json::json!({"kind": "sparse", "path": "indexes/sparse-body"})).unwrap();
@@ -393,6 +415,8 @@ fn a_sidecar_without_per_entry_availability_rebuilds() {
     for kind in ["vector", "fulltext"] {
         assert!(entry(kind, 1).needs_rebuild(), "{kind}");
     }
+    // A vector sidecar of builder version 2 stores `Float32` alone, so this build rebuilds it.
+    assert!(entry("vector", 2).needs_rebuild());
     assert!(!entry("vector", VECTOR_BUILDER_VERSION).needs_rebuild());
     assert!(!entry("fulltext", FULLTEXT_BUILDER_VERSION).needs_rebuild());
 }

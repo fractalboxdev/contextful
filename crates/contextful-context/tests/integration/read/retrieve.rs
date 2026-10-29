@@ -660,8 +660,9 @@ fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
     // layer 0 links each node to its two ring neighbours.
     let count = (SIDECAR_SIZE_CAP_BYTES as usize) / (DIM * 4) + 1;
     let m = entry.m as usize;
+    // The header's last word is the element width: 4 bytes, `Float32`.
     let mut graph = MAGIC.to_vec();
-    for v in [DIM, count, m, 0, 0, 0] {
+    for v in [DIM, count, m, 0, 0, 4] {
         graph.extend((v as u32).to_le_bytes());
     }
     for n in 0..count {
