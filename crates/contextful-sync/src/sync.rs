@@ -542,8 +542,9 @@ pub struct PullReport {
     /// Tombstones the pull applied nothing for, each a `SyncTombstoneUnverified` refusal
     /// (`store.merge.tombstone-unverified`).
     pub unverified: Vec<String>,
-    /// Run states whose bucket object differs from its entry, each discarded with a warning
-    /// (`store.pull.run-state-torn`).
+    /// Warnings: each run state whose bucket object differs from its entry, discarded
+    /// (`store.pull.run-state-torn`), and each local pointer the bucket's replaced
+    /// (`store.pull.pointer-adopt`).
     pub discarded: Vec<String>,
     /// Bytes of local copies the pull read to compare against manifest entries.
     pub bytes_read: u64,
@@ -1675,15 +1676,27 @@ impl Syncer {
             let held: Option<Pointer> = std::fs::read(&pointer_path).ok()
                 .and_then(|b| self.store.open_metadata_bytes(&pointer_path, &b).ok())
                 .and_then(|b| serde_json::from_slice(&b).ok());
-            // The bucket's pointer advances a local one only when its fence, then its snapshot,
-            // is newer; a restore writes the generation's pointer whatever its fence.
+            let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
+            // The bucket's pointer advances a local one when its fence, then its snapshot, is newer;
+            // a restore writes the generation's pointer whatever its fence.
             if let Some(h) = &held {
-                let ahead = (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id);
-                if (generation.is_none() && ahead) || (h.fence == Some(pointer.fence) && h.snapshot_id == snapshot_id) {
+                if h.fence == Some(pointer.fence) && h.snapshot_id == snapshot_id {
                     continue;
                 }
+                let ahead = (h.fence.unwrap_or(0), &h.snapshot_id) >= (pointer.fence, &snapshot_id);
+                if generation.is_none() && ahead {
+                    // A local pointer ahead of the bucket's stays only on a snapshot descending from
+                    // the bucket's; any other misses the runs the bucket's head folded
+                    // (`store.pull.pointer-adopt`).
+                    let local = h.snapshot_id.to_string();
+                    if h.snapshot_id == snapshot_id || matches!(ancestry(&self.store, &table_dir, &local, &snapshot), Ancestry::Descends) {
+                        continue;
+                    }
+                    report.discarded.push(format!(
+                        "`{rel_key}` named snapshot `{local}`, which does not descend from the bucket's `{snapshot}`; the pointer moves to `{snapshot}` and the runs `{local}` alone folded fold again"
+                    ));
+                }
             }
-            let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
             // A lazy store advances a pointer once its snapshot manifest is home; its parts follow on first read.
             let missing = match lazy {
                 true => (!table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(&snapshot).join(MANIFEST_FILE).exists()).then(|| MANIFEST_FILE.to_string()),

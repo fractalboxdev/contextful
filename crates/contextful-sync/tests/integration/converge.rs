@@ -219,6 +219,58 @@ fn an_unverified_tombstone_deletes_nothing() {
     }
 }
 
+fn folded(n: &crate::support::Node, now: &str) -> String {
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&n.syncer.store, &TableDecl::named("filings"), at(now)).unwrap() else { panic!("nothing folded") };
+    snapshot_id
+}
+
+fn ids(n: &crate::support::Node) -> Vec<i64> {
+    let rows = contextful_context::rows::table_rows(&n.syncer.store, &TableDecl::named("filings"), &["id"]).unwrap();
+    let mut ids: Vec<i64> = rows.iter().map(|r| r["id"].as_i64().unwrap()).collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot,
+/// whatever its fence, and warns, so runs only the replaced snapshot folded fold again against the bucket's head.
+// spec: store.pull.pointer-adopt@96d8433f
+#[test]
+fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    folded(&a, NOW);
+    a.syncer.push(at(NOW)).unwrap();
+    c.syncer.pull(&PullScope::default()).unwrap();
+
+    // While B is away, A folds run-2 into the bucket's head, then retention removes run-2 and a push
+    // tombstones it, so only the head's parts carry its row.
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T02:00:00Z");
+    let head = folded(&a, "2030-01-01T03:00:00Z");
+    a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
+    contextful_context::fold::collect(&a.syncer.store, &TableDecl::named("filings"), at("2030-01-20T00:00:00Z")).unwrap();
+    a.syncer.push(at("2030-01-20T00:00:00Z")).unwrap();
+    assert!(manifest(b.as_ref()).tombstones.keys().any(|k| k.contains("/runs/run-2/")), "the push tombstones run-2");
+
+    // B folds outside a lease before its first pull: a later snapshot at the bucket's fence, off its chain.
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let local = folded(&c, "2030-01-21T01:00:00Z");
+    assert!(local > head);
+    let report = c.syncer.pull(&PullScope::default()).unwrap();
+    let pointer: serde_json::Value = serde_json::from_slice(&std::fs::read(c.root().join("tables/filings/_pointer.json")).unwrap()).unwrap();
+    assert_eq!(pointer["snapshot_id"], json!(head));
+    assert!(report.discarded.iter().any(|w| w.contains(&local) && w.contains(&head)), "{:?}", report.discarded);
+    assert_eq!(ids(&c), [1, 2, 3], "run-3 reads unfolded against the head");
+
+    // The next fold folds run-3 again, on the head.
+    folded(&c, "2030-01-21T02:00:00Z");
+    let (chain, _) = c.syncer.store.chain("filings").unwrap();
+    assert_eq!(chain[1].snapshot_id.to_string(), head);
+    assert_eq!(chain[0].includes_runs, ["run-3/ingest-b"]);
+    assert_eq!(ids(&c), [1, 2, 3]);
+}
+
 fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
     let held = n.syncer.acquire(table, at(now)).unwrap();
     let FoldOutcome::Folded { snapshot_id, .. } = fold(&n.syncer.store, &TableDecl::named(table), at(now)).unwrap() else { panic!() };
@@ -228,9 +280,9 @@ fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
     snapshot_id
 }
 
-/// Pull advances a pointer only to a higher fence, or the same fence with a later snapshot, verifying every
-/// advancing table before writing any pointer.
-// spec: store.pull.pointer-advance@9f2101ca
+/// Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only
+/// under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
+// spec: store.pull.pointer-advance@35d3c46c
 #[test]
 fn a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies() {
     let dir = tempfile::tempdir().unwrap();
@@ -239,11 +291,13 @@ fn a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies()
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     a.syncer.push(at(NOW)).unwrap();
     publish(&a, "filings", NOW);
-    // B holds a newer local pointer than the bucket's: a pull leaves it.
+    // B holds a newer local pointer than the bucket's, on a snapshot descending from it: a pull leaves it.
     c.syncer.pull(&PullScope::default()).unwrap();
+    c.land("run-b", json!([{"id": 9}]), "2030-01-01T01:30:00Z");
+    let local = folded(&c, "2030-01-01T01:40:00Z");
     let path = c.root().join("tables/filings/_pointer.json");
-    let newer = r#"{"snapshot_id":"snapshot-09999999999999999999","fence":99}"#;
-    std::fs::write(&path, newer).unwrap();
+    let newer = format!(r#"{{"snapshot_id":"{local}","fence":99}}"#);
+    std::fs::write(&path, &newer).unwrap();
     c.syncer.pull(&PullScope::default()).unwrap();
     assert_eq!(std::fs::read_to_string(&path).unwrap(), newer);
 

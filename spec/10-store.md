@@ -620,8 +620,10 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because a replacement host otherwise reads none of its node's run history*
 - `pointer-read` — Pull and push read the pointer of each table the bucket manifest lists by its key, `tables/<t>/_pointer.json`, and list no table objects, so the read grows with the tables and not with their objects.
   *because a bucket gathers parts with every landing, and a pointer read listing them grows with the store's history*
-- `pointer-advance` — Pull advances a pointer only to a higher fence, or the same fence with a later snapshot, verifying every advancing table before writing any pointer.
+- `pointer-advance` — Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
   *A-store#replica-read-whole*
+- `pointer-adopt` — Pull replaces a local pointer whose snapshot's recorded ancestry does not name the bucket pointer's snapshot, whatever its fence, and warns, so runs only the replaced snapshot folded fold again against the bucket's head.
+  *because a fold outside a lease writes no fence, and a local snapshot off the bucket's chain misses every run the bucket's head folded*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before their first read, a failed pull stopping the command.
