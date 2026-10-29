@@ -393,6 +393,10 @@ pub struct RunManifest {
     /// sums (`store.fold.declared-bytes`). A manifest recording none counts zero.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub part_bytes: Option<u64>,
+    /// The run key, `<run-id>/<node-id>`, of the run whose snapshot rows a reland committed
+    /// again under this run (`store.pull.reland-lineage`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relanded_from: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

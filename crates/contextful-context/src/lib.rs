@@ -22,6 +22,7 @@ pub mod project;
 pub mod replica;
 #[cfg(feature = "read")]
 pub mod read;
+pub mod reland;
 pub mod rows;
 pub mod run_record;
 pub mod scan;

@@ -553,7 +553,7 @@ pub fn land_run(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
 ) -> Result<Landing> {
-    let landing = commit_run(store, decl, batches, ctx, position, precommit, &|_| Ok(()))?;
+    let landing = commit_run(store, decl, batches, ctx, position, precommit, &|_| Ok(()), None)?;
     // Each capture of a snapshot corpus commits as one store snapshot, the id an
     // evaluation case pins (`store.snapshot.capture`).
     if decl.snapshot.is_some() && !landing.replay {
@@ -600,9 +600,17 @@ pub fn commit_batches(
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
 ) -> Result<Landing> {
-    commit_run(store, decl, batches, ctx, position, precommit, commit_point)
+    commit_run(store, decl, batches, ctx, position, precommit, commit_point, None)
 }
 
+/// Commit `batch` as run `ctx.injection.run_id`, its manifest naming `relanded_from`, the
+/// run key whose snapshot rows the batch holds (`store.pull.reland-lineage`). Unlike
+/// [`land`], it folds no snapshot corpus, so the table's pointer stays where it stood.
+pub(crate) fn commit_relanded(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext, relanded_from: &str) -> Result<Landing> {
+    commit_run(store, decl, std::slice::from_ref(batch), ctx, &Position::default(), &|| Ok(()), &|_| Ok(()), Some(relanded_from))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn commit_run(
     store: &Store,
     decl: &TableDecl,
@@ -611,6 +619,7 @@ fn commit_run(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+    relanded_from: Option<&str>,
 ) -> Result<Landing> {
     store.check_writable("land")?;
     let bound = store.frontier_store()?;
@@ -675,7 +684,7 @@ fn commit_run(
         parts.push(PartEntry::new(name, store.sealing().key_version()));
     }
     let _published = ticket.as_ref().map(|ticket| ticket.publish(store)).transpose()?;
-    match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[], Some(digest))? {
+    match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[], Some(digest), relanded_from)? {
         Some(manifest) => Ok(Landing { manifest: Some(manifest), replay: false, folded: None }),
         None => replay(store, &manifest_path, &types, batches, ctx, position, per_batch),
     }
@@ -981,6 +990,7 @@ fn create_manifest(
     group_root: Option<&str>,
     schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
     batch_digest: Option<String>,
+    relanded_from: Option<&str>,
 ) -> Result<Option<RunManifest>> {
     if position.replace_frontier && (!parts.is_empty() || decl.write_mode() != WriteMode::Replace) {
         return Err(ContextError::Invalid(format!("table `{}`: an empty replacement frontier requires a no-part replacing run", decl.name)));
@@ -1008,6 +1018,7 @@ fn create_manifest(
         schema_diffs: schema_diffs.to_vec(),
         batch_digest,
         part_bytes: Some(part_bytes),
+        relanded_from: relanded_from.map(str::to_string),
     };
     std::fs::create_dir_all(&site.node_dir).at(&site.node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
@@ -1351,7 +1362,7 @@ fn commit_parts_inner(
             entries.push(PartEntry::new(name, store.sealing().key_version()));
         }
         let _published = ticket.as_ref().map(|ticket| ticket.publish(store)).transpose()?;
-        create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs, None)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
+        create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs, None, None)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
     })();
     if committed.is_err() && !manifest_path.exists() {
         for path in &written {

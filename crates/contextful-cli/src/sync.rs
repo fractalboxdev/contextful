@@ -74,6 +74,13 @@ pub enum SyncCmd {
         #[arg(long)]
         generation: Option<u64>,
     },
+    /// Land again, as new runs, the rows of each run a local snapshot off the bucket's chain alone
+    /// holds, then move the table's local pointer to the bucket's, printing the report as JSON.
+    Reland {
+        table: String,
+        #[command(flatten)]
+        args: SyncArgs,
+    },
     /// List the generation manifests the bucket holds, with each commit's time, pushing node and
     /// the project's entry and tombstone counts.
     Generations {
@@ -825,6 +832,12 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
                 eprintln!("warning: {refusal}");
             }
             println!("pulled {} objects and {} pointers in {} attempt(s)", r.downloaded.len(), r.pointers.len(), r.attempts);
+            Ok(())
+        }
+        SyncCmd::Reland { table, args } => {
+            let (s, decls) = open(&args)?;
+            let decl = decls.into_iter().find(|d| d.name == table).unwrap_or_else(|| TableDecl::named(&table));
+            println!("{}", serde_json::to_string_pretty(&s.reland(&decl)?)?);
             Ok(())
         }
         SyncCmd::Generations { args, json } => {

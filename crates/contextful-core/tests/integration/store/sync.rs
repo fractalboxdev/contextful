@@ -567,3 +567,25 @@ fn a_local_fold_refusal_leads_with_its_identifier() {
     let e = StoreError::SyncLocalFoldUnrecoverable("run-3/ingest-b".into());
     assert_eq!(e.to_string(), "SyncLocalFoldUnrecoverable: run-3/ingest-b");
 }
+
+/// A reland refusing a table names its identifier first: nothing stranded, or the bucket's head not home.
+#[test]
+fn a_reland_refusal_leads_with_its_identifier() {
+    let e = StoreError::SyncRelandUnneeded("filings".into());
+    assert_eq!(e.to_string(), "SyncRelandUnneeded: filings");
+    let e = StoreError::SyncRelandHeadAbsent("snapshot-1".into());
+    assert_eq!(e.to_string(), "SyncRelandHeadAbsent: snapshot-1");
+}
+
+/// A run manifest names the run a reland committed its rows from, and one written before the field reads as none.
+#[test]
+fn a_run_manifest_records_the_run_a_reland_committed_from() {
+    use contextful_core::store::lay_out::RunManifest;
+    let plain: RunManifest =
+        serde_json::from_value(serde_json::json!({"run_id": "run-1", "table": "filings", "node_id": "ingest-a", "committed_at": "2030-01-01T00:00:00Z"})).unwrap();
+    assert_eq!(plain.relanded_from, None);
+    assert!(serde_json::to_value(&plain).unwrap().get("relanded_from").is_none());
+    let relanded = RunManifest { relanded_from: Some("run-3/ingest-b".into()), ..plain };
+    let back: RunManifest = serde_json::from_value(serde_json::to_value(&relanded).unwrap()).unwrap();
+    assert_eq!(back.relanded_from.as_deref(), Some("run-3/ingest-b"));
+}
