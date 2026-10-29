@@ -131,8 +131,8 @@ pub(crate) fn drive<J, B>(
     attempted: &mut Vec<String>,
 ) -> Result<bool>
 where
-    J: contextful_core::run::ports::JournalStore,
-    B: contextful_core::run::ports::BlobStore,
+    J: contextful_core::run::ports::JournalStore + Clone,
+    B: contextful_core::run::ports::BlobStore + Clone,
 {
     let table = spec.table_name(t.name());
     let seeding = engine.seeding();
@@ -160,7 +160,8 @@ where
             let trace = crate::telemetry::RunTrace::open();
             let spec_run = RunSpec { connector: plan.connector_pin(&artifact), plan: plan.clone(), run_id: run.clone(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
             let opened = engine.catalog.run(&run)?.is_none();
-            let outcome = seeding.run_next(&load, &spec_run, &mut source, &shape, dest, &head);
+            // The chunk run reports its stages as child spans of its run span (`disclosure.record.stage-span`).
+            let outcome = trace.engine(engine).seeding().run_next(&load, &spec_run, &mut source, &shape, dest, &head);
             finish(&table, limiter.as_ref());
             let outcome = outcome?;
             if let SeedOutcome::Ran(row) = &outcome {

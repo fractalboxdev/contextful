@@ -38,7 +38,7 @@ fn spec(run: &str) -> contextful_engine::RunSpec {
 
 /// A run reports one pull and one journaled step per page, one landing per staged batch with its row and byte
 /// counts, and one commit with the rows it landed; every report names the run's table and none a row value.
-// spec: disclosure.record.stage-span@eb9dfee1
+// spec: disclosure.record.stage-span@5b32d1b1
 // spec: disclosure.record.stage-attributes@32230807
 // spec: disclosure.record.stage-content@2b811f08
 #[test]

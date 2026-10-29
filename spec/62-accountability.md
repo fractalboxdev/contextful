@@ -141,7 +141,7 @@ Spans leave the process over OTLP only when an endpoint is configured.
   *because egress reachable under a default configuration is telemetry the operator never chose*
 - `span-queue` — Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.
   *because an unreachable collector must add no latency to the read or run that made the span*
-- `stage-span` — With an exporter configured, a run exports one child span of its {{run.record.run-span}} per pull, landing, commit and journaled step, named `contextful.pull`, `contextful.land`, `contextful.commit` or `contextful.step`.
+- `stage-span` — With an exporter configured, every run, each seed chunk run included, exports one child span of its {{run.record.run-span}} per pull, landing, commit and journaled step, named `contextful.pull`, `contextful.land`, `contextful.commit` or `contextful.step`.
   *because a slow or failed run shows the stage that held it on the trace its caller already reads*
 - `stage-attributes` — A stage span carries `contextful.stage`, the run's `contextful.table`, a pull's or step's `contextful.step` label, `contextful.outcome`, a failed stage's error identifier as `error.type`, and the `contextful.rows` or `contextful.bytes` the stage counts.
   *because the stage, its outcome and its count locate a failure without opening the store*
@@ -157,6 +157,10 @@ Spans leave the process over OTLP only when an endpoint is configured.
   *because the route a request took and its answer join the caller's trace as the tool call's read span does*
 - `route-parent` — A route's handler receives a `traceparent` naming the route span, so a run the receive route lands takes the request's trace and parents its run span under the route span.
   *because the landing is the request's work, and a run rooted apart from it hides that delivery's cost*
+- `queued-parent` — A delivery {{run.land.receive-queued-ask}} queues carries its route span's trace on its message, so each run a consumer lands for it parents its run span under that route span; a group run continues its first member's trace.
+  *because a queued landing is the request's deferred work, and a run rooted in the consumer's trace hides that delivery's cost*
+- `queued-content` — A queued message's trace is the route span's W3C `traceparent` and `tracestate` alone, never another request header, a path segment's value or the query.
+  *because a managed queue's operator reads every message, and a trace needs nothing beyond its two W3C carriers*
 - `route-content` — A route span records the route template and never a path segment's value, the query or the body.
   *because a path segment can hold an awakeable token or a batch key, which no collector is granted*
 

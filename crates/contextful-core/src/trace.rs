@@ -72,6 +72,28 @@ impl TraceContext {
     }
 }
 
+/// A trace context at rest: the W3C `traceparent` and `tracestate` values alone, as a queued
+/// delivery's message carries its route span (`disclosure.record.queued-content`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Carrier {
+    pub traceparent: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracestate: Option<String>,
+}
+
+impl Carrier {
+    /// The carriers naming `context`'s span.
+    pub fn of(context: &TraceContext) -> Carrier {
+        Carrier { traceparent: context.traceparent(), tracestate: context.state.clone() }
+    }
+
+    /// The context the carriers name, or `None` for a malformed `traceparent`
+    /// (`disclosure.record.trace-carrier`).
+    pub fn context(&self) -> Option<TraceContext> {
+        TraceContext::parse(&self.traceparent, self.tracestate.as_deref())
+    }
+}
+
 /// Lowercase hex of `bytes`.
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()

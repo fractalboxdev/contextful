@@ -239,3 +239,33 @@ fn a_failed_seed_chunk_halts_the_fire_under_continue() {
     assert!(!requests.is_empty(), "the exclusion below ranges over no element");
     assert!(requests.iter().all(|r| r.ends_with("/exports/items")), "the failed chunk halts the fire before any other table: {requests:?}");
 }
+
+/// With an exporter configured, a seed chunk run exports its `contextful.run` span under the caller's span and one
+/// child span of it per pull, landing, commit and journaled step, as the live run after it does.
+// spec: disclosure.record.stage-span@5b32d1b1
+#[test]
+fn a_seed_chunk_run_exports_its_stage_spans_under_its_run_span() {
+    use crate::trace::{attribute, awaited_until, named, traced, Collector, PARENT, TRACE};
+    let vendor = Exports::start();
+    let dir = seeded(&vendor);
+    let collector = Collector::start();
+    let parent = format!("00-{TRACE}-{PARENT}-01");
+    let args = ["pipeline", "run", "orders", "--project", "research", "--run-id", "r1", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"];
+    let out = ok(&traced(dir.path(), &args, &[("TRACEPARENT", &parent), ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.url)]));
+    assert!(out.contains("orders_items: r1.seed-0 seeded"), "{out}");
+
+    let spans = awaited_until(&collector, |spans| named(spans, "contextful.run").len() >= 2);
+    let seed: Vec<_> = named(&spans, "contextful.run").into_iter().filter(|s| attribute(s, "contextful.run.id") == Some(serde_json::json!({ "stringValue": "r1.seed-0" }))).collect();
+    assert_eq!(seed.len(), 1, "{spans:?}");
+    assert_eq!((seed[0]["traceId"].as_str(), seed[0]["parentSpanId"].as_str()), (Some(TRACE), Some(PARENT)));
+    let run = seed[0]["spanId"].as_str().unwrap();
+    let children: Vec<&serde_json::Value> = spans.iter().filter(|s| s["parentSpanId"].as_str() == Some(run)).collect();
+    assert!(!children.is_empty(), "the seed run exports its stage spans: {spans:?}");
+    for child in &children {
+        assert_eq!(child["traceId"].as_str(), Some(TRACE), "{child}");
+        assert_eq!(attribute(child, "contextful.table"), Some(serde_json::json!({ "stringValue": "orders_items" })), "{child}");
+    }
+    for name in ["contextful.pull", "contextful.land", "contextful.commit", "contextful.step"] {
+        assert!(children.iter().any(|s| s["name"] == name), "the seed run exports a `{name}` span: {children:?}");
+    }
+}

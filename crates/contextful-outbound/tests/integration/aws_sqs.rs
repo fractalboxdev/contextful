@@ -44,7 +44,7 @@ fn the_sqs_queue_sends_receives_and_deletes_signed_under_the_role() {
 
     let q = queue(&sqs, &creds);
     assert_eq!(q.message_cap(), MESSAGE_CAP);
-    let batch = QueueMessage::Receive { pipeline: "otel".into(), batch_key: "b-1".into(), credential: None, queued_at: 7, body: BodyRef::Inline { body: b"{}\n".to_vec() } };
+    let batch = QueueMessage::Receive { pipeline: "otel".into(), batch_key: "b-1".into(), credential: None, queued_at: 7, body: BodyRef::Inline { body: b"{}\n".to_vec() }, trace: None };
     q.send(&batch).unwrap();
     let sent = &sqs.requests("SendMessage")[0];
     assert_eq!(sent.body["QueueUrl"], sqs.queue_url());

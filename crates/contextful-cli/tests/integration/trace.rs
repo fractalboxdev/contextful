@@ -10,21 +10,21 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 
-const TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
-const PARENT: &str = "00f067aa0ba902b7";
+pub(super) const TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+pub(super) const PARENT: &str = "00f067aa0ba902b7";
 const PROXIES: [&str; 6] = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
 
 /// The `(target, body)` of each request a collector received.
 type Received = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
 
 /// A loopback collector answering every POST with 200, keeping each `(target, body)`.
-struct Collector {
-    url: String,
+pub(super) struct Collector {
+    pub(super) url: String,
     seen: Received,
 }
 
 impl Collector {
-    fn start() -> Collector {
+    pub(super) fn start() -> Collector {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
         let seen: Received = Arc::default();
@@ -59,7 +59,7 @@ impl Collector {
     }
 
     /// Every span the collector received at `/v1/traces`.
-    fn spans(&self) -> Vec<Value> {
+    pub(super) fn spans(&self) -> Vec<Value> {
         let seen = self.seen.lock().unwrap();
         let mut out = Vec::new();
         for (target, body) in seen.iter() {
@@ -80,9 +80,17 @@ fn manifest(vendor: &Vendor) -> String {
 }
 
 fn fire(dir: &Path, run: &str, env: &[(&str, &str)]) -> Output {
+    traced(dir, &["pipeline", "run", "shop", "--project", "research", "--run-id", run, "--now", "2030-01-01T00:00:00Z"], env)
+}
+
+/// The binary run with `args` in `dir` under exactly the trace and exporter variables `env` sets, no proxy reaching
+/// the loopback collector.
+pub(super) fn traced(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
-    cmd.args(["pipeline", "run", "shop", "--project", "research", "--run-id", run, "--now", "2030-01-01T00:00:00Z"])
+    cmd.args(args)
         .current_dir(dir)
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .env_remove("CONTEXTFUL_AUDIENCE")
         .env_remove("CONTEXTFUL_NODE_ID")
         .env_remove("CONTEXTFUL_SECRETS_BACKEND")
         .env_remove("TRACEPARENT")
@@ -181,17 +189,17 @@ fn a_run_exports_its_span_under_the_callers_span() {
 }
 
 /// The spans named `name`.
-fn named(spans: &[Value], name: &str) -> Vec<Value> {
+pub(super) fn named(spans: &[Value], name: &str) -> Vec<Value> {
     spans.iter().filter(|s| s["name"] == name).cloned().collect()
 }
 
 /// The value of `span`'s attribute `key`.
-fn attribute(span: &Value, key: &str) -> Option<Value> {
+pub(super) fn attribute(span: &Value, key: &str) -> Option<Value> {
     span["attributes"].as_array().and_then(|a| a.iter().find(|a| a["key"] == key)).map(|a| a["value"].clone())
 }
 
 /// The spans the collector holds once `done` holds of them, waiting at most 30 s.
-fn awaited_until(collector: &Collector, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+pub(super) fn awaited_until(collector: &Collector, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         let spans = collector.spans();
@@ -204,7 +212,7 @@ fn awaited_until(collector: &Collector, done: impl Fn(&[Value]) -> bool) -> Vec<
 
 /// A run exports one child span of its run span per pull, landing, commit and journaled step, each carrying its
 /// stage, its table or step label, its outcome and the rows or bytes it counts, and no row value.
-// spec: disclosure.record.stage-span@eb9dfee1
+// spec: disclosure.record.stage-span@5b32d1b1
 // spec: disclosure.record.stage-attributes@32230807
 // spec: disclosure.record.stage-content@2b811f08
 #[test]
@@ -304,19 +312,84 @@ fn without_an_exporter_a_served_delivery_records_the_callers_trace_and_exports_n
 
 /// `POST /receive/otel` of one row per table under a `traceparent` naming `PARENT`; the JSON answer.
 fn deliver_traced(addr: &str, token: &str) -> Value {
+    deliver_traced_as(addr, token, "")
+}
+
+/// [`deliver_traced`] with the extra header lines `extra`, answering `202` when they ask for the queued answer.
+fn deliver_traced_as(addr: &str, token: &str, extra: &str) -> Value {
     let body = format!("{}{}", crate::serve::delivered("spans", serde_json::json!({ "id": "s1" })), crate::serve::delivered("events", serde_json::json!({ "id": "e1" })));
     let mut stream = TcpStream::connect(addr).unwrap();
     write!(
         stream,
-        "POST /receive/otel HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContextful-Batch-Key: traced-1\r\ntraceparent: 00-{TRACE}-{PARENT}-01\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{body}",
+        "POST /receive/otel HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContextful-Batch-Key: traced-1\r\ntraceparent: 00-{TRACE}-{PARENT}-01\r\n{extra}Content-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{body}",
         body.len()
     )
     .unwrap();
     let mut raw = String::new();
     stream.read_to_string(&mut raw).unwrap();
     let (head, answer) = raw.split_once("\r\n\r\n").unwrap_or_else(|| panic!("no answer head: {raw:?}"));
-    assert!(head.starts_with("HTTP/1.1 200"), "{raw}");
+    let status = if extra.contains("respond-async") { "HTTP/1.1 202" } else { "HTTP/1.1 200" };
+    assert!(head.starts_with(status), "{raw}");
     serde_json::from_str(answer).unwrap()
+}
+
+/// The `receive` messages waiting in the project's local spool.
+fn queued_messages(root: &Path) -> Vec<Value> {
+    let Ok(entries) = std::fs::read_dir(root.join(".contextful/queue/research")) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .filter_map(|e| serde_json::from_slice::<Value>(&std::fs::read(e.path()).ok()?).ok())
+        .filter(|m| m["message"]["kind"] == "receive")
+        .map(|m| m["message"].clone())
+        .collect()
+}
+
+/// A delivery queued under `Prefer: respond-async` carries its route span's `traceparent` and `tracestate` on its
+/// message and no other request header; each run a later drain lands continues the request's trace, its run span a
+/// child of the route span and its stage spans children of the run span.
+// spec: disclosure.record.queued-parent@a6340388
+// spec: disclosure.record.queued-content@a8b093ef
+#[test]
+fn a_queued_delivery_lands_under_its_route_span_when_drained() {
+    let (dir, public) = crate::serve::receiving_face_with(2, 4096);
+    let root = dir.path();
+    let token = crate::serve::mint_write(root, "otel_*");
+    let collector = Collector::start();
+    let mut env = vec![("OTEL_EXPORTER_OTLP_ENDPOINT", collector.url.as_str())];
+    env.extend(PROXIES.iter().map(|k| (*k, "")));
+    let (_listener, addr) = serve_env(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public], &env);
+    let receipt = deliver_traced_as(&addr, &token, "tracestate: vendor=1\r\nPrefer: respond-async\r\nX-Canary: zebra-canary\r\n");
+    assert_eq!(receipt["queued"], true, "{receipt}");
+
+    let messages = queued_messages(root);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let trace = &messages[0]["trace"];
+    let keys: Vec<&str> = trace.as_object().map(|o| o.keys().map(String::as_str).collect()).unwrap_or_default();
+    assert_eq!(keys, ["traceparent", "tracestate"], "{trace}");
+    assert_eq!(trace["tracestate"], "vendor=1");
+    let carried = trace["traceparent"].as_str().unwrap_or_default().to_string();
+    assert!(carried.starts_with(&format!("00-{TRACE}-")) && !carried.contains(PARENT), "the message names the route span: {carried}");
+    assert!(!messages[0].to_string().contains("zebra-canary"), "the message carries no other request header");
+
+    let drained = traced(root, &["queue", "drain", "--project", "research", "--public-key", &public, "--audience", AUD], &[("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.url)]);
+    assert!(stdout(&drained).contains("1 batch"), "{}", String::from_utf8_lossy(&drained.stdout));
+    let spans = awaited_until(&collector, |spans| !named(spans, "POST /receive/:pipeline").is_empty() && named(spans, "contextful.run").len() >= 2);
+    let routes = named(&spans, "POST /receive/:pipeline");
+    assert_eq!(routes.len(), 1, "{spans:?}");
+    let route = &routes[0];
+    assert_eq!((route["traceId"].as_str(), route["parentSpanId"].as_str()), (Some(TRACE), Some(PARENT)));
+    assert_eq!(attribute(route, "http.response.status_code"), Some(serde_json::json!({ "intValue": "202" })));
+    assert_eq!(carried, format!("00-{TRACE}-{}-01", route["spanId"].as_str().unwrap_or_default()));
+    let runs = named(&spans, "contextful.run");
+    assert_eq!(runs.len(), 2, "{spans:?}");
+    for run in &runs {
+        assert_eq!((run["traceId"].as_str(), run["parentSpanId"].as_str()), (Some(TRACE), route["spanId"].as_str()), "{run}");
+    }
+    let commits = named(&spans, "contextful.commit");
+    assert!(!commits.is_empty(), "each drained run exports its stage spans: {spans:?}");
+    let ids: Vec<&str> = runs.iter().filter_map(|r| r["spanId"].as_str()).collect();
+    assert!(commits.iter().all(|c| c["parentSpanId"].as_str().is_some_and(|p| ids.contains(&p))), "{commits:?}");
 }
 
 const SQL: &str = r#"SELECT note_id, title FROM "research/notes" ORDER BY note_id"#;
