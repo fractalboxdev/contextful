@@ -6,7 +6,7 @@ use crate::encrypt::{bind_key_source, MetadataFiles, ProjectEncryption};
 use crate::vector::Sealing;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
-    is_path_segment, store_root, FormatVersion, Pointer, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
+    is_path_segment, store_root, FormatVersion, Pointer, CONFIG_FILE, RunManifest, SkippedRuns, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE, SKIPPED_RUNS_FILE,
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
@@ -53,6 +53,11 @@ pub fn register_part_source(root: &Path, source: Arc<dyn PartSource>) {
     let mut sources = PART_SOURCES.lock().unwrap_or_else(|e| e.into_inner());
     sources.retain(|(r, _)| r != root);
     sources.push((root.to_path_buf(), source));
+}
+
+/// Whether this process registered a part source for the store at `root`.
+pub fn part_source_registered(root: &Path) -> bool {
+    registered_part_source(root).is_some()
 }
 
 fn registered_part_source(root: &Path) -> Option<Arc<dyn PartSource>> {
@@ -671,11 +676,50 @@ impl Store {
         Ok(self.committed_runs_held(table)?.0)
     }
 
+    /// Bring home each folded run manifest of `table` a lazy pull left in the bucket, those
+    /// of `run_id` alone where given, through the part source (`store.pull.folded-runs-fetched`).
+    /// Without a source the read refuses (`store.pull.folded-runs-unreachable`), and a manifest
+    /// the source leaves absent refuses as collected (`store.pull.folded-run-collected`).
+    fn fetch_skipped(&self, table: &str, run_id: Option<&str>) -> Result<()> {
+        let path = self.root.join(SKIPPED_RUNS_FILE);
+        let skipped: SkippedRuns = match fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", path.display())))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(ContextError::Io { path, source: e }),
+        };
+        let absent: Vec<String> = skipped
+            .of_table(table)
+            .filter(|rel| run_id.is_none_or(|run| rel.split('/').rev().nth(2) == Some(run)))
+            .filter(|rel| !self.root.join(rel.as_str()).exists())
+            .cloned()
+            .collect();
+        let Some(first) = absent.first() else { return Ok(()) };
+        let Some(source) = &self.part_source else {
+            return Err(StoreError::SyncFoldedRunsUnfetched(format!(
+                "table `{table}`: `{first}` and {} more folded run manifests stay in the bucket, and this store reads through no part source; open it where `[sync] lazy_parts` registers one",
+                absent.len() - 1
+            ))
+            .into());
+        };
+        let _hold = source.hold(&absent)?;
+        if let Some(gone) = absent.iter().find(|rel| !self.root.join(rel.as_str()).exists()) {
+            return Err(StoreError::SyncPartCollected(format!("folded run manifest `{gone}` is gone from the bucket; the next pull stops naming it")).into());
+        }
+        Ok(())
+    }
+
     /// The table's committed runs, and the lowest `commit_seq` among its grouped manifests
     /// still awaiting their group marker: a run at or above it is readable before a run
     /// below it, so a reader following commit order holds back from there
     /// (`read.subscribe.commit-order`).
     pub fn committed_runs_held(&self, table: &str) -> Result<(Vec<RunManifest>, Option<i64>)> {
+        self.fetch_skipped(table, None)?;
+        self.local_runs_held(table)
+    }
+
+    /// [`Store::committed_runs_held`] over the manifests on disk alone, which an unbounded read
+    /// resolves against: every run a lazy pull skipped is folded into the pointer's snapshot.
+    fn local_runs_held(&self, table: &str) -> Result<(Vec<RunManifest>, Option<i64>)> {
         let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
         let mut out = Vec::new();
         let mut held: Option<i64> = None;
@@ -696,6 +740,7 @@ impl Store {
         if run_id.is_empty() || run_id.contains(['/', '\\']) || run_id == "." || run_id == ".." {
             return Err(ContextError::Invalid(format!("run id `{run_id}` names no run directory")));
         }
+        self.fetch_skipped(table, Some(run_id))?;
         let run_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id);
         let (mut logs, mut held) = (CommitLogs::new(), None);
         let mut rows: Option<u64> = None;
@@ -830,10 +875,11 @@ impl Store {
         Ok((chain, false))
     }
 
-    /// Everything a read or a fold resolves against, for one table.
+    /// Everything an unbounded read or a fold resolves against, for one table: the run
+    /// manifests on disk, without fetching any a lazy pull skipped.
     pub fn state(&self, decl: &TableDecl) -> Result<TableState> {
         let table = decl.name.as_str();
-        let runs = self.committed_runs(table)?;
+        let runs = self.local_runs_held(table)?.0;
         let (chain, parent_collected) = self.chain(table)?;
         let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
         let run_collected = chain.iter().flat_map(|s| &s.includes_runs).any(|r| !present.contains(r.as_str()));
@@ -844,6 +890,19 @@ impl Store {
             chain,
             history_collected: parent_collected || run_collected,
         })
+    }
+
+    /// [`Store::state`] for a read bounded by `as_of`: one resolving before the pointer's
+    /// snapshot first fetches the folded runs a lazy pull skipped (`store.pull.folded-runs-fetched`).
+    pub fn state_at(&self, decl: &TableDecl, as_of: Option<contextful_core::store::bound_time::Bound>) -> Result<TableState> {
+        let state = self.state(decl)?;
+        match as_of {
+            Some(b) if state.chain.first().is_none_or(|s| !b.admits(s.created_at)) => {
+                self.fetch_skipped(&decl.name, None)?;
+                self.state(decl)
+            }
+            _ => Ok(state),
+        }
     }
 }
 

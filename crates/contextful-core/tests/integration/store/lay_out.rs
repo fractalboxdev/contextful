@@ -213,3 +213,23 @@ fn a_part_carried_by_reference_resolves_under_its_origin() {
     assert_eq!(FormatVersion::default().to_string(), "1.0");
     assert_eq!(FormatVersion::CURRENT.to_string(), "2.0");
 }
+
+/// The skipped-runs record is a store-root dot file, which no push uploads, and a table's
+/// view of it holds only that table's run manifests, a nested table's excluded.
+#[test]
+fn the_skipped_runs_record_is_node_local_and_scoped_by_table() {
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    assert!(SKIPPED_RUNS_FILE.starts_with('.'));
+    let skipped = SkippedRuns {
+        manifests: vec![
+            "tables/filings/data/runs/run-1/ingest-a/_manifest.json".into(),
+            "tables/filings/q1/data/runs/run-2/ingest-a/_manifest.json".into(),
+            "tables/notes/data/runs/run-3/ingest-a/_manifest.json".into(),
+        ],
+    };
+    let filings: Vec<&String> = skipped.of_table("filings").collect();
+    assert_eq!(filings, [&skipped.manifests[0]]);
+    assert_eq!(skipped.of_table("filings/q1").count(), 1);
+    let round: SkippedRuns = serde_json::from_slice(&serde_json::to_vec(&skipped).unwrap()).unwrap();
+    assert_eq!(round, skipped);
+}

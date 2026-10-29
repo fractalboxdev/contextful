@@ -390,3 +390,15 @@ On a disposable disk a run commits locally before its push, so a failed push lea
 | A mark on the execution-database run row from open *(chosen)* | — | One query per command start; a run killed before commit turns `lost` unread. |
 | A mark written after the local commit | Kill window | A process killed between commit and mark leaves a committed run unreported. |
 | A marker object in the bucket | Failure correlation | The write recording the failure goes to the bucket that refused the push. |
+
+## folded-runs-on-demand — A lazy store fetches folded run manifests when a reader lists runs
+
+Within `retain_runs`, every run the pointer's snapshot folds keeps its `_manifest.json` in the bucket, so a cold pull grows with retained runs rather than with tables. An unbounded read never resolves a folded run; an `as_of` read before that snapshot, and every reader listing a table's runs, does.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Skip folded manifests; listings and earlier `as_of` reads fetch them through the part source *(chosen)* | — | A first listing of a cold table waits one fetch per folded run; a store without a part source refuses those reads. |
+| Keep folded manifests eager | Boot cost | A cold pull waits for every retained run manifest. |
+| Collect folded manifests at fold | `as_of` history | A read bounded before the snapshot loses the runs it folded. |
+
+Revisit: a reader whose first listing of a cold table passes the miss-wait bound under ordinary bucket latency.

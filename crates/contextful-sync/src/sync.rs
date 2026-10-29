@@ -1441,6 +1441,10 @@ impl Syncer {
         let mut report = PullReport::default();
         let mut shortfall: Option<String> = None;
         let mut manifest = BucketManifest::default();
+        // A lazy pull reads each pointer once, before its downloads: the manifests it skips are
+        // the runs that pointer's chain folds, and it is the pointer the pull writes.
+        let mut lazy_pointers: BTreeMap<String, BucketPointer> = BTreeMap::new();
+        let mut skipped: BTreeSet<String> = BTreeSet::new();
         for attempt in 1..=PULL_CONVERGENCE {
             report.attempts = attempt;
             shortfall = None;
@@ -1466,6 +1470,9 @@ impl Syncer {
             if let Some(missing) = missing_control {
                 shortfall = Some(missing);
                 continue;
+            }
+            if lazy {
+                lazy_pointers = self.project_pointers(&manifest)?;
             }
             // A lazy pull leaves each data part in the bucket until a read needs it (`store.pull.lazy-parts`).
             let wanted: Vec<(&String, &Entry)> = manifest
@@ -1530,6 +1537,7 @@ impl Syncer {
                 Ok(Fetched::Downloaded)
             };
             let width = self.config.transfers();
+            let mut folded: BTreeSet<String> = BTreeSet::new();
             let fetched = each(width, &rest, &fetch).and_then(|mut first| {
                 // A run with an object short holds its manifest back for the retry.
                 let short: Vec<&str> = rest.iter().zip(&first)
@@ -1537,13 +1545,20 @@ impl Syncer {
                     .map(|((k, _), _)| k.as_str())
                     .collect();
                 let held = |k: &str| k.strip_suffix(MANIFEST_FILE).is_some_and(|run| short.iter().any(|s| s.starts_with(run)));
-                let ready: Vec<(&String, &Entry)> = run_manifests.iter().filter(|(k, _)| !held(k)).copied().collect();
+                // Once the snapshot manifests are home, a lazy pull leaves in the bucket each
+                // other node's run manifest the pointer's chain folds (`store.pull.lazy-folded-runs`).
+                if lazy {
+                    folded = self.folded_run_manifests(&lazy_pointers);
+                    folded.retain(|k| owner_of(k).as_deref() != Some(self.node.as_str()) && self.local_path(k).is_some_and(|p| !p.exists()));
+                }
+                let ready: Vec<(&String, &Entry)> = run_manifests.iter().filter(|(k, _)| !held(k) && !folded.contains(*k)).copied().collect();
                 let mut landed = each(width, &ready, &fetch)?.into_iter();
                 for (k, _) in &run_manifests {
-                    first.push(if held(k) { Fetched::Kept } else { landed.next().unwrap_or(Fetched::Kept) });
+                    first.push(if held(k) || folded.contains(*k) { Fetched::Kept } else { landed.next().unwrap_or(Fetched::Kept) });
                 }
                 Ok(first)
             });
+            skipped = folded.into_iter().filter(|k| manifest.entries.contains_key(k)).collect();
             report.bytes_read += read.into_inner();
             report.bytes_hashed += hashed.into_inner();
             for ((key, _), outcome) in wanted.iter().zip(fetched?) {
@@ -1565,6 +1580,7 @@ impl Syncer {
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
         }
+        self.record_skipped(&manifest, &skipped, &reaches)?;
         let staged_head = self.store.root().join("control/head.json");
         if let Some(head) = manifest.control_heads.get(&self.project) {
             let bytes = serde_json::to_vec_pretty(head).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
@@ -1607,6 +1623,7 @@ impl Syncer {
         // Pointers last: every pointer to write is verified before any is written.
         let candidates: Vec<(String, BucketPointer)> = match &generation {
             Some((listed, _)) => listed.pointers.iter().map(|(k, p)| (k.clone(), p.clone())).collect(),
+            None if lazy => std::mem::take(&mut lazy_pointers).into_iter().collect(),
             None => self.project_pointers(&manifest)?.into_iter().collect(),
         };
         let mut advancing: Vec<(String, PathBuf, Pointer)> = Vec::new();
@@ -1668,6 +1685,46 @@ impl Syncer {
         // A replica advertises what it now holds (`store.replicate.descriptor`).
         contextful_context::replica::advertise(&self.store)?;
         Ok(report)
+    }
+
+    /// Each run manifest, keyed under the project, that the snapshot chain of one of
+    /// `pointers` folds, read from the snapshot manifests on disk. A table whose snapshot
+    /// manifest is not home contributes none, so its runs download whole.
+    fn folded_run_manifests(&self, pointers: &BTreeMap<String, BucketPointer>) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        for (key, pointer) in pointers {
+            let (Some(table), Some(snapshot)) = (project_table(&self.project, key), pointer.snapshot_id.as_ref()) else { continue };
+            let Ok(id) = serde_json::from_value::<SnapshotId>(serde_json::Value::String(snapshot.clone())) else { continue };
+            let Ok((chain, _)) = self.store.chain_from(&table, id) else { continue };
+            for run in chain.iter().flat_map(|s| s.includes_runs.iter()) {
+                out.insert(format!("{}/tables/{table}/{}/{run}/{MANIFEST_FILE}", self.project, contextful_core::store::lay_out::RUNS_DIR));
+            }
+        }
+        out
+    }
+
+    /// Rewrite the store's skipped-runs record: this pull's `skipped` keys, and each earlier
+    /// entry still absent locally whose table the pull did not reach or the bucket still lists
+    /// (`store.pull.lazy-folded-runs`). An empty record leaves no file.
+    fn record_skipped(&self, manifest: &BucketManifest, skipped: &BTreeSet<String>, reaches: &dyn Fn(&str) -> bool) -> Result<()> {
+        use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+        let path = self.store.root().join(SKIPPED_RUNS_FILE);
+        let held: SkippedRuns = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let mut keep: BTreeSet<String> = skipped.iter().filter_map(|k| self.local_rel(k)).map(str::to_string).collect();
+        for rel in held.manifests {
+            let key = format!("{}/{rel}", self.project);
+            if !self.store.root().join(&rel).exists() && (!reaches(&key) || manifest.entries.contains_key(&key)) {
+                keep.insert(rel);
+            }
+        }
+        if keep.is_empty() {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(&path, e)),
+                _ => Ok(()),
+            };
+        }
+        let bytes = serde_json::to_vec(&SkippedRuns { manifests: keep.into_iter().collect() }).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+        write(&path, &bytes)
     }
 
     fn held_path(&self, table: &str) -> PathBuf {

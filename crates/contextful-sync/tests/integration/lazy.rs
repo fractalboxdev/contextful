@@ -513,37 +513,178 @@ fn a_lazy_fold_reads_its_inputs_through_the_cache_and_refuses_past_its_bound() {
     assert_eq!(ids(table_rows(&store, &decl, &["id"]).unwrap()), [0, 1, 2]);
 }
 
-/// A lazy pull of a folded table with a later run writes the pointer while no part of its
-/// snapshot is local, and brings home every listed object other than a data part: the
-/// schema, the snapshot manifest and each run manifest, folded runs' included.
-// spec: store.pull.lazy-pointer@3f707c97
-// spec: store.pull.lazy-ready@57926350
-#[test]
-fn a_lazy_pull_writes_the_pointer_on_the_snapshot_manifest_and_brings_home_metadata_alone() {
-    use contextful_context::fold::fold;
-    use contextful_core::store::sync::BucketManifest;
-    let dir = tempfile::tempdir().unwrap();
-    let b = bucket(dir.path());
-    let a = pushed(b.clone(), 3);
-    let decl = TableDecl::named("filings");
-    fold(&a.syncer.store, &decl, at("2030-01-02T00:00:00Z")).unwrap();
+/// The bucket manifest `b` holds now.
+fn listed(b: &Arc<dyn ObjectStore>) -> contextful_core::store::sync::BucketManifest {
+    let (bytes, _) = b.get("team/manifest.json").unwrap().unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+/// A writer that folded runs 0 to 2 of `filings` into one snapshot, landed run 9 after it,
+/// and pushed.
+fn folded_then_landed(b: Arc<dyn ObjectStore>) -> Node {
+    let a = pushed(b, 3);
+    contextful_context::fold::fold(&a.syncer.store, &TableDecl::named("filings"), at("2030-01-02T00:00:00Z")).unwrap();
     a.land("run-9", json!([{ "id": 9, "title": "t9" }]), "2030-01-02T00:00:00Z");
     a.syncer.push(at("2030-01-02T01:00:00Z")).unwrap();
-    let (bytes, _) = b.get("team/manifest.json").unwrap().unwrap();
-    let listed: BucketManifest = serde_json::from_slice(&bytes).unwrap();
-    let mut metadata: Vec<String> = listed.entries.keys().filter(|k| !contextful_sync::lazy::is_lazy_part(k)).cloned().collect();
+    a
+}
+
+/// A lazy pull of a folded table with a later run writes the pointer while no part of its
+/// snapshot is local, and brings home every listed object other than a data part and the
+/// manifests of the runs that snapshot folds, which it records as skipped.
+// spec: store.pull.lazy-pointer@3f707c97
+// spec: store.pull.lazy-ready@c9de184d
+// spec: store.pull.lazy-folded-runs@2552f902
+#[test]
+fn a_lazy_pull_writes_the_pointer_on_the_snapshot_manifest_and_brings_home_metadata_alone() {
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    folded_then_landed(b.clone());
+    let entries = listed(&b).entries;
+    let folded: Vec<String> = (0..3).map(|i| format!("research/tables/filings/data/runs/run-{i}/ingest-a/_manifest.json")).collect();
+    assert_eq!(folded.len(), 3);
+    assert!(folded.iter().all(|k| entries.contains_key(k)), "{:?}", entries.keys().collect::<Vec<_>>());
+    let mut metadata: Vec<String> = entries.keys().filter(|k| !contextful_sync::lazy::is_lazy_part(k) && !folded.contains(k)).cloned().collect();
     metadata.sort();
     assert!(metadata.iter().any(|k| k.contains("/data/snapshots/")), "the table is folded: {metadata:?}");
-    assert_eq!(metadata.iter().filter(|k| k.contains("/data/runs/") && k.ends_with("/_manifest.json")).count(), 4, "{metadata:?}");
+    assert!(metadata.iter().any(|k| k.contains("/run-9/")), "the later run is listed: {metadata:?}");
 
     let cold = lazy(b, None);
     let report = cold.syncer.pull(&PullScope::default()).unwrap();
     let mut downloaded = report.downloaded.clone();
     downloaded.sort();
-    assert_eq!(downloaded, metadata, "a lazy pull brings home every object but a data part");
+    assert_eq!(downloaded, metadata, "a lazy pull brings home every object but a data part and a folded run's manifest");
     assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"]);
     assert!(local_parts(&cold).is_empty(), "the pointer stands on its snapshot manifest alone");
+    let skipped: SkippedRuns = serde_json::from_slice(&std::fs::read(cold.root().join(SKIPPED_RUNS_FILE)).unwrap()).unwrap();
+    let expected: Vec<String> = folded.iter().map(|k| k.strip_prefix("research/").unwrap().to_string()).collect();
+    assert_eq!(skipped.manifests, expected);
 
     let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
-    assert_eq!(ids(table_rows(&store, &decl, &["id"]).unwrap()), [0, 1, 2, 9]);
+    assert_eq!(ids(table_rows(&store, &TableDecl::named("filings"), &["id"]).unwrap()), [0, 1, 2, 9]);
+}
+
+/// Objects a cold lazy pull of two folded tables fetches before a read is ready: per table,
+/// its pointer, its schema and its snapshot manifest.
+// spec: store.pull.lazy-ready@c9de184d
+#[test]
+fn a_cold_lazy_pull_fetches_three_objects_per_folded_table_before_a_read_is_ready() {
+    use crate::support::{Script, Scripted};
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let a = node("ingest-a", inner.clone(), "");
+    for i in 0..4 {
+        a.land(&format!("run-{i}"), json!([{ "id": i }]), "2030-01-01T00:00:00Z");
+        a.land_into("notes", &format!("run-{i}"), json!([{ "id": i }]), "2030-01-01T00:00:00Z");
+    }
+    for t in ["filings", "notes"] {
+        contextful_context::fold::fold(&a.syncer.store, &TableDecl::named(t), at("2030-01-02T00:00:00Z")).unwrap();
+    }
+    a.syncer.push(at("2030-01-02T01:00:00Z")).unwrap();
+    let runs = listed(&inner).entries.keys().filter(|k| k.contains("/data/runs/") && k.ends_with("/_manifest.json")).count();
+    assert_eq!(runs, 8, "each run's manifest stays listed while retention keeps it");
+
+    let scripted = Arc::new(Scripted { inner, script: Script::default() });
+    let mut cold = node("ingest-b", scripted.clone(), "");
+    cold.syncer.config.lazy_parts = Some(true);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let fetched: Vec<String> = scripted.script.fetched.lock().unwrap().iter().map(|(k, _)| k.clone()).filter(|k| k != "team/manifest.json").collect();
+    assert!(!fetched.is_empty());
+    let tables = 2;
+    let per_table = fetched.len() as f64 / tables as f64;
+    contextful_eval::record::emit("sync-cold-pull-objects-before-ready", per_table, tables, 0x5eed_0643);
+    assert_eq!(per_table, 3.0, "{fetched:?}");
+}
+
+/// An `as_of` read resolving before the pointer's snapshot on a cold lazy store resolves the
+/// runs a store holding the whole bucket resolves, fetching their manifests.
+// spec: store.pull.folded-runs-fetched@ff7203dc
+#[test]
+fn an_as_of_read_on_a_cold_lazy_store_resolves_the_folded_runs_an_eager_store_does() {
+    use contextful_core::store::bound_time::{Bound, Bounds};
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    folded_then_landed(b.clone());
+    let bounds = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), ..Bounds::default() };
+    let decl = TableDecl::named("filings");
+
+    let eager = node("ingest-c", b.clone(), "");
+    eager.syncer.pull(&PullScope::default()).unwrap();
+    let expected = contextful_context::scan::scan(&eager.syncer.store, &decl, bounds).unwrap().files;
+    assert_eq!(expected.len(), 3, "the bound precedes the fold: {expected:?}");
+
+    let cold = lazy(b, None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
+    assert_eq!(contextful_context::scan::scan(&store, &decl, bounds).unwrap().files, expected);
+    assert!(cold.root().join("tables/filings/data/runs/run-0/ingest-a/_manifest.json").is_file());
+}
+
+/// A folded run manifest the bucket lost after a lazy pull skipped it refuses the read that
+/// needs it, rather than resolving without the run.
+// spec: store.pull.folded-run-collected@5cbfc1d8
+#[test]
+fn a_skipped_manifest_gone_from_the_bucket_refuses_the_read_that_needs_it() {
+    use contextful_core::store::bound_time::{Bound, Bounds};
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    folded_then_landed(b.clone());
+    let cold = lazy(b.clone(), None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    b.delete("team/research/tables/filings/data/runs/run-1/ingest-a/_manifest.json").unwrap();
+    let store = cold.syncer.store.clone().with_part_source(cold.syncer.part_source());
+    let bounds = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), ..Bounds::default() };
+    let err = contextful_context::scan::scan(&store, &TableDecl::named("filings"), bounds).unwrap_err().to_string();
+    assert!(err.starts_with("SyncPartCollected") && err.contains("run-1"), "{err}");
+}
+
+/// A lazy pull still brings home a folded run's `_group.json`, so a grouped member run
+/// whose root run folded reads as committed.
+// spec: store.pull.lazy-folded-runs@2552f902
+#[test]
+fn a_lazy_pull_brings_home_a_folded_runs_group_marker() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = folded_then_landed(b.clone());
+    let marker = "tables/filings/data/runs/run-0/ingest-a/_group.json";
+    std::fs::write(a.root().join(marker), b"[\"filings\"]").unwrap();
+    a.syncer.push(at("2030-01-02T02:00:00Z")).unwrap();
+    assert!(listed(&b).entries.contains_key(&format!("research/{marker}")));
+
+    let cold = lazy(b, None);
+    let report = cold.syncer.pull(&PullScope::default()).unwrap();
+    assert!(report.downloaded.iter().any(|k| k.ends_with(marker)), "{:?}", report.downloaded);
+    assert!(!cold.root().join("tables/filings/data/runs/run-0/ingest-a/_manifest.json").exists());
+}
+
+/// A lazy pull downloads each folded run manifest its own node wrote, so no push of a
+/// replacement host deletes one it never held.
+// spec: store.pull.lazy-folded-runs@2552f902
+#[test]
+fn a_lazy_pull_skips_no_manifest_its_own_node_wrote() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    folded_then_landed(b.clone());
+    let mut own = node("ingest-a", b, "");
+    own.syncer.config.lazy_parts = Some(true);
+    own.syncer.pull(&PullScope::default()).unwrap();
+    assert!(own.root().join("tables/filings/data/runs/run-0/ingest-a/_manifest.json").is_file());
+    assert!(!own.root().join(contextful_core::store::lay_out::SKIPPED_RUNS_FILE).exists());
+}
+
+/// An eager pull after a lazy one brings every skipped manifest home and leaves no record.
+// spec: store.pull.skipped-record@8200c1bc
+#[test]
+fn an_eager_pull_clears_the_skipped_runs_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    folded_then_landed(b.clone());
+    let mut cold = lazy(b, None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    assert!(cold.root().join(contextful_core::store::lay_out::SKIPPED_RUNS_FILE).exists());
+    cold.syncer.config.lazy_parts = Some(false);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    assert!(!cold.root().join(contextful_core::store::lay_out::SKIPPED_RUNS_FILE).exists());
+    assert_eq!(cold.syncer.store.committed_runs("filings").unwrap().len(), 4);
 }

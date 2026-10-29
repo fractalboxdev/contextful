@@ -303,6 +303,43 @@ fn a_lazy_store_pulls_no_part_and_its_tool_server_fetches_the_one_it_reads() {
     assert!(part.exists(), "the query fetched the part it read");
 }
 
+/// A command opening a lazy store reads through the bucket whether or not it pulls: an
+/// `as_of` scan before a compaction, a subscription replay and a catalog rebuild answer on a
+/// cold lazy store as on an eager one.
+// spec: store.pull.folded-runs-source@41b57329
+#[test]
+fn every_command_on_a_lazy_store_reads_folded_runs_through_the_bucket() {
+    let bucket = tempfile::tempdir().unwrap();
+    let a = project("ingest-a", &file_sync(bucket.path(), ""));
+    for (run, id, at) in [("run-1", 1, "2030-01-01T00:00:00Z"), ("run-2", 2, "2030-01-01T02:00:00Z")] {
+        std::fs::write(a.path().join("batch.jsonl"), format!("{{\"id\":{id}}}\n")).unwrap();
+        ok(&cf(a.path(), &["context", "land", "filings", "--project", "research", "--rows", "batch.jsonl", "--run-id", run, "--site-id", "site", "--now", at], &[]));
+    }
+    ok(&cf(a.path(), &["context", "compact", "filings", "--project", "research", "--now", "2030-01-01T03:00:00Z"], &[]));
+    ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
+
+    let eager = project("ingest-e", &file_sync(bucket.path(), ""));
+    ok(&cf(eager.path(), &["sync", "pull", "--project", "research"], &[]));
+    let cold = project("ingest-l", &file_sync(bucket.path(), "lazy_parts = true\n"));
+    ok(&cf(cold.path(), &["sync", "pull", "--project", "research"], &[]));
+    let folded = cold.path().join(STORE).join("tables/filings/data/runs/run-1/ingest-a/_manifest.json");
+    assert!(!folded.exists(), "a lazy pull leaves a folded run's manifest in the bucket");
+
+    let scan = |dir: &Path| -> Value {
+        let out = ok(&cf(dir, &["context", "scan", "filings", "--project", "research", "--as-of", "2030-01-01T01:00:00Z"], &[]));
+        serde_json::from_str::<Value>(&out).unwrap()["files"].clone()
+    };
+    let files = scan(eager.path());
+    assert_eq!(files.as_array().map(Vec::len), Some(1), "{files}");
+    assert_eq!(scan(cold.path()), files);
+    for args in [&["context", "subscribe", "filings", "--project", "research"][..], &["context", "rebuild-catalog", "--project", "research"][..]] {
+        let expected = ok(&cf(eager.path(), args, &[]));
+        assert!(!expected.trim().is_empty(), "{args:?}");
+        assert_eq!(ok(&cf(cold.path(), args, &[])).replace("ingest-l", "ingest-e"), expected, "{args:?}");
+    }
+    assert!(folded.exists(), "the reads fetched the folded manifest");
+}
+
 /// Start `contextful serve --http` on `dir`; its address once it listens, or its exit
 /// output when it stops before binding.
 fn serve(dir: &Path, public: &str) -> Result<(std::process::Child, String), Output> {

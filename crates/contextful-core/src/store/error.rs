@@ -199,6 +199,9 @@ pub enum StoreError {
     /// A part a lazy store needs is gone from the bucket. (`store.pull.part-collected`)
     #[error("SyncPartCollected: {0}")]
     SyncPartCollected(String),
+    /// A store whose lazy pull skipped folded run manifests reads its runs without a part source. (`store.pull.folded-runs-unreachable`)
+    #[error("SyncFoldedRunsUnfetched: {0}")]
+    SyncFoldedRunsUnfetched(String),
     /// A fold's input parts exceed the part cache bound. (`store.fold.cached-inputs`)
     #[error("FoldInputsExceedCache: {0}")]
     FoldInputsExceedCache(String),

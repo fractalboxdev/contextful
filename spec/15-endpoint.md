@@ -2,6 +2,7 @@
 contract: store
 owns:
   - endpoint
+  - probe
 ---
 
 # Bucket endpoints
@@ -38,3 +39,15 @@ Bucket endpoint schemes, transport, request addressing and signing, credentials 
   *because a throttled request never applied, and jitter spreads throttled clients*
 - `unavailable` — A request unanswered within {{store.endpoint.transport}}, or answered `429` or `5xx` past {{store.endpoint.throttled}}, fails as unavailable, naming the request and claiming nothing about the bucket's content.
 - `list-pages` — A list follows continuation tokens until the backend reports completion, returning every key under the prefix in sorted order.
+
+## probe
+
+Testing conditional writes with a sentinel object and selecting the backend's coordination mode.
+
+- `inconclusive` — An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.
+  *A-store#coordination-probed-compare*
+- `unproven` — Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.
+  *A-store#coordination-probed-compare*
+- `sentinel` — The probe creates a sentinel under `_contextful/cas-probe/`, demonstrates `cas` when a second create and a stale `If-Match` fail while a current `If-Match` replaces it, then deletes it.
+- `network-volume` — A filesystem bucket on a mount type outside apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs and overlay resolves `single-writer` without a sentinel, naming the mount type; a declared `cas` there meets {{store.probe.unproven}}.
+  *because a sentinel run from one client of a network share cannot observe another client*

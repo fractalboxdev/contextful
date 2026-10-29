@@ -65,7 +65,9 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
             (p, d)
         }
     };
-    Ok(Located { project, declaration: declaration.unwrap_or(default) })
+    let located = Located { project, declaration: declaration.unwrap_or(default) };
+    crate::sync::register_lazy(&located);
+    Ok(located)
 }
 
 /// The manifest files, in reading order: the declaration when it is a file, then

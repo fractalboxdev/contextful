@@ -344,7 +344,25 @@ fn pending_pull_within(l: &Located, guard_wait: Option<u64>) -> Result<Option<Pe
 /// Every store this process opens at `syncer`'s root fetches each part it lacks through the
 /// syncer's bucket (`store.pull.lazy-parts`).
 fn register_parts(syncer: &Syncer) {
-    contextful_context::store::register_part_source(syncer.store.root(), syncer.part_source());
+    if !contextful_context::store::part_source_registered(syncer.store.root()) {
+        contextful_context::store::register_part_source(syncer.store.root(), syncer.part_source());
+    }
+}
+
+/// Register the bucket's part source for a store whose `[sync]` declares `lazy_parts`, once
+/// per process, so every command reading it fetches what a lazy pull left in the bucket
+/// (`store.pull.folded-runs-source`). A bucket that does not open registers nothing, and a read
+/// needing a skipped manifest refuses (`store.pull.folded-runs-unreachable`).
+pub(crate) fn register_lazy(l: &Located) {
+    if contextful_context::store::part_source_registered(&l.project.store_root()) {
+        return;
+    }
+    let Ok((Some(config), _)) = sync_config(l) else { return };
+    if config.lazy_parts() {
+        if let Ok((syncer, _)) = open_with(l, config) {
+            register_parts(&syncer);
+        }
+    }
 }
 
 /// A resolved `pull_before_run` whose transfer has not run.
