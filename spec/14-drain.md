@@ -17,7 +17,7 @@ Tracking unpushed runs, retrying pushes before reads, pushing during shutdown an
   *A-store#unpushed-run-marked*
 - `record-unmarked` — The store's run record keeps each run row without `unpushed`; only the execution database holds the mark.
   *because a rebuilt execution database restores rows from the run record*
-- `clear` — A committed push clears the marks of manifests its included tables held at push start, and sets `lost` on marked runs with no local manifest and no live owner, naming them on stderr.
+- `clear` — A committed push clears each mark whose run manifest its included tables held at push start or its committed bucket manifest lists. It sets `lost` on other marks with no local manifest and no live owner, naming them on stderr.
   *because no retry restores a commit the store has lost*
 - `before-read` — Under these profiles, {{store.pull.before-run}} pushes after pulling for unlost marks on its node with a local manifest or expired owner lease. A failed push names those runs and stops the command before its first read.
   *A-store#unpushed-run-marked*
@@ -41,6 +41,7 @@ Tracking unpushed runs, retrying pushes before reads, pushing during shutdown an
 - `store.drain.mark`: WHEN a process terminates after a run's local commit and before its push, THEN the run row stays marked and the next push uploads the run.
 - `store.drain.before-read`: WHEN the bucket refuses a run's push and then accepts a push from `run start`, THEN that start pushes the marked run before opening its own run.
 - `store.drain.clear`: WHEN a replacement disk holding none of a marked run's files pushes, THEN the run turns `lost` and `sync status` lists it without refusing.
+- `store.drain.clear`: WHEN a disk whose `pull_tables` excludes a marked run's table pushes while the bucket lists that run's manifest, THEN the mark clears and the run never turns `lost`.
 - `store.drain.status-summary`: WHEN the execution database holds 300 lost marks and one open mark, THEN `sync status` lists the open run and 20 lost runs, counts 1 open and 300 lost, and exits 3.
 - `store.drain.prune`: WHEN a push settles while one mark turned lost 8 d before and another 6 d before, THEN the push clears the first mark and the second stays listed.
 - `store.drain.unfinished`: WHEN a stopping serve's push waits on a push guard past 15 s, THEN serve exits non-zero and the run stays marked.

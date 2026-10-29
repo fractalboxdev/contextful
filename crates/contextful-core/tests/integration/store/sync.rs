@@ -7,6 +7,7 @@ use contextful_core::connector::reference::SecretName;
 use contextful_core::store::sync::{
     confine, merge, merge_verified, owner_of, BucketManifest, HeldKeys, ControlHead, CredentialRef, Endpoint, Entry, Signing, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
 };
+use contextful_core::grant::TablePattern;
 use contextful_core::store::StoreError;
 use std::collections::BTreeMap;
 
@@ -327,6 +328,25 @@ fn a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable() {
         Err(StoreError::LeaseNodeIdLocal(m)) => assert!(m.contains("CONTEXTFUL_NODE_ID"), "{m}"),
         other => panic!("{other:?}"),
     }
+}
+
+/// `[sync] pull_tables` reads each entry through the grant pattern parser, refusing a misplaced star.
+#[test]
+fn pull_tables_reads_grant_patterns_and_refuses_a_misplaced_star() {
+    let c: SyncConfig = toml::from_str("endpoint = \"file:///b\"\nbucket = \"b\"\npull_tables = [\"filings\", \"memos/*\"]\n").unwrap();
+    assert_eq!(c.pull_tables, Some(vec![TablePattern::parse("filings").unwrap(), TablePattern::parse("memos/*").unwrap()]));
+    let refused = toml::from_str::<SyncConfig>("endpoint = \"file:///b\"\nbucket = \"b\"\npull_tables = [\"fil*ings\"]\n").unwrap_err();
+    assert!(refused.to_string().contains("GrantPatternMalformed"), "{refused}");
+}
+
+/// An explicit `[sync] pull_tables = []` refuses at config read, naming `["*"]` for every table.
+// spec: store.pull.tables-empty@822440c2
+#[test]
+fn an_empty_pull_tables_refuses_at_config_read() {
+    let refused = toml::from_str::<SyncConfig>("endpoint = \"file:///b\"\nbucket = \"b\"\npull_tables = []\n").unwrap_err();
+    assert!(refused.to_string().contains("SyncPullTablesEmpty") && refused.to_string().contains("[\"*\"]"), "{refused}");
+    let every: SyncConfig = toml::from_str("endpoint = \"file:///b\"\nbucket = \"b\"\npull_tables = [\"*\"]\n").unwrap();
+    assert_eq!(every.pull_tables, Some(vec![TablePattern::All]));
 }
 
 fn endpoint(e: &str) -> SyncConfig {

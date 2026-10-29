@@ -67,7 +67,7 @@ pub enum SyncCmd {
     Pull {
         #[command(flatten)]
         args: SyncArgs,
-        /// A table pattern — `*`, a prefix ending in `*`, or a name; repeatable; absent pulls every table.
+        /// A table pattern — `*`, a prefix ending in `*`, or a name; repeatable; absent pulls `[sync] pull_tables`, else every table.
         #[arg(long = "table", value_parser = parse_pattern)]
         tables: Vec<contextful_core::grant::TablePattern>,
         /// Restore this generation's manifest and pointers in place of the bucket's current state.
@@ -310,7 +310,7 @@ fn s3_bucket(config: &SyncConfig, _url: &str, _region: &str) -> Result<Arc<dyn O
     .into())
 }
 
-/// Pull every table of the bucket into the store when `[sync] pull_before_run = true`, so
+/// Pull the `[sync] pull_tables` tables, else every table, of the bucket into the store when `[sync] pull_before_run = true`, so
 /// a command starting on a cold disk reads what the other nodes pushed
 /// (`store.pull.before-run`). A store declaring no `[sync]` is left as it is.
 pub fn pull_before_run(l: &Located) -> Result<()> {
@@ -342,12 +342,13 @@ fn pending_pull_within(l: &Located, guard_wait: Option<u64>) -> Result<Option<Pe
         return Ok(None);
     }
     let config = capped(config, guard_wait);
+    let tables = config.pull_tables.clone().unwrap_or_default();
     let (syncer, decls) = open_with(l, config)?;
     if lazy {
         register_parts(&syncer);
     }
     let replicate_off = replicate_off(&decls)?;
-    Ok(Some(PendingPull { syncer, scope: PullScope { tables: Vec::new(), replicate_off, generation: None } }))
+    Ok(Some(PendingPull { syncer, scope: PullScope { tables, replicate_off, generation: None } }))
 }
 
 /// Every store this process opens at `syncer`'s root fetches each part it lacks through the
@@ -381,7 +382,7 @@ pub struct PendingPull {
 }
 
 impl PendingPull {
-    /// Transfer every table of the bucket into the store. The report line is best effort:
+    /// Transfer the scoped tables of the bucket into the store. The report line is best effort:
     /// a closed stderr fails no pull.
     pub fn run(&self) -> Result<()> {
         use std::io::Write;
@@ -393,7 +394,7 @@ impl PendingPull {
         self.push_unpushed()
     }
 
-    /// Pull every table of the bucket again into a store already serving
+    /// Pull the scoped tables of the bucket again into a store already serving
     /// (`store.pull.serve-refresh`). A pull that changes nothing reports nothing.
     pub fn refresh(&self) -> Result<()> {
         use std::io::Write;
@@ -521,7 +522,7 @@ fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
     };
     let report = s.push(at)?;
     if let Some(c) = &catalog {
-        settle(c.as_ref(), &s.store, &s.redistribution.withheld, &s.node, &marked)?;
+        settle(c.as_ref(), &s.store, &s.redistribution.withheld, &s.node, &marked, &report.listed_runs)?;
         prune_lost(c.as_ref())?;
     }
     Ok(report)
@@ -593,19 +594,21 @@ fn run_list(rows: &[RunRow]) -> String {
 }
 
 /// After a committed push, clear each mark whose run the store held when the push began,
-/// which the push carried, and mark lost each whose run the store does not hold and no live
-/// owner is running (`store.drain.clear`).
-fn settle(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, node: &str, marked: &[(RunRow, bool)]) -> Result<()> {
+/// which the push carried, or whose run manifest the committed manifest `listed`, and mark
+/// lost each other whose run the store does not hold and no live owner is running
+/// (`store.drain.clear`).
+fn settle(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, node: &str, marked: &[(RunRow, bool)], listed: &BTreeSet<String>) -> Result<()> {
     let now = catalog.now()?;
     let runs = carried_runs(store, withheld)?;
     for (row, held_before) in marked {
-        let lost = !held_before && !holds_run(&runs, &row.run_id, node) && !live(row, now);
-        if !held_before && !lost {
+        let carried = *held_before || listed.contains(&row.run_id);
+        let lost = !carried && !holds_run(&runs, &row.run_id, node) && !live(row, now);
+        if !carried && !lost {
             continue;
         }
         catalog.update_run(&row.run_id, &mut |r| {
             let ours = r.unpushed.as_ref().is_some_and(|u| u.node == node);
-            if ours && *held_before {
+            if ours && carried {
                 r.unpushed = None;
             } else if let Some(u) = r.unpushed.as_mut().filter(|_| ours) {
                 u.lost = true;
@@ -809,6 +812,8 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         }
         SyncCmd::Pull { args, tables, generation } => {
             let (s, decls) = open(&args)?;
+            // Without `--table`, the pull takes `[sync] pull_tables` (`store.pull.table-scope`).
+            let tables = if tables.is_empty() { s.config.pull_tables.clone().unwrap_or_default() } else { tables };
             let r = s.pull(&PullScope { tables, replicate_off: replicate_off(&decls)?, generation })?;
             for refusal in r.unverified.iter().chain(&r.discarded) {
                 eprintln!("warning: {refusal}");

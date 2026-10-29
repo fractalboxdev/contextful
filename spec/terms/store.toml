@@ -79,6 +79,7 @@ SyncFoldedRunsUnfetched      = { clause = "store.pull.folded-runs-unreachable", 
 FoldInputsExceedCache        = { clause = "store.fold.cached-inputs", gloss = "A fold's input parts exceed the part cache bound." }
 SyncGenerationAbsent         = { clause = "store.pull.generation-absent", gloss = "A pull names a generation the bucket holds no generation manifest for." }
 SyncGenerationDiverged       = { clause = "store.pull.generation-diverged", gloss = "A generation pull meets a local file the generation does not list." }
+SyncPullTablesEmpty          = { clause = "store.pull.tables-empty", gloss = "A store's `[sync] pull_tables` holds no pattern." }
 SyncObjectDigestMismatch     = { clause = "store.pull.digest-mismatch", gloss = "A downloaded object's digest differs from its entry." }
 SyncPullDidNotConverge       = { clause = "store.pull.unconverged", gloss = "A pull exhausted its retries against keys moving beneath it." }
 SyncLocalFoldUnrecoverable   = { clause = "store.pull.local-fold-unrecoverable", gloss = "A local pointer off the bucket's chain folds runs neither the store nor the bucket holds." }
