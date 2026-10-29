@@ -12,7 +12,7 @@ fn files(dir: &Path) -> usize {
 
 /// `sync collect --dry-run` prints each class's dropped keys, deleted objects and bytes as JSON and deletes nothing;
 /// `sync collect` then deletes what the dry run counted.
-// spec: store.collect.command@2a7db1dd
+// spec: store.collect.command@7a6ebce7
 #[test]
 fn a_dry_run_counts_what_collect_then_deletes() {
     let bucket = tempfile::tempdir().unwrap();

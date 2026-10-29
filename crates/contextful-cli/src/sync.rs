@@ -170,12 +170,10 @@ pub(crate) fn sync_config(l: &Located) -> Result<(Option<SyncConfig>, PathBuf)> 
     Ok((file.sync, config_path))
 }
 
-/// Whether the bucket of a store declaring `[sync]` records build `build_id` of `model` as
-/// collected (`run.model.hold-collected`); `false` for a store declaring none.
-pub(crate) fn bucket_collected_build(l: &Located, model: &str, build_id: &str, now: Instant) -> Result<bool> {
-    let (Some(config), _) = sync_config(l)? else { return Ok(false) };
-    let (syncer, _) = open_with(l, config)?;
-    Ok(syncer.build_collected(model, build_id, now)?)
+/// The syncer of a store declaring `[sync]`, `None` for a store declaring none.
+pub(crate) fn synced_syncer(l: &Located) -> Result<Option<Syncer>> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(None) };
+    Ok(Some(open_with(l, config)?.0))
 }
 
 fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)> {

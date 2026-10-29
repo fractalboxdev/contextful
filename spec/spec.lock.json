@@ -5327,6 +5327,17 @@
       "line": 747
     },
     {
+      "id": "store.merge.collected-directory",
+      "contract": "store",
+      "operation": "merge",
+      "subject": "collected-directory",
+      "kind": "behavior",
+      "statement": "A merge keeps out each key under a snapshot directory whose `_collected.json` the bucket lists, save its `_manifest.json`, and each run file {{store.collect.folded-runs}} reclaims, whatever any record says.",
+      "why": "because a lapsed record otherwise lets a node holding a copy list a reclaimed key again",
+      "file": "spec/10-store.md",
+      "line": 749
+    },
+    {
       "id": "store.merge.collected",
       "contract": "store",
       "operation": "merge",
@@ -5335,7 +5346,7 @@
       "statement": "A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.",
       "why": "A-store#bucket-collect",
       "file": "spec/10-store.md",
-      "line": 749
+      "line": 751
     },
     {
       "id": "store.merge.ownership",
@@ -5346,7 +5357,7 @@
       "statement": "A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 751
+      "line": 753
     },
     {
       "id": "store.snapshot.capture",
@@ -6246,7 +6257,7 @@
       "operation": "collect",
       "subject": "command",
       "kind": "behavior",
-      "statement": "`contextful sync collect` prints JSON naming, per class `unlisted`, `superseded`, `folded_runs` and `generations`, the keys it records as collected, the objects it deletes, their bytes and `unknown_size`, then `undeclared` and `shared_prefix`; `--dry-run` prints the same and writes nothing.",
+      "statement": "`contextful sync collect` prints JSON naming, per class `unlisted`, `superseded`, `folded_runs` and `generations`, the keys it records as collected, the objects it deletes, their bytes and `unknown_size`, then `undeclared`, `shared_prefix` and `referenced`; `--dry-run` prints the same and writes nothing.",
       "why": "because an operator sizes a reclamation before running it",
       "file": "spec/16-collect.md",
       "line": 16
@@ -6293,7 +6304,7 @@
       "operation": "collect",
       "subject": "folded-runs",
       "kind": "behavior",
-      "statement": "Collect records as collected every object of a run directory, `_manifest.json` included, once a bucket chain snapshot created `retain_runs` ago names the run in `includes_runs`, save a `_group.json` {{store.collect.group-window}} keeps.",
+      "statement": "Collect records as collected every object of a run directory, `_manifest.json` included, once the bucket chain snapshot naming the run in `includes_runs` supersedes a snapshot {{store.collect.superseded}} reclaims, save a `_group.json` {{store.collect.group-window}} keeps.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
       "line": 24,
@@ -6307,7 +6318,7 @@
       "operation": "collect",
       "subject": "group-window",
       "kind": "behavior",
-      "statement": "Collect keeps a folded run's `_group.json` while a member table holding a copy of the run folds it in no chain snapshot created that member's `retain_runs` ago.",
+      "statement": "Collect keeps a folded run's `_group.json` while a member table holding a copy of the run has not folded it out under {{store.collect.folded-runs}}, under that member's `retain_runs`.",
       "why": "because a member run reads as committed only beside its group root's marker, an `as_of` read inside the window included",
       "file": "spec/16-collect.md",
       "line": 26,
@@ -6354,21 +6365,43 @@
       "operation": "collect",
       "subject": "record-stands",
       "kind": "behavior",
-      "statement": "While the bucket holds a recorded object, or its chain still supersedes or folds the key, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets.",
-      "why": "because a record lapsing while a chain still reclaims its key lets a node holding a copy list it again",
+      "statement": "While the bucket holds a recorded object, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets; past its object, a record lapses and {{store.merge.collected-directory}} keeps the key out.",
+      "why": "because a record lapsing before its object goes lets a merge list the key again",
       "file": "spec/16-collect.md",
       "line": 34
     },
     {
-      "id": "store.collect.retained-relisted",
+      "id": "store.collect.retained-kept",
       "contract": "store",
       "operation": "collect",
-      "subject": "retained-relisted",
+      "subject": "retained-kept",
       "kind": "behavior",
-      "statement": "Collect deletes no object a retained snapshot names, a hold reaching the bucket after its record included, and lists each such recorded key again while its object stays.",
-      "why": "because a hold or a referenced link can reach the bucket after a collect recorded its keys",
+      "statement": "Collect deletes no recorded object a retained snapshot names, reporting its key under `referenced`, and the key stays recorded.",
+      "why": "because a hold reaching the bucket outside {{run.model.hold-bucket-first}} then leaves a refusal rather than a loss",
       "file": "spec/16-collect.md",
       "line": 36
+    },
+    {
+      "id": "store.collect.serialized",
+      "contract": "store",
+      "operation": "collect",
+      "subject": "serialized",
+      "kind": "behavior",
+      "statement": "On a bucket whose conditional writes span clients, collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.",
+      "why": "because a hold or a record a concurrent collect commits otherwise reaches the deletes of a collect that never read it",
+      "file": "spec/16-collect.md",
+      "line": 38
+    },
+    {
+      "id": "store.collect.repair",
+      "contract": "store",
+      "operation": "collect",
+      "subject": "repair",
+      "kind": "behavior",
+      "statement": "Collect records as collected each key the manifest it first reads lists with no object behind it.",
+      "why": "because a listed key with no object stops every pull",
+      "file": "spec/16-collect.md",
+      "line": 40
     },
     {
       "id": "store.collect.marker-first-writer",
@@ -6379,7 +6412,7 @@
       "statement": "A collect uploads `_collected.json` only where no object holds its key, and lists the bytes the bucket then holds.",
       "why": "because a losing concurrent collect overwriting a listed marker fails every pull's digest check",
       "file": "spec/16-collect.md",
-      "line": 38
+      "line": 42
     },
     {
       "id": "store.collect.generation-listed",
@@ -6390,7 +6423,7 @@
       "statement": "Collect deletes no object whose key a retained generation lists, and leaves it for a later collect.",
       "why": "because `sync pull --generation` restores a retained generation's keys at their listed digests",
       "file": "spec/16-collect.md",
-      "line": 40,
+      "line": 44,
       "scenarios": [
         "WHEN a tombstoned run is unlisted while 64 retained generations list it, THEN the collect deletes none of its objects."
       ]
@@ -6404,7 +6437,7 @@
       "statement": "`[sync] retain_generations`, default 64 generations, sets how many newest generation manifests a collect keeps, the current one included; a value of 0 fails the configuration's parse.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
-      "line": 42
+      "line": 46
     },
     {
       "id": "store.collect.generations",
@@ -6415,7 +6448,7 @@
       "statement": "Collect heals an absent copy of the read generation, then deletes every `manifests/gen-<N>.json` older than the newest {{store.collect.retain-generations}}, so a restore of one meets {{store.pull.generation-absent}}.",
       "why": "because each generation manifest lists the whole store, and a push after every run writes one per run",
       "file": "spec/16-collect.md",
-      "line": 44
+      "line": 48
     },
     {
       "id": "store.collect.shared-prefix",
@@ -6426,7 +6459,7 @@
       "statement": "While the bucket manifest names another project's key, record or control head, collect records no key as collected, deletes no generation manifest, treats every generation as retained, and reports `shared_prefix`.",
       "why": "because generation manifests belong to the prefix, and one project's `retain_generations` binds no other project's restores",
       "file": "spec/16-collect.md",
-      "line": 46
+      "line": 50
     },
     {
       "id": "store.collect.drop-first",
@@ -6437,7 +6470,7 @@
       "statement": "Collect commits a bucket manifest recording each key it unlists as collected, by the conditional replace of {{store.push.manifest-commit}}, before deleting any object, so no push lists a deleted object and a lazy read meets {{store.pull.part-collected}}.",
       "why": "A-store#bucket-collect",
       "file": "spec/16-collect.md",
-      "line": 48,
+      "line": 52,
       "scenarios": [
         "WHEN an owner restoring a tombstoned run reads the manifest, a collect then commits and deletes the run's objects, and the owner's push commits, THEN the push loses its condition, re-merges, and lists no deleted object."
       ]
@@ -15773,10 +15806,22 @@
       "operation": "model",
       "subject": "hold-collected",
       "kind": "refusal",
-      "statement": "A hold naming a build {{store.fold.collected-snapshot}} counts, or whose parts the bucket of a store declaring `[sync]` records as collected, raises `ModelBuildCollected` and commits nothing; an unexpired hold renews.",
+      "statement": "A hold or renewal naming a build beside the bucket's `_collected.json`, or whose parts the bucket of a store declaring `[sync]` records as collected, raises `ModelBuildCollected` and commits nothing.",
       "why": "because a hold over removed parts reports `Held` for a build no reader can read",
       "file": "spec/31-pipeline.md",
       "line": 681,
+      "group": "holds and status"
+    },
+    {
+      "id": "run.model.hold-bucket-first",
+      "contract": "run",
+      "operation": "model",
+      "subject": "hold-bucket-first",
+      "kind": "behavior",
+      "statement": "On a store declaring `[sync]`, `build hold` commits the hold to the bucket before printing a receipt the bucket's copy names; a failed write undoes the local hold and fails the command.",
+      "why": "because a hold one disk alone records protects nothing from a collect elsewhere",
+      "file": "spec/31-pipeline.md",
+      "line": 683,
       "group": "holds and status"
     },
     {
@@ -15788,7 +15833,7 @@
       "statement": "The snapshot manifest commit publishes a table's data, contract identity, freshness and current build together. No separate file is authoritative for these values.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 696
+      "line": 698
     },
     {
       "id": "run.publish.contract-identity",
@@ -15799,7 +15844,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 698
+      "line": 700
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -15810,7 +15855,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 699
+      "line": 701
     },
     {
       "id": "run.publish.staging",
@@ -15821,7 +15866,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 701
+      "line": 703
     },
     {
       "id": "run.publish.history-logs",
@@ -15832,7 +15877,7 @@
       "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` in the model's table directory hold append-only history derived from committed manifests and build-attempt records; each build and hold regenerates them, replacing an entry a source record disagrees with and keeping collected builds' entries.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 703
+      "line": 705
     },
     {
       "id": "run.publish.build-entry",
@@ -15843,7 +15888,7 @@
       "statement": "A `builds.jsonl` entry is a {{type:contextful_core::pipeline::model::BuildEntry}}, its status published, refused, partial or failed.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 704
+      "line": 706
     },
     {
       "id": "run.publish.failed-attempt",
@@ -15854,7 +15899,7 @@
       "statement": "A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.",
       "why": "because a process killed before publication cannot write its own failure, while its attempt record and released lock survive",
       "file": "spec/31-pipeline.md",
-      "line": 705
+      "line": 707
     },
     {
       "id": "run.publish.staleness",
@@ -15865,7 +15910,7 @@
       "statement": "A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 707,
+      "line": 709,
       "scenarios": [
         "WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.",
         "WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `[\"events\"]`, 1 second later.",
@@ -15881,7 +15926,7 @@
       "statement": "An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 709,
+      "line": 711,
       "scenarios": [
         "WHEN a run merged from another node carries a `commit_seq` below `through` and the build never read it, THEN status reports the input stale at once.",
         "WHEN a relational run's group marker lands after a build read a plain run committed above it, THEN status reports the input stale at once."
@@ -15896,7 +15941,7 @@
       "statement": "A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.",
       "why": "because a run manifest may carry no sequence, and {{run.publish.staleness-omitted-check}} catches one the build never read",
       "file": "spec/31-pipeline.md",
-      "line": 711
+      "line": 713
     },
     {
       "id": "run.publish.staleness-collected-covered",
@@ -15907,7 +15952,7 @@
       "statement": "A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.",
       "why": "because a snapshot's `commit_seq` bounds every run it folds",
       "file": "spec/31-pipeline.md",
-      "line": 713
+      "line": 715
     },
     {
       "id": "run.publish.staleness-model-input",
@@ -15918,7 +15963,7 @@
       "statement": "An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 715,
+      "line": 717,
       "scenarios": [
         "WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `[\"daily\"]`, 1 day after the rebuild."
       ]
@@ -15932,7 +15977,7 @@
       "statement": "A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.",
       "why": "A-run#build-stale-landings",
       "file": "spec/31-pipeline.md",
-      "line": 717
+      "line": 719
     },
     {
       "id": "run.publish.hold",
@@ -15943,7 +15988,7 @@
       "statement": "A hold is a {{type:contextful_core::pipeline::model::HoldRecord}} committed as `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build; collection skips a held build, and a hold confers no other authority.",
       "why": "A-run#model-declared-sql",
       "file": "spec/31-pipeline.md",
-      "line": 719
+      "line": 721
     },
     {
       "id": "run.publish.manifest-section",
@@ -15954,7 +15999,7 @@
       "statement": "The manifest section is the newest publishing build's {{type:contextful_core::pipeline::model::PublishSection}}, its `watermark` as {{run.model.watermark}}; freshness reads off it, and staleness follows {{run.publish.staleness}}, never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 721
+      "line": 723
     },
     {
       "id": "run.publish.semantics-version",
@@ -15965,7 +16010,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 722
+      "line": 724
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -15976,7 +16021,7 @@
       "statement": "A build records a digest over its table's {{type:contextful_core::store::declare::TableDecl}} `class`, `policy` and `visibility`, sorting set-valued fields; the manifest and build log carry it, and any declaration sets `withheld_cells`.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 723
+      "line": 725
     },
     {
       "id": "run.select.required-key",
@@ -35221,6 +35266,10 @@
       "store.merge.held-record"
     ],
     [
+      "store.merge.collected-directory",
+      "store.collect.folded-runs"
+    ],
+    [
       "store.merge.collected",
       "store.merge.tombstone-ttl"
     ],
@@ -35334,7 +35383,15 @@
     ],
     [
       "store.collect.folded-runs",
+      "store.collect.superseded"
+    ],
+    [
+      "store.collect.folded-runs",
       "store.collect.group-window"
+    ],
+    [
+      "store.collect.group-window",
+      "store.collect.folded-runs"
     ],
     [
       "store.collect.two-phase",
@@ -35343,6 +35400,14 @@
     [
       "store.collect.record-stands",
       "store.merge.tombstone-ttl"
+    ],
+    [
+      "store.collect.record-stands",
+      "store.merge.collected-directory"
+    ],
+    [
+      "store.collect.serialized",
+      "store.lease.held"
     ],
     [
       "store.collect.generations",
@@ -36531,10 +36596,6 @@
     [
       "run.model.watermark-listed-runs",
       "run.publish.staleness"
-    ],
-    [
-      "run.model.hold-collected",
-      "store.fold.collected-snapshot"
     ],
     [
       "run.publish.staging",
@@ -64704,6 +64765,15 @@
         "proved": false
       }
     ],
+    "run.model.hold-bucket-first": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/build.rs",
+        "name": "a_bucket_first_hold_keeps_its_build_through_a_collect",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "run.model.hold-collected": [
       {
         "kind": "test",
@@ -67316,7 +67386,7 @@
       {
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
-        "name": "a_folded_run_leaves_whole_and_a_relisted_copy_reads_once",
+        "name": "a_folded_run_leaves_whole_once_its_folding_snapshot_supersedes_a_reclaimed_one",
         "verdict": "performed",
         "proved": false
       }
@@ -67380,11 +67450,13 @@
         "name": "a_collect_unlists_first_and_deletes_once_no_retained_generation_lists_the_key",
         "verdict": "performed",
         "proved": false
-      },
+      }
+    ],
+    "store.collect.repair": [
       {
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
-        "name": "a_record_stands_while_the_chain_still_reclaims_its_key",
+        "name": "a_listed_key_with_no_object_is_recorded",
         "verdict": "performed",
         "proved": false
       }
@@ -67398,11 +67470,20 @@
         "proved": false
       }
     ],
-    "store.collect.retained-relisted": [
+    "store.collect.retained-kept": [
       {
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
-        "name": "a_hold_arriving_after_a_collect_keeps_the_parts",
+        "name": "a_recorded_key_a_retained_snapshot_names_keeps_its_object",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.collect.serialized": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_second_collect_refuses_while_one_holds_the_lease",
         "verdict": "performed",
         "proved": false
       }
@@ -69249,6 +69330,15 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/collect.rs",
         "name": "a_push_racing_a_collect_lists_no_object_it_deleted",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.merge.collected-directory": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/collect.rs",
+        "name": "a_copy_pushed_after_its_record_lapses_stays_out",
         "verdict": "performed",
         "proved": false
       }

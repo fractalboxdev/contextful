@@ -13,7 +13,7 @@ A bucket keeps every object a push writes until a collect deletes it.
 
 Unlisting and deleting the bucket objects no reader needs, and the generation manifests past the retained count.
 
-- `command` — `contextful sync collect` prints JSON naming, per class `unlisted`, `superseded`, `folded_runs` and `generations`, the keys it records as collected, the objects it deletes, their bytes and `unknown_size`, then `undeclared` and `shared_prefix`; `--dry-run` prints the same and writes nothing.
+- `command` — `contextful sync collect` prints JSON naming, per class `unlisted`, `superseded`, `folded_runs` and `generations`, the keys it records as collected, the objects it deletes, their bytes and `unknown_size`, then `undeclared`, `shared_prefix` and `referenced`; `--dry-run` prints the same and writes nothing.
   *because an operator sizes a reclamation before running it*
 - `unlisted` — Collect records as collected an object of the project the bucket manifest does not list when a tombstone or a generation past {{store.collect.retain-generations}} names its key, save a `_group.json`.
   *because a key some manifest once listed is one a push wrote, while an unnamed object may be an upload awaiting its commit*
@@ -21,9 +21,9 @@ Unlisting and deleting the bucket objects no reader needs, and the generation ma
   *A-store#bucket-collect*
 - `manifest-kept` — Collect deletes no snapshot `_manifest.json` and lists `_collected.json` beside each snapshot it reclaims, the only writer of that marker, so every chain reaches its root and each `includes_runs` still names its folded runs.
   *A-store#bucket-collect*
-- `folded-runs` — Collect records as collected every object of a run directory, `_manifest.json` included, once a bucket chain snapshot created `retain_runs` ago names the run in `includes_runs`, save a `_group.json` {{store.collect.group-window}} keeps.
+- `folded-runs` — Collect records as collected every object of a run directory, `_manifest.json` included, once the bucket chain snapshot naming the run in `includes_runs` supersedes a snapshot {{store.collect.superseded}} reclaims, save a `_group.json` {{store.collect.group-window}} keeps.
   *A-store#bucket-collect*
-- `group-window` — Collect keeps a folded run's `_group.json` while a member table holding a copy of the run folds it in no chain snapshot created that member's `retain_runs` ago.
+- `group-window` — Collect keeps a folded run's `_group.json` while a member table holding a copy of the run has not folded it out under {{store.collect.folded-runs}}, under that member's `retain_runs`.
   *because a member run reads as committed only beside its group root's marker, an `as_of` read inside the window included*
 - `chain-only` — Collect reclaims only snapshots the bucket pointer reaches through `parent` links; another snapshot's `includes_runs` collects no run.
   *because a snapshot that lost its pointer commit folded nothing a bucket reader sees*
@@ -31,10 +31,14 @@ Unlisting and deleting the bucket objects no reader needs, and the generation ma
   *because the window is a table declaration, not bucket state*
 - `two-phase` — Collect records a key as collected whether or not a retained generation lists it, and deletes the object at the first collect after {{store.collect.generation-listed}} stops holding it.
   *because a restore of a retained generation reads the object, while the record already keeps it out of every merge*
-- `record-stands` — While the bucket holds a recorded object, or its chain still supersedes or folds the key, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets.
-  *because a record lapsing while a chain still reclaims its key lets a node holding a copy list it again*
-- `retained-relisted` — Collect deletes no object a retained snapshot names, a hold reaching the bucket after its record included, and lists each such recorded key again while its object stays.
-  *because a hold or a referenced link can reach the bucket after a collect recorded its keys*
+- `record-stands` — While the bucket holds a recorded object, each collect stamps its record again once it passes half the age {{store.merge.tombstone-ttl}} sets; past its object, a record lapses and {{store.merge.collected-directory}} keeps the key out.
+  *because a record lapsing before its object goes lets a merge list the key again*
+- `retained-kept` — Collect deletes no recorded object a retained snapshot names, reporting its key under `referenced`, and the key stays recorded.
+  *because a hold reaching the bucket outside {{run.model.hold-bucket-first}} then leaves a refusal rather than a loss*
+- `serialized` — On a bucket whose conditional writes span clients, collect holds the bucket's collect lease from before it reads a hold until its last deletion, and refuses as {{store.lease.held}} does while another collect holds it.
+  *because a hold or a record a concurrent collect commits otherwise reaches the deletes of a collect that never read it*
+- `repair` — Collect records as collected each key the manifest it first reads lists with no object behind it.
+  *because a listed key with no object stops every pull*
 - `marker-first-writer` — A collect uploads `_collected.json` only where no object holds its key, and lists the bytes the bucket then holds.
   *because a losing concurrent collect overwriting a listed marker fails every pull's digest check*
 - `generation-listed` — Collect deletes no object whose key a retained generation lists, and leaves it for a later collect.

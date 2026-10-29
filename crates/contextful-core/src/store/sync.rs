@@ -551,6 +551,18 @@ impl HeldKeys {
     }
 }
 
+/// Whether `key` sits in a snapshot directory whose `_collected.json` `m` lists, and is neither
+/// that marker nor the directory's `_manifest.json` (`store.merge.collected-directory`).
+pub fn reclaimed_by_marker(m: &BucketManifest, key: &str) -> bool {
+    let Some(at) = key.find("/data/snapshots/") else { return false };
+    let rest = &key[at + "/data/snapshots/".len()..];
+    let Some((id, name)) = rest.split_once('/') else { return false };
+    if name == super::lay_out::MANIFEST_FILE || name == super::lay_out::COLLECTED_FILE {
+        return false;
+    }
+    m.entries.contains_key(&format!("{}/data/snapshots/{id}/{}", &key[..at], super::lay_out::COLLECTED_FILE))
+}
+
 /// Merge this writer's local entries into the remote manifest by a scoped union
 /// (`store.merge`), its store having held every owned key the remote lists: a local entry
 /// counts only for a key `me` owns or an unowned one, and the remote contributes an entry
@@ -579,7 +591,9 @@ pub fn merge_verified(
     let collected: BTreeMap<String, Collected> = remote.collected.iter().filter(|(_, c)| c.stands(now)).map(|(k, c)| (k.clone(), c.clone())).collect();
     let mut out = BucketManifest { residency: remote.residency.clone(), control_heads: remote.control_heads.clone(), collected, ..BucketManifest::default() };
     let mut refused = Vec::new();
-    for (key, entry) in local.iter().filter(|(k, _)| !out.collected.contains_key(*k)) {
+    // A snapshot directory the bucket lists `_collected.json` for keeps its reclaimed keys out,
+    // whatever any record says (`store.merge.collected-directory`).
+    for (key, entry) in local.iter().filter(|(k, _)| !out.collected.contains_key(*k) && !reclaimed_by_marker(remote, k)) {
         // A key another node owns lists the owner's entry, never a local copy of it.
         if !entry.owner.is_empty() && entry.owner != me {
             continue;

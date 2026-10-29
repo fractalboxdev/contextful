@@ -264,9 +264,9 @@ pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u
     let path = dir.join(format!("{build_id}.json"));
     let prior: Option<HoldRecord> = store.metadata_files().read_optional(&path)?.and_then(|bytes| serde_json::from_slice(&bytes).ok());
     let receipt = if prior.is_some_and(|p| p.active(now)) { Receipt::Renewed } else { Receipt::Held };
-    // An unexpired hold renews; a new hold on a build whose parts a collection removed reads
-    // nothing (`run.model.hold-collected`).
-    if receipt == Receipt::Held && store.snapshot_collected(model, found)? {
+    // A build the bucket's collect reclaimed reads nothing, a renewal included
+    // (`run.model.hold-collected`).
+    if store.snapshot_dir(model, &found.snapshot_id)?.join(contextful_core::store::lay_out::COLLECTED_FILE).exists() {
         return Err(RunError::ModelBuildCollected(format!(
             "model `{model}` build `{build_id}` keeps only its manifest: a collection removed its parts, so no hold can keep it readable"
         ))

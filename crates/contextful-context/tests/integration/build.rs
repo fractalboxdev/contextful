@@ -583,9 +583,9 @@ fn a_hold_on_an_unknown_build_is_refused() {
     assert!(!p.dir().join("holds").join("snapshot-00000000000000000001.json").exists());
 }
 
-/// A new hold naming a build whose parts a collection removed raises `ModelBuildCollected`, while an unexpired
-/// hold on it renews.
-// spec: run.model.hold-collected@5ed41926
+/// A hold or renewal naming a build beside the bucket's `_collected.json` raises `ModelBuildCollected` and writes
+/// nothing, while a renewal of a build the bucket keeps succeeds.
+// spec: run.model.hold-collected@e8145d8b
 #[test]
 fn a_hold_on_a_collected_build_is_refused() {
     let p = Project::new();
@@ -594,11 +594,11 @@ fn a_hold_on_a_collected_build_is_refused() {
     let (renewed, _) = hold(&p.fx.store, "daily", &b.build_id, "ops", 30 * 86_400, at("2030-01-26T00:00:00Z")).unwrap();
     assert_eq!((held, renewed), (Receipt::Held, Receipt::Renewed));
     std::fs::write(p.dir().join("data/snapshots").join(&b.build_id).join("_collected.json"), br#"{"collected_at":"2030-02-01T00:00:00Z"}"#).unwrap();
-    // An unexpired hold renews; once it lapses, a new hold refuses.
-    let (again, _) = hold(&p.fx.store, "daily", &b.build_id, "ops", 60, at("2030-01-27T00:00:00Z")).unwrap();
-    assert_eq!(again, Receipt::Renewed);
-    let e = hold(&p.fx.store, "daily", &b.build_id, "ops", 60, at("2030-02-05T00:00:00Z")).unwrap_err().to_string();
+    // The bucket's marker refuses a renewal as it does a new hold.
+    let before = std::fs::read(p.dir().join("holds").join(format!("{}.json", b.build_id))).unwrap();
+    let e = hold(&p.fx.store, "daily", &b.build_id, "ops", 60, at("2030-01-27T00:00:00Z")).unwrap_err().to_string();
     assert!(e.starts_with("ModelBuildCollected:") && e.contains(&b.build_id), "{e}");
+    assert_eq!(std::fs::read(p.dir().join("holds").join(format!("{}.json", b.build_id))).unwrap(), before, "the refusal writes nothing");
 }
 
 /// `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.

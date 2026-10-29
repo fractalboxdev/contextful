@@ -383,16 +383,16 @@ Revisit: cold-table first reads past the wait bound under ordinary bucket latenc
 
 ## bucket-collect — Collection reclaims a superseded snapshot's parts and keeps its manifest
 
-A reader counts a run as folded only by its key in some chain snapshot's `includes_runs`, so a chain missing a folding manifest reads a returning copy of that run twice. Collect therefore keeps every snapshot's `_manifest.json` and reclaims its parts, sidecars and the run directories it folds. The bucket pointer's chain changes only at its head: `publish` drops a link only younger than the pass that drops it, so a link older than the window never moves. A collected record, read under the commit's compare-and-set, keeps a key out of every merge; it precedes deletion, which waits for the retained generations, and stands while its object does or the chain still reclaims the key. A hold reaching the bucket later lists its keys again. Format 2 marks a manifest holding a record. Generations are kept by count.
+A reader counts a run as folded only by its key in some chain snapshot's `includes_runs`, so a chain missing a folding manifest reads a returning copy of that run twice. Collect therefore keeps every snapshot's `_manifest.json` and reclaims its parts, sidecars and the run directories it folds. The bucket pointer's chain changes only at its head: `publish` drops a link only younger than the pass that drops it, so a link older than the window never moves. Collects serialize on a bucket lease, and a synced hold reaches the bucket before its receipt, so no collect records a held build; one recorded anyway keeps its objects. A record precedes deletion, which waits for retained generations, and lapses with its object; marker and chain then keep the key out.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Reclaim parts and folded runs, keep each `_manifest.json` *(chosen)* | — | One manifest per fold stays, every read walks the chain, and every node upgrades before the first collect. |
+| Reclaim parts and folded runs, keep each `_manifest.json` *(chosen)* | — | One manifest per fold stays, every read walks the chain, a push holding a reclaimed run reads its chain, and every node upgrades before the first collect. |
 | Unlisted objects and old generations only | Storage | Superseded snapshot directories and folded runs grow without bound. |
 | Delete superseded snapshots and folded runs whole | Correct rows | A node offline past the record's age, or a restored disk, reads a folded run its chain no longer names. |
 | An operator deletes by hand | Torn reads | A deletion beside a live push leaves a listed key with no object. |
 
-Revisit: a chain walk dominates a cold read, or kept manifests dominate a bucket's bytes.
+Revisit: a chain walk dominates a cold read, or kept manifests a bucket's bytes.
 
 ## unpushed-run-marked — An unpushed run is marked in the execution database
 

@@ -7,15 +7,15 @@
 //! `store.collect.folded-runs`); it then deletes the generation manifests past
 //! `[sync] retain_generations`.
 
-use crate::sync::{project_table, Result, SyncError, Syncer};
+use crate::sync::{project_table, Held, Result, SyncError, Syncer};
 use crate::transfer::each;
 use contextful_context::ContextError;
 use contextful_core::pipeline::model::HoldRecord;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{SnapshotManifest, COLLECTED_FILE, MANIFEST_FILE, POINTER_FILE, RUNS_DIR, SNAPSHOTS_DIR};
-use contextful_core::store::lease::BucketPointer;
-use contextful_core::store::object::{Condition, Put};
+use contextful_core::store::lease::{BucketLease, BucketPointer};
+use contextful_core::store::object::{CasScope, Condition, Put};
 use contextful_core::store::sync::{generation_key, BucketManifest, Collected, Entry, PUSH_ROUND_CEILING, TOMBSTONE_TTL_SECS};
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -56,6 +56,9 @@ pub struct CollectReport {
     /// The prefix holds another project's keys, so every generation manifest stays and the
     /// collect unlists nothing (`store.collect.shared-prefix`).
     pub shared_prefix: bool,
+    /// Recorded keys a retained snapshot names, whose deletion the collect skipped
+    /// (`store.collect.retained-kept`).
+    pub referenced: Vec<String>,
 }
 
 /// What one pass over the generation manifests leaves in memory: key sets, never manifests.
@@ -69,8 +72,7 @@ struct Generations {
     boundary: BTreeSet<String>,
     /// Each listed size of an evidence key.
     sizes: BTreeMap<String, u64>,
-    /// The newest listed entry of each key of this project any generation lists.
-    listed: BTreeMap<String, Entry>,
+
     /// Generations past the count, with their byte counts.
     pruned: Vec<(u64, u64)>,
 }
@@ -88,8 +90,8 @@ struct Reclaim {
     snapshot_dirs: BTreeSet<String>,
     /// The directory prefix of each run a chain snapshot older than the window folds.
     run_dirs: BTreeSet<String>,
-    /// Each key, or key prefix, a retained snapshot names: no collect deletes one, and a record
-    /// naming one leaves while its object stays (`store.collect.retained-relisted`).
+    /// Each key, or key prefix, a retained snapshot names: no collect deletes one
+    /// (`store.collect.retained-kept`).
     retained: BTreeSet<String>,
     /// The `_collected.json` of each collected snapshot the manifest does not list yet, with
     /// its sealed bytes.
@@ -97,13 +99,21 @@ struct Reclaim {
     undeclared: Vec<String>,
 }
 
+/// The key of the bucket's collect lease under the prefix (`store.collect.serialized`).
+pub fn collect_lease_key(project: &str) -> String {
+    format!("{project}/leases/collect.json")
+}
+
 /// One table's chain as the bucket holds it.
 struct Chain {
     table: String,
     cutoff: Instant,
     snapshots: Vec<SnapshotManifest>,
-    /// Each folded run key with the creation instant of the chain snapshot folding it.
-    folded_at: BTreeMap<String, Instant>,
+    /// Each run key a chain snapshot folds whose parent collect reclaims: the window has passed
+    /// that fold, whatever clock reads it (`store.collect.folded-runs`).
+    folded_out: BTreeSet<String>,
+    /// The build ids an unexpired hold in the bucket names, read under the collect lease.
+    held: BTreeSet<String>,
 }
 
 impl Syncer {
@@ -118,9 +128,73 @@ impl Syncer {
     /// lists, then the generation manifests past `[sync] retain_generations`. `decls` gives
     /// each table's `retain_runs` window. `dry_run` computes the same report and writes nothing.
     pub fn collect_declared(&self, now: Instant, dry_run: bool, decls: &[TableDecl]) -> Result<CollectReport> {
-        if !dry_run {
-            self.admit_coordination()?;
+        if dry_run {
+            return self.collect_under(now, true, decls, None);
         }
+        self.admit_coordination()?;
+        // One collect at a time: every read of holds, the record, the commit and the deletes run
+        // under the bucket's collect lease (`store.collect.serialized`).
+        let Some(held) = self.acquire_collect(now)? else { return self.collect_under(now, false, decls, None) };
+        let done = self.collect_under(now, false, decls, Some(&held));
+        let released = self.release_collect();
+        let report = done?;
+        released?;
+        Ok(report)
+    }
+
+    /// Acquire the bucket's collect lease at `now` (`store.collect.serialized`); `None` where the
+    /// bucket's conditional writes hold on one machine only, which admits a single writer.
+    pub fn acquire_collect(&self, now: Instant) -> Result<Option<Held>> {
+        if let CasScope::Machine(_) = self.bucket.cas_scope() {
+            return Ok(None);
+        }
+        let key = self.key(&collect_lease_key(&self.project))?;
+        loop {
+            let current = self.bucket.get(&key)?;
+            let parsed: Option<(BucketLease, String)> = match &current {
+                Some((b, etag)) => Some((serde_json::from_slice(b).map_err(|e| SyncError::Context(ContextError::Invalid(format!("lease `{key}`: {e}"))))?, etag.clone())),
+                None => None,
+            };
+            let (lease, condition) = BucketLease::acquire(parsed.as_ref().map(|(l, e)| (l, e.as_str())), &self.node, now)?;
+            let bytes = serde_json::to_vec_pretty(&lease).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            if let Put::Applied(etag) = self.bucket.put(&key, &bytes, condition)? {
+                return Ok(Some(Held { key, lease, etag }));
+            }
+        }
+    }
+
+    /// Release the bucket's collect lease this node holds.
+    pub fn release_collect(&self) -> Result<()> {
+        let key = self.key(&collect_lease_key(&self.project))?;
+        loop {
+            let Some((b, etag)) = self.bucket.get(&key)? else {
+                return Err(StoreError::LeaseNotHeld(format!("no lease `{key}` exists")).into());
+            };
+            let current: BucketLease = serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let (released, condition) = BucketLease::release(&current, &etag, &self.node)?;
+            let bytes = serde_json::to_vec_pretty(&released).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Renew the collect lease `held` at `now`; a lease another collect fenced past refuses.
+    fn renew_collect(&self, held: &Held, now: Instant) -> Result<()> {
+        loop {
+            let Some((b, etag)) = self.bucket.get(&held.key)? else {
+                return Err(StoreError::LeaseNotHeld(format!("no lease `{}` exists", held.key)).into());
+            };
+            let current: BucketLease = serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let (lease, condition) = BucketLease::renew(&current, &etag, &held.lease, now)?;
+            let bytes = serde_json::to_vec_pretty(&lease).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            if let Put::Applied(_) = self.bucket.put(&held.key, &bytes, condition)? {
+                return Ok(());
+            }
+        }
+    }
+
+    fn collect_under(&self, now: Instant, dry_run: bool, decls: &[TableDecl], lease: Option<&Held>) -> Result<CollectReport> {
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
         // A collect heals an absent copy of the read generation before it lists the generations,
         // so the healed copy protects what it lists (`store.push.generation-heal`).
@@ -140,7 +214,6 @@ impl Syncer {
         let mut g = Generations::default();
         for n in listed {
             let (m, bytes) = self.read_generation(n)?;
-            g.listed.extend(m.entries.iter().filter(|(k, _)| in_project(k)).map(|(k, e)| (k.clone(), e.clone())));
             if n > past {
                 g.protected.extend(m.entries.into_keys().filter(|k| in_project(k)));
                 continue;
@@ -165,10 +238,14 @@ impl Syncer {
         let reclaim_of = |m: &BucketManifest| -> Result<Reclaim> { if shared_prefix { Ok(Reclaim::default()) } else { self.reclaim(m, now, decls) } };
         let reclaim = reclaim_of(&current)?;
         let retained = |r: &Reclaim, k: &str| r.retained.iter().any(|p| k == p || k.starts_with(&format!("{p}/")));
+        // A key the manifest read before the listing names, whose object the listing lacks, is
+        // recorded so the bucket recovers from a listed key with no object (`store.collect.repair`).
+        let repair: BTreeSet<String> = current.entries.keys().filter(|k| in_project(k) && !withheld(k) && !listing.contains(*k)).cloned().collect();
         // The keys a commit over `m` records: an unlisted object a tombstone or a generation past
-        // the count names (`store.collect.unlisted`), and a listed object the chains reclaim
-        // (`store.collect.superseded`, `store.collect.folded-runs`). A retained generation listing
-        // a key delays its deletion, never its record (`store.collect.two-phase`).
+        // the count names (`store.collect.unlisted`), a listed object the chains reclaim
+        // (`store.collect.superseded`, `store.collect.folded-runs`), and a listed key with no
+        // object. A retained generation listing a key delays its deletion, never its record
+        // (`store.collect.two-phase`).
         let drops = |m: &BucketManifest, r: &Reclaim| -> BTreeSet<String> {
             if shared_prefix {
                 return BTreeSet::new();
@@ -176,41 +253,22 @@ impl Syncer {
             let standing = |k: &str| m.collected.get(k).is_some_and(|c| c.stands(now));
             let unlisted = m.tombstones.keys().filter(|k| keeps(k)).chain(g.evidence.iter().filter(|k| keeps(k))).filter(|k| !m.entries.contains_key(*k));
             let reclaimed = r.superseded.iter().chain(&r.folded).filter(|k| m.entries.contains_key(*k) && !withheld(k));
-            unlisted.chain(reclaimed).filter(|k| !standing(k) && !retained(r, k) && listing.contains(*k)).cloned().collect()
+            let mut out: BTreeSet<String> = unlisted.chain(reclaimed).filter(|k| !standing(k) && !retained(r, k) && listing.contains(*k)).cloned().collect();
+            out.extend(repair.iter().filter(|k| m.entries.contains_key(*k)).cloned());
+            out
         };
-        // A record stands while its object stays or the chain still supersedes or folds its key:
-        // each such record past half its age is stamped again (`store.collect.record-stands`).
-        let restamp = |m: &BucketManifest, r: &Reclaim| -> BTreeSet<String> {
-            let reclaimed = |k: &str| r.snapshot_dirs.iter().chain(&r.run_dirs).any(|d| k.starts_with(d.as_str()));
-            m.collected
-                .iter()
-                .filter(|(k, c)| c.stands(now) && !retained(r, k) && (listing.contains(*k) || reclaimed(k)) && c.collected_at.secs_until(now) >= TOMBSTONE_TTL_SECS / 2)
-                .map(|(k, _)| k.clone())
-                .collect()
-        };
-        // A recorded key a retained snapshot names again is listed again while its object stays
-        // (`store.collect.retained-relisted`).
-        let relist = |m: &BucketManifest, r: &Reclaim| -> Result<BTreeMap<String, Entry>> {
-            let mut out = BTreeMap::new();
-            for k in m.collected.keys().filter(|k| retained(r, k) && listing.contains(*k) && !m.entries.contains_key(*k)) {
-                let entry = match g.listed.get(k) {
-                    Some(e) => e.clone(),
-                    None => {
-                        let Some((bytes, _)) = self.bucket.get(&self.key(k)?)? else { continue };
-                        Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() }
-                    }
-                };
-                out.insert(k.clone(), entry);
-            }
-            Ok(out)
+        // A record stands while its object stays: each past half its age is stamped again
+        // (`store.collect.record-stands`).
+        let restamp = |m: &BucketManifest| -> BTreeSet<String> {
+            m.collected.iter().filter(|(k, c)| c.stands(now) && listing.contains(*k) && c.collected_at.secs_until(now) >= TOMBSTONE_TTL_SECS / 2).map(|(k, _)| k.clone()).collect()
         };
 
         let (committed, dropped) = if dry_run {
             let dropped = drops(&current, &reclaim);
-            let (restamped, relisted) = (restamp(&current, &reclaim), relist(&current, &reclaim)?);
-            let changes = !dropped.is_empty() || !reclaim.marks.is_empty() || !restamped.is_empty() || !relisted.is_empty();
+            let restamped = restamp(&current);
+            let changes = !dropped.is_empty() || !reclaim.marks.is_empty() || !restamped.is_empty();
             let next = if changes { floor + 1 } else { floor };
-            (with_collected(&current, &dropped, &restamped, &relisted, &self.node, now, next), dropped)
+            (with_collected(&current, &dropped, &restamped, &BTreeMap::new(), &self.node, now, next), dropped)
         } else {
             self.commit_collected(now, &|m: &BucketManifest| -> Result<Commit> {
                 let fresh;
@@ -218,7 +276,7 @@ impl Syncer {
                     fresh = reclaim_of(m)?;
                     &fresh
                 };
-                Ok(Commit { dropped: drops(m, r), restamped: restamp(m, r), relisted: relist(m, r)?, marks: r.marks.clone() })
+                Ok(Commit { dropped: drops(m, r), restamped: restamp(m), marks: r.marks.clone() })
             })?
         };
         let next = committed.generation.max(floor);
@@ -230,14 +288,17 @@ impl Syncer {
                 later.extend(self.read_generation(n)?.0.entries.into_keys());
             }
         }
-        let doomed: BTreeSet<String> = committed
+        let recorded: BTreeSet<String> = committed
             .collected
             .iter()
-            .filter(|(k, c)| c.stands(now) && in_project(k) && !withheld(k) && !committed.entries.contains_key(*k) && !retained(&reclaim, k) && deletable(k, commits) && !later.contains(*k))
+            .filter(|(k, c)| c.stands(now) && in_project(k) && !withheld(k) && !committed.entries.contains_key(*k) && deletable(k, commits) && !later.contains(*k))
             .map(|(k, _)| k.clone())
             .collect();
+        // A recorded key a retained snapshot names keeps its object, reported: a refusal, not a
+        // loss (`store.collect.retained-kept`).
+        let (referenced, doomed): (BTreeSet<String>, BTreeSet<String>) = recorded.into_iter().partition(|k| retained(&reclaim, k));
         let pruned: Vec<(u64, u64)> = if shared_prefix { Vec::new() } else { g.pruned.iter().copied().filter(|(n, _)| commits || *n < past).collect() };
-        let mut report = CollectReport { dry_run, generation: next, shared_prefix, undeclared: reclaim.undeclared.clone(), ..CollectReport::default() };
+        let mut report = CollectReport { dry_run, generation: next, shared_prefix, undeclared: reclaim.undeclared.clone(), referenced: referenced.into_iter().collect(), ..CollectReport::default() };
         for k in &dropped {
             class(&mut report, &reclaim, k).dropped += 1;
         }
@@ -254,6 +315,10 @@ impl Syncer {
         report.generations.bytes = pruned.iter().map(|(_, b)| b).sum();
         if dry_run {
             return Ok(report);
+        }
+        // The lease still stands before any object goes (`store.collect.serialized`).
+        if let Some(held) = lease {
+            self.renew_collect(held, now)?;
         }
         let keys: Vec<String> = doomed.into_iter().map(|k| self.key(&k)).collect::<Result<_>>()?;
         each(self.config.transfers(), &keys, |k| Ok(self.bucket.delete(k)?))?;
@@ -276,13 +341,19 @@ impl Syncer {
                 continue;
             };
             let window = decl.retain_runs_secs().map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
-            let Some(chain) = self.bucket_chain(m, &table, now.minus_secs(window))? else { continue };
+            let Some(mut chain) = self.bucket_chain(m, &table, now.minus_secs(window))? else { continue };
+            chain.held = self.bucket_holds(m, &format!("{project}tables/{table}"), now)?;
+            for pair in chain.snapshots.windows(2) {
+                if pair[0].created_at <= chain.cutoff && !chain.held.contains(&pair[1].snapshot_id.to_string()) {
+                    chain.folded_out.extend(pair[0].includes_runs.iter().cloned());
+                }
+            }
             chains.insert(table, chain);
         }
         let mut markers: Vec<(String, String, String)> = Vec::new();
         for chain in chains.values() {
             let table_key = format!("{}tables/{}", project, chain.table);
-            let held = self.bucket_holds(m, &table_key, now)?;
+            let held = &chain.held;
             // What the retained snapshots name stays: the current one, each superseded inside the
             // window, and each held (`store.fold.reference-retention`).
             let mut retained: Vec<SnapshotManifest> = chain.snapshots.first().cloned().into_iter().collect();
@@ -317,10 +388,7 @@ impl Syncer {
                 }
                 out.snapshot_dirs.insert(dir);
             }
-            for (run, at) in &chain.folded_at {
-                if *at > chain.cutoff {
-                    continue;
-                }
+            for run in &chain.folded_out {
                 let dir = format!("{table_key}/{RUNS_DIR}/{run}/");
                 for k in m.entries.range(dir.clone()..).map(|(k, _)| k).take_while(|k| k.starts_with(&dir)) {
                     if is_group_marker(k) {
@@ -332,18 +400,40 @@ impl Syncer {
                 out.run_dirs.insert(dir);
             }
         }
-        // A run's `_group.json` goes once every member table holding a copy of the run folds it
-        // in a snapshot older than that member's window (`store.collect.folded-runs`).
+        // A run's `_group.json` goes once every member table holding a copy of the run folds it out
+        // as the root table does (`store.collect.group-window`).
         for (table, run, key) in markers {
             let Some((bytes, _)) = self.bucket.get(&self.key(&key)?)? else { continue };
             let members: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("`{key}`: group marker: {e}")))?;
             let needed = members.iter().filter(|member| **member != table).any(|member| {
                 let copy = format!("{project}tables/{member}/{RUNS_DIR}/{run}/{MANIFEST_FILE}");
-                m.entries.contains_key(&copy) && chains.get(member).is_none_or(|c| c.folded_at.get(&run).is_none_or(|at| *at > c.cutoff))
+                m.entries.contains_key(&copy) && chains.get(member).is_none_or(|c| !c.folded_out.contains(&run))
             });
             if !needed {
                 out.folded.insert(key);
             }
+        }
+        Ok(out)
+    }
+
+    /// Each of `keys`, a run file `remote` does not list, whose run a bucket chain snapshot folds
+    /// while superseding a snapshot whose `_collected.json` `remote` lists: a collect reclaimed
+    /// it, and no merge lists it again (`store.merge.collected-directory`). Only a table holding
+    /// such a key has its chain read.
+    pub(crate) fn folded_out_keys<'k>(&self, remote: &BucketManifest, keys: impl IntoIterator<Item = &'k String>) -> Result<BTreeSet<String>> {
+        let candidates: Vec<&String> = keys.into_iter().filter(|k| k.contains(&format!("/{RUNS_DIR}/")) && !remote.entries.contains_key(*k)).collect();
+        let mut out = BTreeSet::new();
+        let tables: BTreeSet<String> = candidates.iter().filter_map(|k| project_table(&self.project, k)).collect();
+        for table in tables {
+            let Some(chain) = self.bucket_chain(remote, &table, Instant::from_unix_nanos(0).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)? else { continue };
+            let table_key = format!("{}/tables/{table}", self.project);
+            let mut dirs: Vec<String> = Vec::new();
+            for pair in chain.snapshots.windows(2) {
+                if remote.entries.contains_key(&format!("{table_key}/{SNAPSHOTS_DIR}/{}/{COLLECTED_FILE}", pair[1].snapshot_id)) {
+                    dirs.extend(pair[0].includes_runs.iter().map(|run| format!("{table_key}/{RUNS_DIR}/{run}/")));
+                }
+            }
+            out.extend(candidates.iter().filter(|k| dirs.iter().any(|d| k.starts_with(d.as_str()))).map(|k| (*k).clone()));
         }
         Ok(out)
     }
@@ -367,13 +457,7 @@ impl Syncer {
             at = s.parent.as_ref().map(ToString::to_string);
             snapshots.push(s);
         }
-        let mut folded_at = BTreeMap::new();
-        for s in &snapshots {
-            for run in &s.includes_runs {
-                folded_at.insert(run.clone(), s.created_at);
-            }
-        }
-        Ok(Some(Chain { table: table.to_string(), cutoff, snapshots, folded_at }))
+        Ok(Some(Chain { table: table.to_string(), cutoff, snapshots, folded_out: BTreeSet::new(), held: BTreeSet::new() }))
     }
 
     /// Snapshot `id`'s manifest under `table_key`, when the bucket manifest lists it.
@@ -413,6 +497,51 @@ impl Syncer {
             || m.collected.range(dir.clone()..).take_while(|(k, _)| k.starts_with(&dir)).any(|(_, c)| c.stands(now)))
     }
 
+    /// The bucket's copy of the hold on build `build_id` of `model`, when the manifest lists one.
+    fn bucket_hold(&self, m: &BucketManifest, model: &str, build_id: &str) -> Result<Option<HoldRecord>> {
+        let key = format!("{}/tables/{model}/holds/{build_id}.json", self.project);
+        if !m.entries.contains_key(&key) {
+            return Ok(None);
+        }
+        let Some((bytes, _)) = self.bucket.get(&self.key(&key)?)? else { return Ok(None) };
+        let clear = self.store.open_metadata_bytes(Path::new(&key), &bytes)?;
+        Ok(Some(serde_json::from_slice(&clear).map_err(|e| StoreError::StoreManifestUnreadable(format!("`{key}`: {e}")))?))
+    }
+
+    /// Whether the bucket holds an unexpired hold on build `build_id` of `model` at `now`.
+    pub fn bucket_hold_active(&self, model: &str, build_id: &str, now: Instant) -> Result<bool> {
+        let (m, _) = self.manifest()?;
+        Ok(self.bucket_hold(&m, model, build_id)?.is_some_and(|h| h.active(now)))
+    }
+
+    /// Write this store's hold on build `build_id` of `model` to the bucket, merged into the
+    /// bucket's copy, and commit a manifest listing it (`run.model.hold-bucket-first`).
+    pub fn push_hold(&self, model: &str, build_id: &str, now: Instant) -> Result<()> {
+        let key = format!("{}/tables/{model}/holds/{build_id}.json", self.project);
+        let path = self.store.root().join(&key[self.project.len() + 1..]);
+        let local = std::fs::read(&path).map_err(|e| SyncError::Context(ContextError::Io { path: path.clone(), source: e }))?;
+        self.put_merged(&key, &local)?;
+        let Some((bytes, _)) = self.bucket.get(&self.key(&key)?)? else {
+            return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` left the bucket while the hold committed")).into());
+        };
+        let entry = Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() };
+        for _ in 0..PUSH_ROUND_CEILING {
+            let (remote, etag, floor) = self.read_for_commit()?;
+            if remote.entries.get(&key) == Some(&entry) {
+                return Ok(());
+            }
+            let mut committed = remote.clone();
+            committed.entries.insert(key.clone(), entry.clone());
+            committed.generation = floor + 1;
+            committed.committed_at = Some(now);
+            committed.committed_by = Some(self.node.clone());
+            if self.put_commit(&committed, etag)? {
+                return Ok(());
+            }
+        }
+        Err(StoreError::SyncManifestRebaseExhausted(format!("the hold `{key}` lost {PUSH_ROUND_CEILING} races; run the hold again")).into())
+    }
+
     /// Commit the bucket manifest with what `commit` names for the manifest as read: each
     /// dropped key recorded as collected, each pending record stamped again and each new
     /// `_collected.json` listed, uploaded first; no commit when it names nothing. Returns the
@@ -422,7 +551,7 @@ impl Syncer {
         for _ in 0..PUSH_ROUND_CEILING {
             let (remote, etag, floor) = self.read_for_commit()?;
             let c = commit(&remote)?;
-            if c.dropped.is_empty() && c.restamped.is_empty() && c.relisted.is_empty() && c.marks.is_empty() {
+            if c.dropped.is_empty() && c.restamped.is_empty() && c.marks.is_empty() {
                 return Ok((remote, c.dropped));
             }
             // A marker reaches the bucket before a manifest lists it (`store.push.transfer-width`).
@@ -442,9 +571,7 @@ impl Syncer {
                 uploaded.insert(key.clone(), Entry { sha256: sha256_hex(&held), size: held.len() as u64, owner: String::new() });
             }
             let marks: BTreeMap<String, Entry> = c.marks.keys().filter_map(|k| uploaded.get(k).map(|e| (k.clone(), e.clone()))).collect();
-            let mut listed = marks;
-            listed.extend(c.relisted.clone());
-            let committed = with_collected(&remote, &c.dropped, &c.restamped, &listed, &self.node, now, floor + 1);
+            let committed = with_collected(&remote, &c.dropped, &c.restamped, &marks, &self.node, now, floor + 1);
             if self.put_commit(&committed, etag)? {
                 return Ok((committed, c.dropped));
             }
@@ -477,7 +604,6 @@ fn class<'r>(report: &'r mut CollectReport, reclaim: &Reclaim, k: &str) -> &'r m
 struct Commit {
     dropped: BTreeSet<String>,
     restamped: BTreeSet<String>,
-    relisted: BTreeMap<String, Entry>,
     marks: BTreeMap<String, Vec<u8>>,
 }
 
@@ -519,7 +645,6 @@ fn with_collected(m: &BucketManifest, dropped: &BTreeSet<String>, restamped: &BT
         out.collected.insert(key.clone(), Collected { collected_at: now, collected_by: node.to_string() });
     }
     for (key, entry) in marks {
-        out.collected.remove(key);
         out.entries.insert(key.clone(), entry.clone());
     }
     out.generation = next;

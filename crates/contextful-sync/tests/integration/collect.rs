@@ -88,7 +88,7 @@ fn a_tombstoned_object_no_retained_generation_lists_is_deleted() {
 }
 
 /// `--dry-run` reports per class the keys collect records and the objects and bytes it deletes, and writes nothing.
-// spec: store.collect.command@2a7db1dd
+// spec: store.collect.command@7a6ebce7
 #[test]
 fn a_dry_run_reports_each_class_and_writes_nothing() {
     let (_dir, b, a, _saved) = tombstoned(Some(1));
@@ -422,26 +422,19 @@ fn a_superseded_snapshot_keeps_its_manifest_and_a_returning_node_reads_each_run_
     assert_eq!(ids(table_rows(&cold.syncer.store, &TableDecl::named("filings"), &["id"]).unwrap()), [1, 11, 12, 13]);
 }
 
-/// Collect deletes a run directory, `_manifest.json` included, once a chain snapshot created `retain_runs` ago names
-/// it; a run its owner lists again reads once.
-// spec: store.collect.folded-runs@697af6bf
+/// Collect deletes a run directory, `_manifest.json` included, once the bucket chain snapshot folding the run
+/// supersedes a snapshot collect reclaims; a run the root snapshot folds stays.
+// spec: store.collect.folded-runs@96c39058
 #[test]
-fn a_folded_run_leaves_whole_and_a_relisted_copy_reads_once() {
+fn a_folded_run_leaves_whole_once_its_folding_snapshot_supersedes_a_reclaimed_one() {
     let h = history(1);
-    let saved = tempfile::tempdir().unwrap();
-    copy_dir(&h.writer.root().join("tables/filings/data/runs/run-1"), saved.path());
     let report = h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
     assert!(report.folded_runs.dropped > 0 && report.folded_runs.deleted > 0, "{report:?}");
     let m = manifest(h.b.as_ref());
-    assert!(listed(&m, "research/tables/filings/data/runs/run-1/").is_empty());
+    assert!(!listed(&m, "research/tables/filings/data/runs/run-1/").is_empty(), "the root snapshot's run stays");
     assert!(listed(&m, "research/tables/filings/data/runs/run-2/").is_empty());
     assert!(!listed(&m, "research/tables/filings/data/runs/run-3/").is_empty(), "a run folded inside the window stays");
-    assert!(h.b.list("team/research/tables/filings/data/runs/run-1/").unwrap().is_empty());
-
-    // Past the record's age the owner's restored copy is listed again, and every reader folds it.
-    copy_dir(saved.path(), &h.writer.root().join("tables/filings/data/runs/run-1"));
-    h.writer.syncer.push(at("2030-03-01T00:00:00Z")).unwrap();
-    assert!(!listed(&manifest(h.b.as_ref()), "research/tables/filings/data/runs/run-1/").is_empty(), "the owner lists run-1 again");
+    assert!(h.b.list("team/research/tables/filings/data/runs/run-2/").unwrap().is_empty());
     let cold = node("reader", h.b.clone(), "");
     cold.syncer.pull(&PullScope::default()).unwrap();
     assert_eq!(ids(table_rows(&cold.syncer.store, &TableDecl::named("filings"), &["id"]).unwrap()), [1, 11, 12, 13]);
@@ -468,7 +461,7 @@ fn a_table_scoped_pull_after_a_collect_takes_run_states_and_no_collected_key() {
     let cold = node("reader", h.b.clone(), "");
     cold.syncer.pull(&PullScope { tables: vec![contextful_core::grant::TablePattern::parse("filings").unwrap()], ..PullScope::default() }).unwrap();
     assert!(cold.root().join("nodes/ingest-b/run-state.json").exists());
-    assert!(!cold.root().join("tables/filings/data/runs/run-1").exists());
+    assert!(!cold.root().join("tables/filings/data/runs/run-2").exists());
     assert!(m.collected.keys().all(|k| !cold.root().join(k.strip_prefix("research/").unwrap()).exists()), "no collected key arrives");
     assert_eq!(ids(table_rows(&cold.syncer.store, &TableDecl::named("filings"), &["id"]).unwrap()), [1, 11, 12, 13]);
 }
@@ -476,7 +469,7 @@ fn a_table_scoped_pull_after_a_collect_takes_run_states_and_no_collected_key() {
 /// A collect records a listed key first and deletes its object only once no retained generation lists it, and a
 /// record stands, stamped again, while its object stays.
 // spec: store.collect.two-phase@d57fe42e
-// spec: store.collect.record-stands@ddfd5950
+// spec: store.collect.record-stands@235241cd
 #[test]
 fn a_collect_unlists_first_and_deletes_once_no_retained_generation_lists_the_key() {
     let h = history(3);
@@ -515,20 +508,24 @@ fn a_run_only_an_unpublished_snapshot_folds_stays() {
     a.syncer.config.retain_generations = NonZeroU64::new(1);
     let away = node("ingest-x", b.clone(), "");
     let decl = keyed("filings");
-    a.land("run-1", json!([{"id": 1}]), T0);
+    a.land("run-1", json!([{"id": 1, "v": 1}]), T0);
     fold_at(&a, &decl, "2030-01-01T01:00:00Z");
-    a.syncer.push(at("2030-01-01T01:00:00Z")).unwrap();
-    // X folds its own run off the bucket's chain; its push uploads the snapshot and keeps the pointer local.
+    a.land("run-2", json!([{"id": 1, "v": 2}]), "2030-01-01T02:00:00Z");
+    fold_at(&a, &decl, "2030-01-01T03:00:00Z");
+    a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
+    // X folds its own runs off the bucket's chain, twice; its push uploads the snapshots and keeps the pointer local.
     away.land("run-x", json!([{"id": 7}]), T0);
-    fold_at(&away, &decl, "2030-01-01T02:00:00Z");
-    assert!(away.syncer.push(at("2030-01-01T02:00:00Z")).unwrap().pointers.is_empty());
-    let run_x = "research/tables/filings/data/runs/run-x/";
-    assert!(!listed(&manifest(b.as_ref()), run_x).is_empty());
+    fold_at(&away, &decl, "2030-01-01T04:00:00Z");
+    away.land("run-y", json!([{"id": 8}]), T0);
+    fold_at(&away, &decl, "2030-01-01T05:00:00Z");
+    assert!(away.syncer.push(at("2030-01-01T05:00:00Z")).unwrap().pointers.is_empty());
+    let run_y = "research/tables/filings/data/runs/run-y/";
+    assert!(!listed(&manifest(b.as_ref()), run_y).is_empty());
     let report = a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
     assert!(report.folded_runs.dropped > 0, "{report:?}");
     let m = manifest(b.as_ref());
-    assert!(listed(&m, "research/tables/filings/data/runs/run-1/").is_empty(), "the chain's folded run leaves");
-    assert!(!listed(&m, run_x).is_empty(), "the unpublished snapshot's run stays");
+    assert!(listed(&m, "research/tables/filings/data/runs/run-2/").is_empty(), "the chain's folded run leaves");
+    assert!(!listed(&m, run_y).is_empty(), "the unpublished snapshot's run stays");
 }
 
 /// Local retention on a synced store writes no `_collected.json` and its push lists none, so another node pulling
@@ -606,9 +603,9 @@ fn a_shared_prefix_unlists_nothing() {
     assert_eq!(manifest(h.b.as_ref()).entries, before.entries);
 }
 
-/// A folded run's `_group.json` stays while a member table holding a copy of the run folds it in no snapshot older
-/// than its window, and leaves once every member does.
-// spec: store.collect.group-window@aed6aa20
+/// A folded run's `_group.json` stays while a member table holding a copy of the run has not folded it out as the
+/// root table did, and leaves once every member has.
+// spec: store.collect.group-window@32b5cbcc
 #[test]
 fn a_group_marker_waits_for_every_member_fold_to_age_past_the_window() {
     let dir = tempfile::tempdir().unwrap();
@@ -617,10 +614,18 @@ fn a_group_marker_waits_for_every_member_fold_to_age_past_the_window() {
     a.syncer.config.retain_generations = NonZeroU64::new(1);
     let writer = node("ingest-b", b.clone(), "");
     let (filings, pages) = (keyed("filings"), keyed("pages"));
+    // Each table's first fold, so the folds of run-1 supersede a snapshot collect can reclaim.
+    writer.land_into("filings", "run-0", json!([{"id": 0}]), T0);
+    writer.land_into("pages", "run-0", json!([{"id": 0}]), T0);
+    writer.syncer.push(at(T0)).unwrap();
+    a.syncer.pull(&PullScope::default()).unwrap();
+    fold_at(&a, &filings, "2030-01-01T00:30:00Z");
+    fold_at(&a, &pages, "2030-01-01T00:30:00Z");
+    a.syncer.push(at("2030-01-01T00:30:00Z")).unwrap();
     writer.land_into("filings", "run-1", json!([{"id": 1}]), T0);
     writer.land_into("pages", "run-1", json!([{"id": 1}]), T0);
     std::fs::write(writer.root().join("tables/filings/data/runs/run-1/ingest-b/_group.json"), br#"["filings","pages"]"#).unwrap();
-    writer.syncer.push(at(T0)).unwrap();
+    writer.syncer.push(at("2030-01-01T00:40:00Z")).unwrap();
     a.syncer.pull(&PullScope::default()).unwrap();
     fold_at(&a, &filings, "2030-01-01T01:00:00Z");
     a.syncer.push(at("2030-01-01T01:00:00Z")).unwrap();
@@ -635,7 +640,7 @@ fn a_group_marker_waits_for_every_member_fold_to_age_past_the_window() {
     assert_eq!(listed(&m, "research/tables/filings/data/runs/run-1/"), [marker], "the rest of the root run leaves");
     a.syncer.collect_declared(at("2030-01-18T00:00:00Z"), false, &decls).unwrap();
     let m = manifest(b.as_ref());
-    assert!(!m.entries.contains_key(marker), "the marker leaves once every member's fold is a window old");
+    assert!(!m.entries.contains_key(marker), "the marker leaves once every member folded the run out");
     assert!(listed(&m, "research/tables/pages/data/runs/run-1/").is_empty());
 }
 
@@ -712,51 +717,94 @@ fn a_push_uploads_a_key_its_commit_lists_after_the_record_leaves() {
     }
 }
 
-/// A collect stamps again the record of a key the bucket chain still supersedes or folds after its object is gone,
-/// so a node holding a copy lists it again at no age.
-// spec: store.collect.record-stands@ddfd5950
+/// A record lapses once its object is gone, and a copy pushed later stays out structurally: a superseded part under
+/// a listed `_collected.json`, and a run the bucket chain folds out.
+// spec: store.merge.collected-directory@d7221403
 #[test]
-fn a_record_stands_while_the_chain_still_reclaims_its_key() {
+fn a_copy_pushed_after_its_record_lapses_stays_out() {
     let h = history(1);
-    let decls = std::slice::from_ref(&h.decl);
-    h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, decls).unwrap();
-    let run1: Vec<String> = manifest(h.b.as_ref()).collected.keys().filter(|k| k.starts_with("research/tables/filings/data/runs/run-1/")).cloned().collect();
-    assert!(!run1.is_empty());
-    assert!(run1.iter().all(|k| h.b.get(&format!("team/{k}")).unwrap().is_none()), "the objects are gone");
-    h.a.syncer.collect_declared(at("2030-01-30T00:00:00Z"), false, decls).unwrap();
+    let holder = node("holder", h.b.clone(), "");
+    holder.syncer.pull(&PullScope::default()).unwrap();
+    let f1 = format!("tables/filings/data/snapshots/{}/", h.snapshots[0]);
+    let parts: Vec<String> = std::fs::read_dir(holder.root().join(&f1)).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".parquet")).collect();
+    assert!(!parts.is_empty(), "the holder keeps copies of F1's parts");
+    h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
     let m = manifest(h.b.as_ref());
-    assert!(run1.iter().all(|k| m.collected[k].collected_at == at("2030-01-30T00:00:00Z")), "{:?}", m.collected);
-    // Past the first stamp's age, the writer's copy of run-1 stays unlisted.
-    h.writer.syncer.push(at("2030-02-15T00:00:00Z")).unwrap();
-    assert!(listed(&manifest(h.b.as_ref()), "research/tables/filings/data/runs/run-1/").is_empty());
+    assert!(listed(&m, "research/tables/filings/data/runs/run-2/").is_empty());
+    // Forty days on, the records have lapsed; the owner's copy of run-2 and the holder's parts push again.
+    h.a.syncer.collect_declared(at("2030-02-20T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
+    assert_eq!(manifest(h.b.as_ref()).collected.keys().filter(|k| k.contains("/runs/run-2/")).count(), 0, "the run's records lapsed");
+    assert!(h.writer.root().join("tables/filings/data/runs/run-2/ingest-b/_manifest.json").exists());
+    h.writer.syncer.push(at("2030-02-21T00:00:00Z")).unwrap();
+    holder.syncer.push(at("2030-02-21T00:00:00Z")).unwrap();
+    let m = manifest(h.b.as_ref());
+    assert!(listed(&m, "research/tables/filings/data/runs/run-2/").is_empty(), "the folded-out run stays unlisted");
+    for part in &parts {
+        assert!(!m.entries.contains_key(&format!("research/{f1}{part}")), "`{part}` stays unlisted");
+        assert!(h.b.get(&format!("team/research/{f1}{part}")).unwrap().is_none(), "`{part}` is not uploaded again");
+    }
 }
 
-/// A key a collect recorded that a hold reaching the bucket later retains is listed again and never deleted.
-// spec: store.collect.retained-relisted@608fea35
+/// A recorded key a retained snapshot names keeps its object at the delete step, reported, and stays unlisted: a
+/// refusal, not a loss.
+// spec: store.collect.retained-kept@c46c0379
 #[test]
-fn a_hold_arriving_after_a_collect_keeps_the_parts() {
+fn a_recorded_key_a_retained_snapshot_names_keeps_its_object() {
     let h = history(3);
     let decls = std::slice::from_ref(&h.decl);
     let f1 = format!("research/tables/filings/data/snapshots/{}/", h.snapshots[0]);
     let parts: Vec<String> = listed(&manifest(h.b.as_ref()), &f1).into_iter().filter(|k| k.ends_with(".parquet")).collect();
     assert!(!parts.is_empty());
-    // A holds F1 locally before the collect, and its push carries the hold after.
-    let hold = json!({"build_id": h.snapshots[0], "principal": "ops", "placed_at": "2030-01-10T12:00:00Z", "expires_at": "2030-02-20T00:00:00Z"});
-    std::fs::create_dir_all(h.a.root().join("tables/filings/holds")).unwrap();
-    std::fs::write(h.a.root().join(format!("tables/filings/holds/{}.json", h.snapshots[0])), hold.to_string()).unwrap();
-    let first = h.writer.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, decls).unwrap();
+    let first = h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, decls).unwrap();
     assert!(first.superseded.dropped > 0 && first.superseded.deleted == 0, "{first:?}");
-    h.a.syncer.push(at("2030-01-11T01:00:00Z")).unwrap();
+    // A hold reaches the bucket around the bucket-first rule, after the record.
+    let key = format!("research/tables/filings/holds/{}.json", h.snapshots[0]);
+    let hold = json!({"build_id": h.snapshots[0], "principal": "ops", "placed_at": "2030-01-11T01:00:00Z", "expires_at": "2030-02-20T00:00:00Z"}).to_string();
+    h.b.put(&format!("team/{key}"), hold.as_bytes(), contextful_core::store::object::Condition::None).unwrap();
+    let mut m = manifest(h.b.as_ref());
+    m.entries.insert(key, contextful_core::store::sync::Entry { sha256: contextful_core::run::journal::sha256_hex(hold.as_bytes()), size: hold.len() as u64, owner: String::new() });
+    h.b.put("team/manifest.json", &serde_json::to_vec(&m).unwrap(), contextful_core::store::object::Condition::None).unwrap();
     for i in 4..7 {
         h.writer.land(&format!("run-{i}"), json!([{"id": 20 + i}]), "2030-01-12T00:00:00Z");
         h.writer.syncer.push(at("2030-01-12T00:00:00Z")).unwrap();
     }
-    h.writer.syncer.collect_declared(at("2030-01-12T01:00:00Z"), false, decls).unwrap();
+    let last = h.a.syncer.collect_declared(at("2030-01-12T01:00:00Z"), false, decls).unwrap();
+    assert!(parts.iter().all(|k| last.referenced.contains(k)), "{last:?}");
     let m = manifest(h.b.as_ref());
     for k in &parts {
         assert!(h.b.get(&format!("team/{k}")).unwrap().is_some(), "`{k}` was deleted under a hold");
-        assert!(m.entries.contains_key(k) && !m.collected.contains_key(k), "`{k}` is listed again");
+        assert!(!m.entries.contains_key(k), "`{k}` stays unlisted");
     }
+}
+
+/// Collect serializes on the bucket's collect lease: a second collect refuses while one holds it.
+// spec: store.collect.serialized@fec89c2a
+#[test]
+fn a_second_collect_refuses_while_one_holds_the_lease() {
+    let h = history(1);
+    let held = h.a.syncer.acquire_collect(at("2030-01-11T00:00:00Z")).unwrap();
+    assert!(held.is_some(), "the bucket's conditional writes span clients");
+    let err = h.writer.syncer.collect_declared(at("2030-01-11T00:01:00Z"), false, std::slice::from_ref(&h.decl)).unwrap_err();
+    assert!(err.to_string().starts_with("LeaseHeld"), "{err}");
+    h.a.syncer.release_collect().unwrap();
+    let report = h.writer.syncer.collect_declared(at("2030-01-11T00:02:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
+    assert!(report.superseded.dropped > 0, "{report:?}");
+}
+
+/// A key the bucket manifest lists with no object behind it is recorded as collected, so every pull converges again.
+// spec: store.collect.repair@83c4eca3
+#[test]
+fn a_listed_key_with_no_object_is_recorded() {
+    let h = history(1);
+    let part = "research/tables/filings/data/runs/run-3/ingest-b/part-00000.parquet";
+    assert!(manifest(h.b.as_ref()).entries.contains_key(part));
+    h.b.delete(&format!("team/{part}")).unwrap();
+    assert!(node("before", h.b.clone(), "").syncer.pull(&PullScope::default()).is_err(), "a listed key without its object stops a pull");
+    let report = h.a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
+    assert!(report.unlisted.dropped > 0, "{report:?}");
+    let m = manifest(h.b.as_ref());
+    assert!(!m.entries.contains_key(part) && m.collected.contains_key(part));
+    node("after", h.b.clone(), "").syncer.pull(&PullScope::default()).unwrap();
 }
 
 /// A project named by several segments collects its tables as a one-segment project does.

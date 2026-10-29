@@ -532,6 +532,25 @@ fn a_manifest_carries_its_commit_stamp_and_a_legacy_one_reads_none() {
     assert_eq!(serde_json::from_str::<BucketManifest>(&text).unwrap(), stamped);
 }
 
+/// A merge keeps out each local key of a snapshot directory whose `_collected.json` the remote lists, whatever the
+/// records say, save the directory's `_manifest.json`, and passes a remote entry there through.
+#[test]
+fn a_merge_keeps_a_marked_snapshot_directorys_parts_out() {
+    let dir = "research/tables/filings/data/snapshots/snapshot-00000000000000000001";
+    let mut remote = BucketManifest::default();
+    remote.entries.insert(format!("{dir}/_collected.json"), entry("m", ""));
+    remote.entries.insert(format!("{dir}/_manifest.json"), entry("x", ""));
+    remote.entries.insert(format!("{dir}/part-00001.parquet"), entry("r", ""));
+    let mut local = BTreeMap::new();
+    local.insert(format!("{dir}/part-00000.parquet"), entry("p", ""));
+    local.insert(format!("{dir}/_manifest.json"), entry("x", ""));
+    local.insert("research/tables/filings/data/snapshots/snapshot-00000000000000000002/part-00000.parquet".to_string(), entry("q", ""));
+    let merged = merge(&remote, &local, "ingest-a", at("2030-03-01T00:00:00Z")).unwrap().manifest;
+    assert!(!merged.entries.contains_key(&format!("{dir}/part-00000.parquet")), "the reclaimed part stays out");
+    assert!(merged.entries.contains_key(&format!("{dir}/_manifest.json")) && merged.entries.contains_key(&format!("{dir}/part-00001.parquet")));
+    assert!(merged.entries.contains_key("research/tables/filings/data/snapshots/snapshot-00000000000000000002/part-00000.parquet"));
+}
+
 /// A pull refusing to replace a local branch names its identifier before the runs it lists.
 #[test]
 fn a_local_fold_refusal_leads_with_its_identifier() {

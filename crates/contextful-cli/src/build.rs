@@ -148,16 +148,39 @@ pub fn run(args: BuildArgs) -> Result<()> {
             };
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let at = now(&project.now)?;
-            // A synced store asks the bucket whether a collect took the build's parts, save for
-            // the renewal of an unexpired hold (`run.model.hold-collected`).
-            let renewing = contextful_context::build::holds(&store, &id)?.iter().any(|h| h.build_id == build_id && h.active(at));
-            if !renewing && crate::sync::bucket_collected_build(&l, &id, &build_id, at)? {
-                return Err(RunError::ModelBuildCollected(format!(
-                    "model `{id}` build `{build_id}`: the bucket records its parts as collected, so no hold can keep it readable"
-                ))
-                .into());
+            // A synced store decides against the bucket: a build its collect took refuses, a
+            // renewal included, and the bucket's copy of the hold names the receipt
+            // (`run.model.hold-collected`).
+            let synced = crate::sync::synced_syncer(&l)?;
+            let mut renewing = false;
+            if let Some(s) = &synced {
+                if s.build_collected(&id, &build_id, at)? {
+                    return Err(RunError::ModelBuildCollected(format!(
+                        "model `{id}` build `{build_id}`: the bucket records its parts as collected, so no hold can keep it readable"
+                    ))
+                    .into());
+                }
+                renewing = s.bucket_hold_active(&id, &build_id, at)?;
             }
+            let path = store.table_dir(&id)?.join("holds").join(format!("{build_id}.json"));
+            let prior = std::fs::read(&path).ok();
             let (receipt, record) = hold(&store, &id, &build_id, &principal, duration, at)?;
+            // A hold on a synced store reaches the bucket before it is reported, or is undone
+            // (`run.model.hold-bucket-first`).
+            let receipt = match &synced {
+                Some(s) => {
+                    if let Err(e) = s.push_hold(&id, &build_id, at) {
+                        match prior {
+                            Some(bytes) => std::fs::write(&path, bytes).with_context(|| format!("restoring `{}`", path.display()))?,
+                            None => std::fs::remove_file(&path).with_context(|| format!("removing `{}`", path.display()))?,
+                        }
+                        write_logs(&store, &id)?;
+                        return Err(e).context("the hold did not reach the bucket, so it is undone");
+                    }
+                    if renewing { Receipt::Renewed } else { Receipt::Held }
+                }
+                None => receipt,
+            };
             let word = match receipt {
                 Receipt::Held => "Held",
                 Receipt::Renewed => "Renewed",

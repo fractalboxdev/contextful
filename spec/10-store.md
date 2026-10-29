@@ -746,6 +746,8 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
   *A-store#bucket-index-commits*
 - `held-unreadable` — An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.
   *because corruption establishes no ownership and a replacement discards other nodes' entries*
+- `collected-directory` — A merge keeps out each key under a snapshot directory whose `_collected.json` the bucket lists, save its `_manifest.json`, and each run file {{store.collect.folded-runs}} reclaims, whatever any record says.
+  *because a lapsed record otherwise lets a node holding a copy list a reclaimed key again*
 - `collected` — A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.
   *A-store#bucket-collect*
 - `ownership` — A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.
