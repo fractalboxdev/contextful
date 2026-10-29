@@ -122,13 +122,13 @@ term-first-use = 0
 [ceiling.contract-words]
 assurance = 11011
 authority = 7716
-connector = 10126
+connector = 10181
 corpus = 5120
 disclosure = 5217
 read = 9538
 run = 20441
 store = 10128
-surface = 6309
+surface = 6349
 topology = 2641
 
 [ceiling.adr-words]

@@ -21,6 +21,17 @@ fn a_plan_is_named_by_the_sha256_of_its_bytes() {
     assert!(p.spec.journal, "pull journaling defaults on");
 }
 
+/// A plan's `[connector]` table declares the seconds its destination deduplicates a repeated
+/// idempotency key; an undeclared one declares no window.
+// spec: connector.declare-capability.dedup-window@b04e69cb
+#[test]
+fn a_plan_connector_declares_its_deduplication_window_and_defaults_to_none() {
+    let declared = PLAN.replace("command = ", "dedup_window_secs = 3600\ncommand = ");
+    assert_eq!(Plan::compile(declared.as_bytes()).unwrap().spec.connector.dedup_window_secs, Some(3600));
+    assert_eq!(Plan::compile(PLAN.as_bytes()).unwrap().spec.connector.dedup_window_secs, None);
+    assert!(Plan::compile(PLAN.replace("command = ", "dedup_window_secs = \"1h\"\ncommand = ").as_bytes()).is_err(), "a window is whole seconds");
+}
+
 /// A boolean removal assertion supplies no canonical prepared-recording admission.
 // spec: run.journal.redacting-source@cbe9a121
 #[test]

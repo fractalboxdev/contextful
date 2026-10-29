@@ -112,7 +112,8 @@ impl RowBody for DelegateBody {
         let input = serde_json::to_vec(&row.row).map_err(|e| permanent(e.to_string()))?;
         let mut attempt = 1u32;
         loop {
-            let recorded = calls.call(&label(attempt), &input, &mut |idempotency| self.request(row, &context, attempt, idempotency, &input))?;
+            // The call's guard records the window the binding declares (`surface.delegate.dedup-window`).
+            let recorded = calls.call_within(&label(attempt), &input, self.binding.dedup_window_secs, &mut |idempotency| self.request(row, &context, attempt, idempotency, &input))?;
             match Answer::decode(&recorded, &self.tables).map_err(|e| permanent(format!("the recorded answer of delegate `{name}` does not decode: {e}")))? {
                 Answer::Ok { rows } => return Ok(rows),
                 Answer::Permanent { reason } => return Err(permanent(format!("delegate `{name}` answered permanent: {}", reason.unwrap_or_default()))),

@@ -224,7 +224,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> Lowering<'_, '_, J, B> {
                 let request = PullRequest { step_label: label.to_string(), position: None, idempotency_key: key.idempotency_key() };
                 let declared = self.plan.schedule(&node.id).cloned();
                 let previous = declared.map(|s| self.x.swap_schedule(s));
-                let output = self.x.step(label, input, &mut |cancel| source.pull(&request, cancel));
+                let output = self.x.step_within(label, input, connector.dedup_window_secs, &mut |cancel| source.pull(&request, cancel));
                 if let Some(previous) = previous {
                     self.x.swap_schedule(previous);
                 }

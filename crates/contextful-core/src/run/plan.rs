@@ -25,6 +25,11 @@ pub struct ConnectorSpec {
     pub world: String,
     /// The argv serving one pull.
     pub command: Vec<String>,
+    /// The seconds the connector's destination deduplicates a repeated idempotency key; each
+    /// pull's callback guard records it, `None` recording `none`
+    /// (`connector.declare-capability.dedup-window`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dedup_window_secs: Option<u64>,
 }
 
 fn native() -> String {

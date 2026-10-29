@@ -23,6 +23,7 @@ struct Raw {
     build: Option<RawBuild>,
     #[serde(default)]
     capabilities: RawCapabilities,
+    dedup_window_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +83,9 @@ pub struct Manifest {
     pub require_wasm_pin: bool,
     pub build: Option<Build>,
     pub declared: Declared,
+    /// The seconds the connector's destination deduplicates a repeated idempotency key
+    /// (`connector.declare-capability.dedup-window`).
+    pub dedup_window_secs: Option<u64>,
 }
 
 fn rejected(key: impl std::fmt::Display, why: impl std::fmt::Display) -> ConnectorError {
@@ -124,6 +128,7 @@ impl Manifest {
             require_wasm_pin: raw.require_wasm_pin,
             build,
             declared: Declared { hosts, clock: caps.clock, scope_probe },
+            dedup_window_secs: raw.dedup_window_secs,
         })
     }
 

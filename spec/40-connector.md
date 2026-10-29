@@ -92,7 +92,7 @@ The outer source configuration follows {{run.declare.config-key}}.
 
 ## declare-capability
 
-Manifest-declared host access and the probe that checks a bound credential's granted scopes.
+Manifest-declared host access, the probe that checks a bound credential's granted scopes, and the window a connector's destination deduplicates a key for.
 
 - `declared-grant` — A manifest lists required outbound hosts and wall-clock access. The host decides the access grant at load. The connector requests no additional permission at run time and has no escalation path.
   *A-connector#host-access-quota*
@@ -108,6 +108,8 @@ Manifest-declared host access and the probe that checks a bound credential's gra
   *A-connector#host-access-quota*
 - `scope-unverified` — A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII, raises `ConnectorScopeUnverified`.
   *because cannot-verify is not verified*
+- `dedup-window` — A connector manifest or a plan's `[connector]` table declares an optional `dedup_window_secs`, the whole seconds its destination deduplicates a repeated idempotency key; each pull's guard records it under {{run.callback-guard.identity}}, `none` when absent.
+  *because only the connector's author knows how long its vendor holds a key*
 
 ```mermaid
 flowchart LR

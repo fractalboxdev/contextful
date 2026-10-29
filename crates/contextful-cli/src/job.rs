@@ -107,6 +107,7 @@ fn output_plan(job: &str, table: &str, driven: &StoreDriven) -> Result<Plan> {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 world: NATIVE_WORLD.to_string(),
                 command: vec![format!("builtin:{}", contextful_core::job::STORE_DRIVEN)],
+                dedup_window_secs: None,
             },
             cursor: CursorSpec { kind: Some(CursorKind::OpaqueToken.name().to_string()), field: None, ..CursorSpec::default() },
             retry: None,

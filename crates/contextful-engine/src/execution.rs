@@ -391,16 +391,17 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.current_attempt().map(|_| ())
     }
 
-    /// Admit one bounded callback under its owner, attempt, parents and fences, naming the
-    /// journal entry a step's requests carry the idempotency key of; a publication names its
-    /// attempt's commit. No declaration carries a destination's deduplication window, so every
+    /// Admit one bounded publication callback under its owner, attempt, parents and fences,
+    /// naming its attempt's commit; a publication declares no deduplication window, so its
     /// guard records `none` (`run.callback-guard.identity`).
     pub(crate) fn guard(&self, parent: Option<&crate::drive::BodyOwner>, publication: bool) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
         let entry = EntryKey::new(&self.execution_id, "publication", self.run_id.as_bytes());
-        self.guard_effect(parent, publication, &entry)
+        self.guard_effect(parent, publication, &entry, None)
     }
 
-    fn guard_effect(&self, parent: Option<&crate::drive::BodyOwner>, publication: bool, entry: &EntryKey) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
+    /// Admit one step's callback, naming the journal entry whose idempotency key its requests
+    /// carry and the window its destination declares.
+    fn guard_effect(&self, parent: Option<&crate::drive::BodyOwner>, publication: bool, entry: &EntryKey, window_secs: Option<u64>) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
         use contextful_core::coordinate::{ExecutionAdmission, ExecutionExpectation};
         let mut owners = vec![ExecutionExpectation { scope: self.scope.clone(), execution_id: self.execution_id.clone(), pins: self.pins.clone(), run_id: self.run_id.clone() }];
         owners.extend(self.parents.clone());
@@ -410,7 +411,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             owners.extend(parent.parents.clone());
             leases.extend(parent.fence.clone());
         }
-        self.engine.catalog.execution_guard(&ExecutionAdmission::new(owners, leases, publication)?.with_effect(entry.clone(), None))
+        self.engine.catalog.execution_guard(&ExecutionAdmission::new(owners, leases, publication)?.with_effect(entry.clone(), window_secs))
     }
 
     pub(crate) fn inherit(&mut self, parent: &Self) {
@@ -599,10 +600,20 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         journal_it: &dyn Fn(&[u8]) -> bool,
         effect: &mut StepEffect<'_>,
     ) -> Result<Resolved, Close> {
-        self.step_keyed_with_parent(key, journal_it, effect, None)
+        self.step_keyed_with_parent(key, journal_it, effect, None, None)
     }
 
-    pub(crate) fn step_keyed_with_parent(&self, key: &EntryKey, journal_it: &dyn Fn(&[u8]) -> bool, effect: &mut StepEffect<'_>, parent: Option<&crate::drive::BodyOwner>) -> Result<Resolved, Close> {
+    /// Resolve step `label` over `input` as [`ExecutionPort::step`] does, its guard recording
+    /// `window_secs`, the window the step's destination declares.
+    pub(crate) fn step_within(&mut self, label: &str, input: &[u8], window_secs: Option<u64>, effect: &mut StepEffect<'_>) -> Result<Vec<u8>, EngineError> {
+        self.live(&format!("step `{label}`"))?;
+        let key = EntryKey::new(&self.execution_id, label, input);
+        Ok(self.step_keyed_with_parent(&key, &|_| true, effect, None, window_secs)?.bytes().to_vec())
+    }
+
+    /// Resolve one step as [`Execution::step_keyed`] does, admitted under `parent`, its guard
+    /// recording `window_secs`, the window the step's destination declares.
+    pub(crate) fn step_keyed_with_parent(&self, key: &EntryKey, journal_it: &dyn Fn(&[u8]) -> bool, effect: &mut StepEffect<'_>, parent: Option<&crate::drive::BodyOwner>, window_secs: Option<u64>) -> Result<Resolved, Close> {
         let engine = self.engine;
         let holder_live = |run: &str| engine.holder_live(run);
         let token = &self.token;
@@ -618,7 +629,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         loop {
             self.assert_current()?;
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
-            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard_effect(parent, false, key)?; effect(token) }) {
+            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard_effect(parent, false, key, window_secs)?; effect(token) }) {
                 Ok(r) => {
                     self.emit(Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
                     return Ok(r);
@@ -813,9 +824,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> ExecutionPort for Execution<
     }
 
     fn step(&mut self, label: &str, input: &[u8], effect: &mut StepEffect<'_>) -> Result<Vec<u8>, EngineError> {
-        self.live(&format!("step `{label}`"))?;
-        let key = EntryKey::new(&self.execution_id, label, input);
-        Ok(self.step_keyed(&key, &|_| true, effect)?.bytes().to_vec())
+        self.step_within(label, input, None, effect)
     }
 
     fn r#unsafe(&mut self, label: &str, effect: &mut StepEffect<'_>) -> Result<Vec<u8>, EngineError> {

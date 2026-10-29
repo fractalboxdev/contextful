@@ -288,3 +288,25 @@ fn job_validate_refuses_a_public_host_an_over_ceiling_timeout_and_an_unbound_del
     let unbound = manifest("http://127.0.0.1:1/stage", "30s", 1).replace("delegate = \"stages\"", "delegate = \"other\"");
     assert!(validate(&unbound).contains("JobDelegateUnbound"));
 }
+
+/// A binding declaring its deduplication window validates and fires as one declaring none, and a
+/// window spelled other than whole seconds refuses naming the key.
+#[test]
+fn a_binding_declaring_its_deduplication_window_validates_and_fires() {
+    let windowed = |url: &str, window: &str| manifest(url, "30s", 3).replace("version = \"stage-v7\"", &format!("version = \"stage-v7\"\ndedup_window_secs = {window}"));
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), windowed("http://127.0.0.1:1/stage", "3600")).unwrap();
+    assert!(text(&cf(dir.path(), &["job", "validate"], &[])).contains("stage-screen: valid (store-driven, body delegate:stages"));
+    std::fs::write(dir.path().join("contextful.toml"), windowed("http://127.0.0.1:1/stage", "\"1h\"")).unwrap();
+    assert!(text(&cf(dir.path(), &["job", "validate"], &[])).contains("`dedup_window_secs`"));
+
+    let delegate = Server::start(|request| {
+        let envelope = verified(request);
+        signed(&rows_for(&envelope), &envelope)
+    });
+    let (dir, public, token) = project(&windowed(&delegate.url(ROUTE), "3600"));
+    let p = dir.path();
+    ok(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z"));
+    assert_eq!(delegate.received(ROUTE).len(), 2, "one request per item");
+    assert_eq!(select(p, "SELECT entity_id, pass_id FROM screen_result ORDER BY pass_id"), [["e-1", "p-1"], ["e-2", "p-2"]]);
+}

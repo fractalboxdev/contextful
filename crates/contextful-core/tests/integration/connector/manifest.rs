@@ -73,6 +73,16 @@ fn a_manifest_with_no_capabilities_declares_nothing() {
     assert!(m.declared.scope_probe.is_none() && m.build.is_none());
 }
 
+/// A manifest's `dedup_window_secs` declares the seconds its destination deduplicates a repeated
+/// idempotency key; a manifest declaring none carries no window.
+// spec: connector.declare-capability.dedup-window@b04e69cb
+#[test]
+fn a_manifest_declares_its_deduplication_window_and_defaults_to_none() {
+    assert_eq!(Manifest::parse(&format!("dedup_window_secs = 600\n{ADOPTED}")).unwrap().dedup_window_secs, Some(600));
+    assert_eq!(Manifest::parse(ADOPTED).unwrap().dedup_window_secs, None);
+    assert!(rejected(&format!("dedup_window_secs = -1\n{ADOPTED}")).contains("dedup_window_secs"));
+}
+
 #[test]
 fn an_unread_key_at_any_depth_refuses_naming_the_key() {
     let nested = rejected("[capabilities.scope_probe]\nendpoint = \"https://a.example/id\"\nscopes_header = \"X-S\"\nburst = 4\n");

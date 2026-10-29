@@ -741,6 +741,7 @@ pub(crate) fn built_in(spec: &PipelineSpec) -> ConnectorSpec {
         version: env!("CARGO_PKG_VERSION").to_string(),
         world: NATIVE_WORLD.to_string(),
         command: vec![format!("builtin:{}", spec.source.name)],
+        dedup_window_secs: None,
     }
 }
 

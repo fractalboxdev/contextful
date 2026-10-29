@@ -10430,7 +10430,7 @@
       "statement": "A store-driven job defaults to batch execution; `isolated_items` explicitly declares logical and entity key columns, an entity namespace and a positive failed-attempt budget.",
       "why": "because independent completion changes aggregate failure and retry semantics",
       "file": "spec/30-run.md",
-      "line": 225
+      "line": 223
     },
     {
       "id": "run.items.identity",
@@ -10441,7 +10441,7 @@
       "statement": "An isolated item's logical identity derives from its declared key and namespace; its execution identity binds that identity, job, input row, policy and pinned plan, independently of input order.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 227
+      "line": 225
     },
     {
       "id": "run.items.completion",
@@ -10452,7 +10452,7 @@
       "statement": "Each successful item lands independently with a durable completion receipt that a later fire under its execution identity skips; once every item holds a terminal receipt, the aggregate releases its pinned input owner, so later fires read fresh input.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 228,
+      "line": 226,
       "scenarios": [
         "WHEN one input fails permanently among three isolated items, THEN both healthy items land and reordering a later fire repeats neither completed body."
       ]
@@ -10466,7 +10466,7 @@
       "statement": "Individual outcomes distinguish success, failure, parked, deferred and waiting; the aggregate succeeds only when every required item succeeds.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 229
+      "line": 227
     },
     {
       "id": "run.items.retry-budget",
@@ -10477,7 +10477,7 @@
       "statement": "Failed attempts consume the declared item budget across fires; permanent failures terminate immediately, parked entries consume no failed attempt, and terminal failure receipts prevent further body entry.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 230
+      "line": 228
     },
     {
       "id": "run.items.replay",
@@ -10488,7 +10488,7 @@
       "statement": "A nonterminal failed or parked item retains its execution owner and recorded paid calls; its next admitted attempt reuses that journal.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 232
+      "line": 230
     },
     {
       "id": "run.items.entity-admission",
@@ -10499,7 +10499,7 @@
       "statement": "Admission holds one leased entity namespace and key across triggers, job names and execution versions; unrelated entities occupy at most the job's `max_in_flight` body slots.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 233,
+      "line": 231,
       "scenarios": [
         "WHEN three store-driven jobs declare one entity namespace and key column and two fire in one window, THEN at most one item per key enters a body and the later job's item reports deferred."
       ]
@@ -10513,7 +10513,7 @@
       "statement": "Recorded effects and output publication check their execution owner and entity fence immediately before dispatch; a superseded owner sends no provider request and publishes no output.",
       "why": "because an owner that resumes after transfer cannot authorize another effect",
       "file": "spec/30-run.md",
-      "line": 234,
+      "line": 232,
       "scenarios": [
         "WHEN a newer owner takes an entity's lease while an earlier job's item resumes, THEN that resume sends no delegate request and publishes nothing."
       ]
@@ -10527,7 +10527,7 @@
       "statement": "Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its {{type:contextful_core::surface::delegate::Answer}} recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/30-run.md",
-      "line": 236
+      "line": 234
     },
     {
       "id": "run.items.outcome-record",
@@ -10538,7 +10538,7 @@
       "statement": "Each terminal item appends one row to the reserved `_items` table once its receipt commits: job, logical key, entity namespace and key, attempt count, terminal outcome, reason, attempt run id, execution id and end instant.",
       "why": "A-run#terminal-item-s",
       "file": "spec/30-run.md",
-      "line": 238,
+      "line": 236,
       "scenarios": [
         "WHEN one of three items fails transiently under a one-attempt budget, THEN `_items` holds two `succeeded` rows and one `exhausted` row naming the job and entity key, and a later fire adds none."
       ]
@@ -10552,7 +10552,7 @@
       "statement": "An item row's outcome is an {{type:contextful_core::run::drive::ItemTerminal}}, `exhausted` on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.",
       "why": "A-run#terminal-item-s",
       "file": "spec/30-run.md",
-      "line": 240
+      "line": 238
     },
     {
       "id": "run.items.waiting-item",
@@ -10563,7 +10563,7 @@
       "statement": "Under `isolated_items`, every retry wait closes its item {{run.retry.waiting-state}} and frees its slot; once the pass ends, an item whose instant falls within {{run.retry.retry-after}}'s ceiling re-enters in the same fire.",
       "why": "because one throttled item sleeping in a slot delays every sibling queued behind it",
       "file": "spec/30-run.md",
-      "line": 242
+      "line": 240
     },
     {
       "id": "run.items.served-key",
@@ -10574,7 +10574,7 @@
       "statement": "An item row carries its logical and entity keys as the job's input relation served them, so a key its source masks or classes lands under that rule, never in the clear.",
       "why": "A-run#terminal-item-s",
       "file": "spec/30-run.md",
-      "line": 244,
+      "line": 242,
       "scenarios": [
         "WHEN the input table hashes the entity key column, THEN every `_items` row carries the 32-char digest and no clear key."
       ]
@@ -10588,7 +10588,7 @@
       "statement": "A cursor declares a {{type:contextful_core::run::advance::CursorKind}}. An undeclared kind resolves to `opaque-token`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 261
+      "line": 259
     },
     {
       "id": "run.advance.concurrency-by-kind",
@@ -10599,7 +10599,7 @@
       "statement": "A `monotonic` position is concurrent-safe and commits the highest value observed. A position of another {{type:contextful_core::run::advance::CursorKind}} moves only under a single-writer lease. Last-write-wins governs no cursor.",
       "why": "because two writers resolving one continuation token by recency skip or duplicate records with no count showing it",
       "file": "spec/30-run.md",
-      "line": 262
+      "line": 260
     },
     {
       "id": "run.advance.commit-with-rows",
@@ -10610,7 +10610,7 @@
       "statement": "A table's run commit marker, {{store.lay-out.run-manifest}}, publishes its rows and new position together. The catalog cursor caches the newest committed marker.",
       "why": "because rows and position committed in two stores leave a crash window that re-lands a batch",
       "file": "spec/30-run.md",
-      "line": 264
+      "line": 262
     },
     {
       "id": "run.advance.cursor-bytes",
@@ -10621,7 +10621,7 @@
       "statement": "A position is opaque bytes the connector owns, one per table, and its kind a manifest fact; the connector moves it only by committing through the engine, a recorded step that replays as a resolved read.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 266
+      "line": 264
     },
     {
       "id": "run.advance.inclusive-boundary",
@@ -10632,7 +10632,7 @@
       "statement": "A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary instant's rows on every poll, idempotently on a keyed table and accumulating in a keyless table's union view.",
       "why": "because a clock coarser than the row grain otherwise drops a sibling sharing the boundary value, permanently and invisibly",
       "file": "spec/30-run.md",
-      "line": 267
+      "line": 265
     },
     {
       "id": "run.advance.watermark-shape",
@@ -10643,7 +10643,7 @@
       "statement": "A watermark position serializes as `{\"field\": \"<name>\", \"at\": <value>}`. `field` names the column whose values determine the watermark.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 269
+      "line": 267
     },
     {
       "id": "run.advance.field-rename",
@@ -10654,7 +10654,7 @@
       "statement": "Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/30-run.md",
-      "line": 270
+      "line": 268
     },
     {
       "id": "run.advance.frontier",
@@ -10665,7 +10665,7 @@
       "statement": "The frontier counts every fetched row, landed or not. A committed position advances or stays unchanged. An empty or older window does not rewind the position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 272
+      "line": 270
     },
     {
       "id": "run.advance.walk-position",
@@ -10676,7 +10676,7 @@
       "statement": "Under a `monotonic` cursor, a pull reporting more and carrying a position other than the one it asked continues its walk: the next pull asks that position and admits rows from the walk's floor, and the run commits the frontier.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/30-run.md",
-      "line": 273,
+      "line": 271,
       "scenarios": [
         "WHEN a `monotonic` walk's pull returns no rows, the position it asked and more, THEN the run ends and commits its frontier."
       ]
@@ -10690,7 +10690,7 @@
       "statement": "A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/30-run.md",
-      "line": 275
+      "line": 273
     },
     {
       "id": "run.advance.allowed-lateness",
@@ -10701,7 +10701,7 @@
       "statement": "A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus that window, so a row arriving that late still lands.",
       "why": "because lateness belongs to the source feeding a table, and a position records only where the frontier stands",
       "file": "spec/30-run.md",
-      "line": 277
+      "line": 275
     },
     {
       "id": "run.advance.turning-incremental-on",
@@ -10712,7 +10712,7 @@
       "statement": "Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 279
+      "line": 277
     },
     {
       "id": "run.advance.skip-unchanged",
@@ -10723,7 +10723,7 @@
       "statement": "A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 280
+      "line": 278
     },
     {
       "id": "run.advance.snapshot-completion",
@@ -10734,7 +10734,7 @@
       "statement": "A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.",
       "why": "A-store#empty-complete-snapshot",
       "file": "spec/30-run.md",
-      "line": 281
+      "line": 279
     },
     {
       "id": "run.advance.zero-row-commit",
@@ -10745,7 +10745,7 @@
       "statement": "A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.",
       "why": "A-store#empty-complete-snapshot",
       "file": "spec/30-run.md",
-      "line": 283,
+      "line": 281,
       "scenarios": [
         "WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows."
       ]
@@ -10759,7 +10759,7 @@
       "statement": "An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.",
       "why": "A-run#awakeable-resumes-credentialed",
       "file": "spec/30-run.md",
-      "line": 295
+      "line": 293
     },
     {
       "id": "run.suspend.resume-is-a-step-output",
@@ -10770,7 +10770,7 @@
       "statement": "The journal records a resume payload as the awaited step's output under key `sha256(\"awakeable:\" + token)`, so a resolution repeating the identical payload returns it, and a run that resumes then crashes reads it back without suspending again.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 297
+      "line": 295
     },
     {
       "id": "run.suspend.deadline",
@@ -10781,7 +10781,7 @@
       "statement": "A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock, and a suspension past its deadline at an injected instant stays `timed_out` under any later one.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 298
+      "line": 296
     },
     {
       "id": "run.suspend.conflicting-resolution",
@@ -10792,7 +10792,7 @@
       "statement": "A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 299
+      "line": 297
     },
     {
       "id": "run.suspend.expired-token",
@@ -10803,7 +10803,7 @@
       "statement": "Resolving a token past its deadline raises `AwakeableTimedOut`.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 301
+      "line": 299
     },
     {
       "id": "run.suspend.unknown-token",
@@ -10814,7 +10814,7 @@
       "statement": "A token with no row raises `AwakeableUnknown` and allocates no state.",
       "why": "P2",
       "file": "spec/30-run.md",
-      "line": 303
+      "line": 301
     },
     {
       "id": "run.suspend.resume-route",
@@ -10825,7 +10825,7 @@
       "statement": "`POST /awake/:token` on the served face answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming.",
       "why": "A-run#awakeable-resumes-credentialed",
       "file": "spec/30-run.md",
-      "line": 305
+      "line": 303
     },
     {
       "id": "run.suspend.resume-authenticates",
@@ -10836,7 +10836,7 @@
       "statement": "The resume route admits the request's credential before reading the registry, answering `401` without one, and passes the credential's verified `on_behalf_of` as the caller subject.",
       "why": "A-run#awakeable-resumes-credentialed",
       "file": "spec/30-run.md",
-      "line": 307
+      "line": 305
     },
     {
       "id": "run.suspend.caller-binding",
@@ -10847,7 +10847,7 @@
       "statement": "An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.",
       "why": "because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder",
       "file": "spec/30-run.md",
-      "line": 309
+      "line": 307
     },
     {
       "id": "run.suspend.postgres-reconciliation",
@@ -10858,7 +10858,7 @@
       "statement": "A PostgreSQL callback row interrupted after its resume value commits recovers its resolved payload from that journal value; a conflicting resolution follows {{run.suspend.conflicting-resolution}}.",
       "why": "because a separately committed callback row cannot overwrite the journal value that already determines replay",
       "file": "spec/30-run.md",
-      "line": 311
+      "line": 309
     },
     {
       "id": "run.suspend.survives-restart",
@@ -10869,7 +10869,7 @@
       "statement": "A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 313
+      "line": 311
     },
     {
       "id": "run.suspend.row-parks",
@@ -10880,7 +10880,7 @@
       "statement": "A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 314
+      "line": 312
     },
     {
       "id": "run.suspend.recorded-timeout",
@@ -10891,7 +10891,7 @@
       "statement": "A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.",
       "why": "because a body branching on the clock rather than on a recorded value replays differently after a crash",
       "file": "spec/30-run.md",
-      "line": 315
+      "line": 313
     },
     {
       "id": "run.retry.failure-taxonomy",
@@ -10902,7 +10902,7 @@
       "statement": "One tagged failure type, {{type:contextful_core::run::failure::FailureTag}}, crosses every port. A caller branches on the tag, never on a message.",
       "why": "P2",
       "file": "spec/30-run.md",
-      "line": 322
+      "line": 320
     },
     {
       "id": "run.retry.schedule",
@@ -10913,7 +10913,7 @@
       "statement": "A schedule attaches to a step and carries a fixed or exponential backoff with base and factor, a total attempt count including the first, a per-delay clamp, a jitter ceiling and `retry_on`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 324
+      "line": 322
     },
     {
       "id": "run.retry.default-policy",
@@ -10924,7 +10924,7 @@
       "statement": "The default schedule is exponential from a 100 ms base with factor 2, to 5 attempts in total, each delay clamped at 30 s, plus seeded jitter below 250 ms.",
       "why": "because zero jitter synchronizes every run that hit one shared throttle",
       "file": "spec/30-run.md",
-      "line": 325
+      "line": 323
     },
     {
       "id": "run.retry.single-attempt",
@@ -10935,7 +10935,7 @@
       "statement": "A schedule of 1 attempts is the no-retry schedule.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 327
+      "line": 325
     },
     {
       "id": "run.retry.retryable-classes",
@@ -10946,7 +10946,7 @@
       "statement": "`Transient` and `RateLimited` retry; every other tag stands as the step's answer whatever budget remains. `retry_on` narrows that pair.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 328
+      "line": 326
     },
     {
       "id": "run.retry.unretryable-tag",
@@ -10957,7 +10957,7 @@
       "statement": "A `retry_on` naming any tag outside `Transient` and `RateLimited` raises `RunRetryTagUnretryable` at plan compile.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 330
+      "line": 328
     },
     {
       "id": "run.retry.step-failed",
@@ -10968,7 +10968,7 @@
       "statement": "A non-retryable failure, or a step exhausting its schedule, raises `StepFailed` carrying the step label and the underlying tag.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 332
+      "line": 330
     },
     {
       "id": "run.retry.deterministic-verdict",
@@ -10979,7 +10979,7 @@
       "statement": "A refusal whose check is pure over static input is terminal and consumes no attempt budget.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 334
+      "line": 332
     },
     {
       "id": "run.retry.retry-after",
@@ -10990,7 +10990,7 @@
       "statement": "A server-supplied `Retry-After` supersedes the computed delay; a remaining wait up to 300 s sleeps in process, and a longer one closes the attempt `RateLimited` under {{run.retry.waiting-state}} instead of sleeping.",
       "why": "because an unclamped upstream delay holds a run slot for as long as the vendor asks",
       "file": "spec/30-run.md",
-      "line": 336
+      "line": 334
     },
     {
       "id": "run.retry.not-before",
@@ -11001,7 +11001,7 @@
       "statement": "Before any wait, a retrying step records its next-attempt instant and attempt count on its journal row, so a restart, a container replacement included, resumes the remaining budget and wait.",
       "why": "because a wait held only in memory restarts on every replacement and calls the vendor early",
       "file": "spec/30-run.md",
-      "line": 338
+      "line": 336
     },
     {
       "id": "run.retry.waiting-state",
@@ -11012,7 +11012,7 @@
       "statement": "An attempt closed on its next-attempt instant reports `waiting` with that instant on its run row, counts as neither refused nor failed, and keeps its owner; only exhausting the schedule's attempts fails the step.",
       "why": "because a vendor's requested pause is not evidence the work is wrong",
       "file": "spec/30-run.md",
-      "line": 340
+      "line": 338
     },
     {
       "id": "run.retry.resume-at",
@@ -11023,7 +11023,7 @@
       "statement": "Until a step's stored instant passes, an attempt reaching it, a crash mid-sleep included, waits only the remaining time without invoking the effect; the first attempt once it passes re-enters under its work key, pins and attempt count.",
       "why": "because resuming under another key or a fresh budget repeats paid work or retries without bound",
       "file": "spec/30-run.md",
-      "line": 342
+      "line": 340
     },
     {
       "id": "run.retry.wake",
@@ -11034,7 +11034,7 @@
       "statement": "A waiting attempt records its instant on its owner; the scheduler fires that owner's unit at the first beat at or after it, ahead of the unit's regular `schedule` fire, and the next attempt's claim clears it.",
       "why": "because a resume gated on the regular cadence adds up to a full interval to every rate-limited wait",
       "file": "spec/30-run.md",
-      "line": 344
+      "line": 342
     },
     {
       "id": "run.retry.no-double-spend",
@@ -11045,7 +11045,7 @@
       "statement": "A resumed attempt replays every recorded step, so it reserves no meter permit and issues no call an earlier attempt already recorded.",
       "why": "because each resume reserving afresh spends a budget once per wait",
       "file": "spec/30-run.md",
-      "line": 346
+      "line": 344
     },
     {
       "id": "run.retry.one-layer",
@@ -11056,7 +11056,7 @@
       "statement": "The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire return their failure to it, an HTTP `Retry-After`, throttled mint or limiter denial as `RateLimited` carrying its wait under {{run.retry.not-before}}.",
       "why": "because nested retry layers multiply attempts and amplify a vendor outage",
       "file": "spec/30-run.md",
-      "line": 348
+      "line": 346
     },
     {
       "id": "run.retry.decision-is-pure",
@@ -11067,7 +11067,7 @@
       "statement": "The retry decision is a pure function of the completed one-based attempt and classified failure. Jitter derives from an injected seed. The runner owns the sleep and attempt counter.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 350
+      "line": 348
     },
     {
       "id": "run.retry.partial-failure",
@@ -11078,7 +11078,7 @@
       "statement": "A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run `partial_failure`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 351
+      "line": 349
     },
     {
       "id": "run.retry.no-compensation",
@@ -11089,7 +11089,7 @@
       "statement": "The engine offers no compensation combinator; undoing a partial effect is an author-written recorded step, replayed like any other.",
       "why": "because compensation depends on each vendor's undo semantics, which the engine cannot know",
       "file": "spec/30-run.md",
-      "line": 352
+      "line": 350
     },
     {
       "id": "run.retry.pressure-is-local",
@@ -11100,7 +11100,7 @@
       "statement": "Rate-limit pressure against one source paces only that source's runs.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 354
+      "line": 352
     },
     {
       "id": "run.retry.bound-hit-is-transient",
@@ -11111,7 +11111,7 @@
       "statement": "A connector striking {{connector.package.linear-memory}} or {{connector.package.call-deadline}} fails the attempt `Transient`, the failure naming the bound it struck.",
       "why": "A-run#bound-hit-rides",
       "file": "spec/30-run.md",
-      "line": 355
+      "line": 353
     },
     {
       "id": "run.retry.bound-hit-recorded",
@@ -11122,7 +11122,7 @@
       "statement": "The run record lists every bound hit with its step label, attempt and bound, a hit a later attempt recovered from included.",
       "why": "A-run#bound-hit-rides",
       "file": "spec/30-run.md",
-      "line": 357
+      "line": 355
     },
     {
       "id": "run.own.execution-owner",
@@ -11133,7 +11133,7 @@
       "statement": "One durable execution owner exists per scope; a table or chunk owner holds the connector identity with its component world, the pipeline `content_hash` and the input hash.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 364
+      "line": 362
     },
     {
       "id": "run.own.host-scope",
@@ -11144,7 +11144,7 @@
       "statement": "The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host supplies.",
       "why": "A-run#host-registered-derive, A-run#host-opens-execution",
       "file": "spec/30-run.md",
-      "line": 365
+      "line": 363
     },
     {
       "id": "run.own.execution-id-keys-the-journal",
@@ -11155,7 +11155,7 @@
       "statement": "Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 367
+      "line": 365
     },
     {
       "id": "run.own.retirement",
@@ -11166,7 +11166,7 @@
       "statement": "Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 368
+      "line": 366
     },
     {
       "id": "run.own.marker-reconciles",
@@ -11177,7 +11177,7 @@
       "statement": "At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.",
       "why": "because a crash between marker and catalog otherwise replays a recorded pull into rows already committed",
       "file": "spec/30-run.md",
-      "line": 369
+      "line": 367
     },
     {
       "id": "run.own.pinned-plan-changed",
@@ -11188,7 +11188,7 @@
       "statement": "While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/30-run.md",
-      "line": 371,
+      "line": 369,
       "scenarios": [
         "WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`."
       ]
@@ -11202,7 +11202,7 @@
       "statement": "Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or table owner, a chunk rewind those its window covers. The {{run.own.pinned-plan-changed}} refusal names these recoveries with the pending execution id, and no other.",
       "why": "because an operator acts on the refusal's text, and a recovery no verb provides leaves the scope refusing every fire",
       "file": "spec/30-run.md",
-      "line": 373
+      "line": 371
     },
     {
       "id": "run.own.scope-independence",
@@ -11213,7 +11213,7 @@
       "statement": "A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 375
+      "line": 373
     },
     {
       "id": "run.own.unclosed-execution",
@@ -11224,7 +11224,7 @@
       "statement": "An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 376,
+      "line": 374,
       "scenarios": [
         "WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects."
       ]
@@ -11238,7 +11238,7 @@
       "statement": "An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.",
       "why": "because two live handles on one owner share its journal, and either one retiring it strands the other",
       "file": "spec/30-run.md",
-      "line": 378,
+      "line": 376,
       "scenarios": [
         "WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner."
       ]
@@ -11252,7 +11252,7 @@
       "statement": "`success`, a failure that wrote no batch, and replay-stable failures under {{run.own.staged-bytes}}, {{run.land.late-type}}, or {{run.own.source-stage-schema}} release the owner; every other status holds it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 380
+      "line": 378
     },
     {
       "id": "run.own.admission-pin",
@@ -11263,7 +11263,7 @@
       "statement": "A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/30-run.md",
-      "line": 381
+      "line": 379
     },
     {
       "id": "run.own.body-implementation",
@@ -11274,7 +11274,7 @@
       "statement": "Store-driven owner pins include the host-verified digest of its executing binary and concrete registered body type; configuration selects a body name and supplies no implementation identity.",
       "why": "A-run#host-registered-derive, A-run#registered-bodies-pin",
       "file": "spec/30-run.md",
-      "line": 388,
+      "line": 386,
       "group": "body pins"
     },
     {
@@ -11286,7 +11286,7 @@
       "statement": "Registration declares prompt/template, public provider/model configuration and policy identities affecting execution; owner pins carry their digests independently of structural input and output declarations.",
       "why": "A-run#host-registered-derive, A-run#registered-bodies-pin",
       "file": "spec/30-run.md",
-      "line": 390,
+      "line": 388,
       "group": "body pins"
     },
     {
@@ -11298,7 +11298,7 @@
       "statement": "Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; a registration declaring no dependency receives the host implementation pin alone, and unavailable, changed or absent pins follow {{run.own.pinned-plan-changed}}.",
       "why": "because an unversioned record cannot establish which executable produced its paid calls",
       "file": "spec/30-run.md",
-      "line": 392,
+      "line": 390,
       "group": "body pins"
     },
     {
@@ -11310,7 +11310,7 @@
       "statement": "A fresh execution under changed implementation or dependencies receives a distinct plan identity and preserves earlier run records; pending work requires its recorded host build and registered dependencies.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 394,
+      "line": 392,
       "group": "body pins"
     },
     {
@@ -11322,7 +11322,7 @@
       "statement": "Semantic provider configuration contains public endpoint, model and generation parameters; credential-bearing endpoints refuse registration, credentials enter neither exported diagnostics nor recorded pins, and credential rotation alone changes no semantic identity.",
       "why": "because credential custody and executable semantics are independent identities",
       "file": "spec/30-run.md",
-      "line": 395,
+      "line": 393,
       "group": "body pins"
     },
     {
@@ -11334,7 +11334,7 @@
       "statement": "Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.",
       "why": "A-authority#body-projection",
       "file": "spec/30-run.md",
-      "line": 397,
+      "line": 395,
       "group": "body pins"
     },
     {
@@ -11346,7 +11346,7 @@
       "statement": "`contextful run rewind <execution-id> --reason <text>` retires the pending host or table owner holding that execution and leaves the scope's committed position alone, so the scope's next fire claims a fresh execution.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 404,
+      "line": 402,
       "group": "operator retirement",
       "scenarios": [
         "WHEN job `score`'s pending owner pins `plan-a`, a fire asking `plan-b` refuses, and an operator rewinds that execution, THEN the next fire claims a fresh execution under `plan-b` and completes."
@@ -11361,7 +11361,7 @@
       "statement": "A retirement under {{run.own.rewind}} or {{run.own.apply-retires-superseded}} writes one `canceled` run row under the scope carrying the retired execution id, its pinned plan reference and the reason, started at the owner's open.",
       "why": "because a row started at the retirement reads as the job's latest start and postpones its next due fire",
       "file": "spec/30-run.md",
-      "line": 406,
+      "line": 404,
       "group": "operator retirement"
     },
     {
@@ -11373,7 +11373,7 @@
       "statement": "A rewind naming an execution no pending host or table owner holds raises `ExecutionRewindNotPending`.",
       "why": "because a completed or retired execution holds nothing to release, and a chunk owner retires through its window's rewind",
       "file": "spec/30-run.md",
-      "line": 408,
+      "line": 406,
       "group": "operator retirement"
     },
     {
@@ -11385,7 +11385,7 @@
       "statement": "If no attempt or refused open requested another plan reference, rewinding the owner raises `ExecutionRewindPlanCurrent`. The operator may override this refusal with `--force`.",
       "why": "because such an owner resumes on its next fire, and retiring it discards its recorded work",
       "file": "spec/30-run.md",
-      "line": 410,
+      "line": 408,
       "group": "operator retirement"
     },
     {
@@ -11397,7 +11397,7 @@
       "statement": "Retiring an owner with an attempt on an unexpired {{run.record.owner-lease}}, a `waiting` attempt, or an awakeable pending before its deadline raises `ExecutionRewindUnsafe` naming it; `--force` overrides none.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 412,
+      "line": 410,
       "group": "operator retirement"
     },
     {
@@ -11409,7 +11409,7 @@
       "statement": "A claimed `pipeline apply` retires a build or sweepless store-driven job's pending owner when the applied snapshot produces no matching declared plan reference: a verified body's `input` identity, otherwise its plan reference.",
       "why": "A-run#host-registered-derive, A-run#superseded-owner-retires",
       "file": "spec/30-run.md",
-      "line": 414,
+      "line": 412,
       "group": "operator retirement",
       "scenarios": [
         "WHEN applied v2 changes the model a build job targets while its pending owner pins v1's plan reference, THEN the apply retires that owner and the job's next fire completes."
@@ -11424,7 +11424,7 @@
       "statement": "An applied retirement meeting {{run.own.rewind-unsafe}} leaves the owner pending and the snapshot claimed, and the apply names the execution and {{run.own.rewind}} on standard error.",
       "why": "A-run#host-registered-derive, A-run#superseded-owner-retires",
       "file": "spec/30-run.md",
-      "line": 416,
+      "line": 414,
       "group": "operator retirement"
     },
     {
@@ -11436,7 +11436,7 @@
       "statement": "The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.",
       "why": "because holding every batch until the commit sizes a run's memory by the sum of its pulls",
       "file": "spec/30-run.md",
-      "line": 423,
+      "line": 421,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three."
@@ -11451,7 +11451,7 @@
       "statement": "One run produces one atomic commit per table, plus one per {{run.own.checkpoint-commit}}; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step or commit.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 425,
+      "line": 423,
       "group": "staging and checkpoints"
     },
     {
@@ -11463,7 +11463,7 @@
       "statement": "A stage carrying the parts a run staged since its last commit past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored cursor.",
       "why": "because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely",
       "file": "spec/30-run.md",
-      "line": 426,
+      "line": 424,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN each of three pulls of a replacing table stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution."
@@ -11478,7 +11478,7 @@
       "statement": "When the parts a run of a position-addressed source staged since its last commit reach 512 MiB, the run commits them with the position after its last staged pull before staging more rows, then keeps pulling under the same execution.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 428,
+      "line": 426,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN each of sixteen pulls stages a 128 MiB part, THEN one fire commits four times, four parts each, carrying the positions `p4`, `p8`, `p12` and `p16`."
@@ -11493,7 +11493,7 @@
       "statement": "Under a `monotonic` cursor, a checkpoint commits only before a pull whose every clock passes the run's frontier, so no commit's position splits the rows of one instant.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 430,
+      "line": 428,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN five pages of clocks `1 1`, `1`, `2`, `2` and `3` each stage a 512 MiB part, THEN the run commits at positions 1, 2 and 3, and no instant's rows span two commits."
@@ -11508,7 +11508,7 @@
       "statement": "A checkpoint caches its position and marker in the catalog cursor while the owner stays pending, and collects the journal's recorded pulls, so a resumption pulls afresh from that position.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 432,
+      "line": 430,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run commits checkpoints at `p4` and `p8` and dies pulling `p9`, THEN the next fire pulls from `p8` and lands every later row once."
@@ -11523,7 +11523,7 @@
       "statement": "A run's first commit lands under its run id and each later one under `<run id>.<n>`, `n` its zero-padded six-digit ordinal, so every commit names its own parts.",
       "why": "because the store holds one manifest per run id, and a later commit naming an earlier one's directory finds it committed",
       "file": "spec/30-run.md",
-      "line": 434,
+      "line": 432,
       "group": "staging and checkpoints"
     },
     {
@@ -11535,7 +11535,7 @@
       "statement": "A checkpoint whose next `<run id>.<n>` passes {{store.lay-out.run-id-shape}} raises `RunCheckpointIdTooLong` before it commits; the run commits nothing and retires its owner.",
       "why": "because a run committing its first checkpoint and then failing on the next one's run id leaves a partial window published",
       "file": "spec/30-run.md",
-      "line": 436,
+      "line": 434,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run id of 122 chars stages sixteen 128 MiB parts, THEN the run fails with `RunCheckpointIdTooLong` and commits nothing."
@@ -11550,7 +11550,7 @@
       "statement": "A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint commit carried, including one whose cursor update then fails.",
       "why": "because the checkpoints stay committed, and a failed row counting no rows hides rows every read returns",
       "file": "spec/30-run.md",
-      "line": 438,
+      "line": 436,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run commits checkpoints at `p4` and `p8` and its tenth pull fails, THEN its `failed` row counts eight rows."
@@ -11565,7 +11565,7 @@
       "statement": "A source is position-addressed when each pull's position names a watermark, page token or stable offset. A {{connector.source.http-url-walk}}, a replacing table, a body's prepared landing, and a seeding or receiving scope commit once.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 440,
+      "line": 438,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN an appending table's next-URL walk dies on its third page and the listing gains a first row, THEN the next fire lands each listed row once."
@@ -11580,7 +11580,7 @@
       "statement": "A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.",
       "why": "because otherwise rows no commit publishes fix a column's type in the table's schema",
       "file": "spec/30-run.md",
-      "line": 442,
+      "line": 440,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`."
@@ -11595,7 +11595,7 @@
       "statement": "A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.",
       "why": "because a recorded source batch that fails the same schema check on replay prevents a repaired source from being fetched",
       "file": "spec/30-run.md",
-      "line": 444,
+      "line": 442,
       "group": "staging and checkpoints"
     },
     {
@@ -11607,7 +11607,7 @@
       "statement": "A staged part carries no `_commit_seq`; the commit assigns it under {{store.reserve.commit-order}} and writes it into each part it names, so a run committing between a stage and that commit takes the lower value.",
       "why": "because a value fixed at the stage orders a run by its first pull, and the readable runs then hold no prefix of the sequence",
       "file": "spec/30-run.md",
-      "line": 446,
+      "line": 444,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2."
@@ -11622,7 +11622,7 @@
       "statement": "A staged part carries no `_ingested_at`; the commit writes its commit instant into each part it names, so every row of a run carries the instant its marker carries.",
       "why": "because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key",
       "file": "spec/30-run.md",
-      "line": 448,
+      "line": 446,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05."
@@ -11637,7 +11637,7 @@
       "statement": "A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.",
       "why": "because a run id names one attempt, so no later commit names a failed run's staged parts",
       "file": "spec/30-run.md",
-      "line": 450,
+      "line": 448,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run stages its first page and its second pull fails, THEN its run directory holds no staged part."
@@ -11652,7 +11652,7 @@
       "statement": "The catalog stores each stop request on the run row as requested-at instant, scope and optional reason, a newer request overwriting an older mark. The catalog is the only stop-request channel.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 495
+      "line": 493
     },
     {
       "id": "run.cancel.two-grains",
@@ -11663,7 +11663,7 @@
       "statement": "A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 496
+      "line": 494
     },
     {
       "id": "run.cancel.host-grain",
@@ -11674,7 +11674,7 @@
       "statement": "A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 497
+      "line": 495
     },
     {
       "id": "run.cancel.one-token",
@@ -11685,7 +11685,7 @@
       "statement": "Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait and a subprocess wait. A meter reservation holds no wait of its own, under {{connector.meter.acquire-call}}.",
       "why": "because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled",
       "file": "spec/30-run.md",
-      "line": 498
+      "line": 496
     },
     {
       "id": "run.cancel.poll-interval",
@@ -11696,7 +11696,7 @@
       "statement": "The engine updates the token from one catalog read before the run's first await, then every 500 ms. Each await evaluates cancellation before work.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 500
+      "line": 498
     },
     {
       "id": "run.cancel.engine-keeper",
@@ -11707,7 +11707,7 @@
       "statement": "One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.",
       "why": "A-run#unclosed-execution-recovers",
       "file": "spec/30-run.md",
-      "line": 501,
+      "line": 499,
       "scenarios": [
         "WHEN 20 executions are open on one engine, THEN one keeper thread renews all 20 owner leases, and it exits once the last one closes or drops."
       ]
@@ -11721,7 +11721,7 @@
       "statement": "A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the panicking one retries at its next deadline, and dropping it returns.",
       "why": "because the keeper is shared, so one adapter's panic that ended its thread lapses every open execution's lease under a live run",
       "file": "spec/30-run.md",
-      "line": 503
+      "line": 501
     },
     {
       "id": "run.cancel.land-path-uncut",
@@ -11732,7 +11732,7 @@
       "statement": "A table run's own stop does not interrupt landing. The engine finishes landing bytes already received and records the unfulfilled stop. Prepared body outputs additionally require {{run.own.body-parent}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 505
+      "line": 503
     },
     {
       "id": "run.cancel.abandoned-work",
@@ -11743,7 +11743,7 @@
       "statement": "Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.",
       "why": "A-run#unclosed-execution-recovers",
       "file": "spec/30-run.md",
-      "line": 506
+      "line": 504
     },
     {
       "id": "run.cancel.child-reaped",
@@ -11754,7 +11754,7 @@
       "statement": "A stop signals a running subprocess chain's process group. The engine records `canceled` only after reaping the group.",
       "why": "because a record reading canceled while a child still runs misstates what the machine is doing",
       "file": "spec/30-run.md",
-      "line": 508
+      "line": 506
     },
     {
       "id": "run.cancel.storage-blip",
@@ -11765,7 +11765,7 @@
       "statement": "A failed poll read warns and keeps polling.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 510
+      "line": 508
     },
     {
       "id": "run.cancel.not-in-flight",
@@ -11776,7 +11776,7 @@
       "statement": "Only a row holding a non-terminal {{type:contextful_core::run::record::RunStatus}} accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 511
+      "line": 509
     },
     {
       "id": "run.cancel.distinct-terminal-status",
@@ -11787,7 +11787,7 @@
       "statement": "`canceled` is a terminal status apart from `failed`, and upstream health observations skip it.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 513
+      "line": 511
     },
     {
       "id": "run.cancel.resumable-remains",
@@ -11798,7 +11798,7 @@
       "statement": "A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 515
+      "line": 513
     },
     {
       "id": "run.cancel.authority-from-the-record",
@@ -11809,7 +11809,7 @@
       "statement": "A stop authorizes against the pipeline read off the run record, never off the request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 516
+      "line": 514
     },
     {
       "id": "run.cancel.stop-unauthorized",
@@ -11820,7 +11820,7 @@
       "statement": "A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.",
       "why": "because a stop halts work `execute` fires, and a refusal naming the pipeline discloses it to a credential that cannot read it",
       "file": "spec/30-run.md",
-      "line": 517
+      "line": 515
     },
     {
       "id": "run.cancel.stop-route",
@@ -11831,7 +11831,7 @@
       "statement": "`POST /runs/:run_id/stop` writes a stop under a per-request network credential, its optional JSON body carrying `scope` and `reason`, and answers `200` with the marked run ids.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 519
+      "line": 517
     },
     {
       "id": "run.record.reserved-table",
@@ -11842,7 +11842,7 @@
       "statement": "The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.",
       "why": "A-run#run-record-folds",
       "file": "spec/30-run.md",
-      "line": 529
+      "line": 527
     },
     {
       "id": "run.record.columns",
@@ -11853,7 +11853,7 @@
       "statement": "A run row is a {{type:contextful_core::run::record::RunRow}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 531
+      "line": 529
     },
     {
       "id": "run.record.trace-context",
@@ -11864,7 +11864,7 @@
       "statement": "A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 532
+      "line": 530
     },
     {
       "id": "run.record.run-span",
@@ -11875,7 +11875,7 @@
       "statement": "With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 533
+      "line": 531
     },
     {
       "id": "run.record.status-set",
@@ -11886,7 +11886,7 @@
       "statement": "A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.",
       "why": "because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading",
       "file": "spec/30-run.md",
-      "line": 534
+      "line": 532
     },
     {
       "id": "run.record.row-at-open",
@@ -11897,7 +11897,7 @@
       "statement": "The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 536
+      "line": 534
     },
     {
       "id": "run.record.record-folds",
@@ -11908,7 +11908,7 @@
       "statement": "An append to {{run.record.reserved-table}} runs a pass on it once {{store.fold.triggers}} fires; a pass that fails leaves the row appended and the append succeeding, and the next append retries it.",
       "why": "A-run#run-record-folds",
       "file": "spec/30-run.md",
-      "line": 537
+      "line": 535
     },
     {
       "id": "run.record.rebuild-restores-history",
@@ -11919,7 +11919,7 @@
       "statement": "A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.",
       "why": "because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs",
       "file": "spec/30-run.md",
-      "line": 539
+      "line": 537
     },
     {
       "id": "run.record.time-travel",
@@ -11930,7 +11930,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 541
+      "line": 539
     },
     {
       "id": "run.record.owner-lease",
@@ -11941,7 +11941,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 542
+      "line": 540
     },
     {
       "id": "run.record.orphan-reap",
@@ -11952,7 +11952,7 @@
       "statement": "Startup marks only non-terminal rows with expired owner leases as `partial_failure`. Startup leaves rows held by live processes unchanged.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 544
+      "line": 542
     },
     {
       "id": "run.record.writing-site",
@@ -11963,7 +11963,7 @@
       "statement": "Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row names the site that wrote it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 545
+      "line": 543
     },
     {
       "id": "run.record.site-id-length",
@@ -11974,7 +11974,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 546
+      "line": 544
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -11985,7 +11985,7 @@
       "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 548
+      "line": 546
     },
     {
       "id": "run.record.history-window",
@@ -11996,7 +11996,7 @@
       "statement": "History requests specify an inclusive start-instant lower bound and row ceiling, returning newest first. A SQL catalog applies the bound in `WHERE` over an indexed start column and the ceiling as `LIMIT`.",
       "why": "because filtering after the read scans every run a pipeline ever recorded, so a describe call grows with history rather than with its window",
       "file": "spec/30-run.md",
-      "line": 550
+      "line": 548
     },
     {
       "id": "run.record.describe-window",
@@ -12007,7 +12007,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 552
+      "line": 550
     },
     {
       "id": "run.record.bound-spelling",
@@ -12018,7 +12018,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 553
+      "line": 551
     },
     {
       "id": "run.record.truncation-flag",
@@ -12029,7 +12029,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned; an empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 555
+      "line": 553
     },
     {
       "id": "run.record.history-export",
@@ -12040,7 +12040,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 556
+      "line": 554
     },
     {
       "id": "run.record.export-ceiling",
@@ -12051,7 +12051,7 @@
       "statement": "The export returns 500 rows by default and clamps at 5000 rows. Each pipeline's window takes the full ceiling; the export clips the merged result once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 557
+      "line": 555
     },
     {
       "id": "run.record.error-cap",
@@ -12062,7 +12062,7 @@
       "statement": "The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an ellipsis marker. Every surface serves that projection.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 558
+      "line": 556
     },
     {
       "id": "run.record.failure-publishes",
@@ -12073,7 +12073,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 559
+      "line": 557
     },
     {
       "id": "run.record.skipped-count",
@@ -12084,7 +12084,7 @@
       "statement": "The run row counts rows and bytes at the destination and sums each pull's optional `skipped` count of inputs the source declined to land whole, replayed pulls included.",
       "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
       "file": "spec/30-run.md",
-      "line": 560
+      "line": 558
     },
     {
       "id": "run.record.sweep-bounds",
@@ -12095,7 +12095,7 @@
       "statement": "A store-driven run's row carries its input as {{type:contextful_core::run::record::InputBounds}}: the resolved `as_of`, snapshot ids and row count, and for a sweep origin the bounds it read under, the sweep id and the origin.",
       "why": "because a score reported per origin is auditable only when each run names the bounds it read under",
       "file": "spec/30-run.md",
-      "line": 562
+      "line": 560
     },
     {
       "id": "run.record.plan-identity",
@@ -12106,7 +12106,7 @@
       "statement": "A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 564
+      "line": 562
     },
     {
       "id": "run.record.schema-diff-home",
@@ -12117,7 +12117,7 @@
       "statement": "A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.",
       "why": "A-run#table-commit-owns",
       "file": "spec/30-run.md",
-      "line": 565,
+      "line": 563,
       "scenarios": [
         "WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none."
       ]
@@ -12131,7 +12131,7 @@
       "statement": "Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.",
       "why": "A-run#table-commit-owns",
       "file": "spec/30-run.md",
-      "line": 567
+      "line": 565
     },
     {
       "id": "run.project.best-effort",
@@ -12142,7 +12142,7 @@
       "statement": "Live run state is a best-effort in-memory projection of events the runner emits after durable state changes; execution never reads it, and a restart discards it, so a subscriber recovers from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 580
+      "line": 578
     },
     {
       "id": "run.project.wire-snapshot",
@@ -12153,7 +12153,7 @@
       "statement": "The wire snapshot is a {{type:contextful_core::run::project::Snapshot}}, its status from {{run.record.status-set}}. Every deploy target emits it identically.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 581
+      "line": 579
     },
     {
       "id": "run.project.step-view",
@@ -12164,7 +12164,7 @@
       "statement": "A step view is a {{type:contextful_core::run::project::StepView}}, its status a {{type:contextful_core::run::project::StepStatus}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 582
+      "line": 580
     },
     {
       "id": "run.project.stopped-step",
@@ -12175,7 +12175,7 @@
       "statement": "A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 583
+      "line": 581
     },
     {
       "id": "run.project.emission-never-blocks",
@@ -12186,7 +12186,7 @@
       "statement": "Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 584
+      "line": 582
     },
     {
       "id": "run.project.terminal-slot",
@@ -12197,7 +12197,7 @@
       "statement": "A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.",
       "why": "because a dropped terminal event otherwise leaves a finished run reading running forever",
       "file": "spec/30-run.md",
-      "line": 585
+      "line": 583
     },
     {
       "id": "run.project.coalescing",
@@ -12208,7 +12208,7 @@
       "statement": "The hub coalesces snapshot broadcasts to at most one per 100 ms, keeping only the latest. A terminal transition flushes immediately. The hub uses an injected clock.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 587
+      "line": 585
     },
     {
       "id": "run.project.metadata-too-large",
@@ -12219,7 +12219,7 @@
       "statement": "A metadata write whose serialized size exceeds 16384 B raises `RunMetadataTooLarge` naming size and bound, and the snapshot stands unchanged.",
       "why": "because a silently clipped map reads as the complete metadata",
       "file": "spec/30-run.md",
-      "line": 588
+      "line": 586
     },
     {
       "id": "run.project.version",
@@ -12230,7 +12230,7 @@
       "statement": "The snapshot version is `(epoch, counter)`, the epoch being the hub's start instant, compared lexicographically; a client discards any delta at or below the highest version it holds.",
       "why": "because a bare counter restarts at zero with the process and freezes every client's view",
       "file": "spec/30-run.md",
-      "line": 590
+      "line": 588
     },
     {
       "id": "run.project.reducer-is-total",
@@ -12241,7 +12241,7 @@
       "statement": "The reducer is total: nothing overwrites a terminal step or run status, a new step label appends, an existing one merges field-wise, and a stale delta is a no-op.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 592
+      "line": 590
     },
     {
       "id": "run.project.outputs-by-reference",
@@ -12252,7 +12252,7 @@
       "statement": "A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 593
+      "line": 591
     },
     {
       "id": "run.project.connect",
@@ -12263,7 +12263,7 @@
       "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update; a late joiner may instead start from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each in order before live updates.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 594
+      "line": 592
     },
     {
       "id": "run.project.broadcast-ring",
@@ -12274,7 +12274,7 @@
       "statement": "The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 595
+      "line": 593
     },
     {
       "id": "run.project.channel-eviction",
@@ -12285,7 +12285,7 @@
       "statement": "The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record.",
       "why": "because a channel allocated per run otherwise grows a long-lived process by every run it has seen",
       "file": "spec/30-run.md",
-      "line": 596
+      "line": 594
     },
     {
       "id": "run.project.unauthenticated-upgrade",
@@ -12296,7 +12296,7 @@
       "statement": "The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read#networked-read-transport",
       "file": "spec/30-run.md",
-      "line": 598
+      "line": 596
     },
     {
       "id": "run.project.read-only-socket",
@@ -12307,7 +12307,7 @@
       "statement": "A subscription permits reads only. Stop requests use an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 600
+      "line": 598
     },
     {
       "id": "run.sweep.origins",
@@ -12318,7 +12318,7 @@
       "statement": "A store-driven `[[job]]` declaring {{type:contextful_core::run::sweep::Sweep}} opens one run per origin from its start through its end at each step in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.",
       "why": "because an origin reading rows published after it scores a forecast against its own answer",
       "file": "spec/30-run.md",
-      "line": 606,
+      "line": 604,
       "scenarios": [
         "WHEN a `fresh` sweep of 12 origins, `7d` apart from `2014-03-05T00:00:00Z`, reads a 2026-backfilled table holding a planted row available `2014-04-30T00:00:00Z`, THEN origins 1 to 8 return no planted row and origins 9 to 12 return it."
       ]
@@ -12332,7 +12332,7 @@
       "statement": "A sweep's id is the execution id of the fire that opens it; every origin's run records it, so run history groups one sweep's origins.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 608
+      "line": 606
     },
     {
       "id": "run.sweep.frozen-as-of",
@@ -12343,7 +12343,7 @@
       "statement": "Every origin of one sweep reads at one `as_of`: the job's declared `as_of`, else the instant the sweep opens, recorded once as {{run.journal.open-as-of}} records it for resumes.",
       "why": "A-run#sweep-freezes-transaction",
       "file": "spec/30-run.md",
-      "line": 609
+      "line": 607
     },
     {
       "id": "run.sweep.origin-after-open",
@@ -12354,7 +12354,7 @@
       "statement": "A sweep whose `end` is later than its `as_of` raises `RunSweepOriginAfterOpen`, at validation for a declared `as_of` and at sweep open otherwise, and opens no origin.",
       "why": "because an origin past the frozen corpus reads nothing newer than it, and that empty answer looks like a forecast",
       "file": "spec/30-run.md",
-      "line": 611
+      "line": 609
     },
     {
       "id": "run.sweep.carried-state",
@@ -12365,7 +12365,7 @@
       "statement": "Under `state = \"carried\"`, origins run in ascending order one at a time, each reading the job's output `tables` at the commit of the preceding origin and every other table at the sweep's `as_of`.",
       "why": "A-run#sweep-freezes-transaction",
       "file": "spec/30-run.md",
-      "line": 613
+      "line": 611
     },
     {
       "id": "run.sweep.fresh-state",
@@ -12376,7 +12376,7 @@
       "statement": "Under `state = \"fresh\"`, the default, every table an origin reads, its output tables included, resolves at the sweep's `as_of`, so no origin reads a row another origin wrote.",
       "why": "A-run#sweep-freezes-transaction",
       "file": "spec/30-run.md",
-      "line": 615
+      "line": 613
     },
     {
       "id": "run.sweep.simulated-write",
@@ -12387,7 +12387,7 @@
       "statement": "A row an origin lands into a table declaring `available_time` carries the origin as its availability instant, so a later origin reads it and an earlier origin never does.",
       "why": "because notes an agent wrote at a 2014 origin were available in 2014, not at the instant they committed",
       "file": "spec/30-run.md",
-      "line": 617
+      "line": 615
     },
     {
       "id": "run.sweep.origin-pin",
@@ -12398,7 +12398,7 @@
       "statement": "An origin's plan reference hashes the sweep declaration and its origin beside the fields {{run.journal.input-pin}} hashes, so a resume under a changed sweep meets {{run.own.pinned-plan-changed}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 619
+      "line": 617
     },
     {
       "id": "run.sweep.no-collapse",
@@ -12409,7 +12409,7 @@
       "statement": "A sweep runs every declared origin, regardless of elapsed time. {{surface.arm.catch-up}} collapses no origin. A failed origin in a `carried` sweep prevents every later origin from opening.",
       "why": "because each origin is a distinct question, and a collapsed or skipped origin drops silently from the score",
       "file": "spec/30-run.md",
-      "line": 620
+      "line": 618
     },
     {
       "id": "run.sweep.cache-key",
@@ -12420,7 +12420,7 @@
       "statement": "No recorded or cached value crosses origins: each origin runs under its own execution id, which keys {{run.journal.entry-key}}, and carries its origin as `available_as_of` among the bounds {{read.cache.result-key}} keys on.",
       "why": "because a cache keyed without the bound passes one origin's answer to another",
       "file": "spec/30-run.md",
-      "line": 622
+      "line": 620
     },
     {
       "id": "run.orchestrate.role",
@@ -12431,7 +12431,7 @@
       "statement": "A target's orchestrator implements every operation in {{run.journal.substrate-port}}. The engine runner over {{run.journal.storage-ports}} is the reference implementation.",
       "why": "A-run#orchestrator-role-port",
       "file": "spec/30-run.md",
-      "line": 635
+      "line": 633
     },
     {
       "id": "run.orchestrate.provider-step",
@@ -12442,7 +12442,7 @@
       "statement": "A provider adapter runs one provider step per table pull or backfill chunk, recording that table's or chunk's commit pointer. The engine's journal entries under {{run.journal.entry-key}} remain inside the provider step.",
       "why": "A-run#orchestrator-role-port",
       "file": "spec/30-run.md",
-      "line": 637
+      "line": 635
     },
     {
       "id": "run.orchestrate.semantics",
@@ -12453,7 +12453,7 @@
       "statement": "Every `run.journal`, `run.retry`, `run.suspend` and `run.cancel` clause holds inside a provider step. An adapter's conformance suite demonstrates these clauses before a target profile names the adapter.",
       "why": "A-run#orchestrator-role-port",
       "file": "spec/30-run.md",
-      "line": 639
+      "line": 637
     },
     {
       "id": "run.orchestrate.resume",
@@ -12464,7 +12464,7 @@
       "statement": "A provider replay of a completed step returns its recorded commit pointer and re-enters nothing; a crash inside a step resumes under the engine's entry keys, so the parts land byte-identical to an uninterrupted run under {{run.journal.replay-lands}}.",
       "why": "because a replay the provider owns below the commit pointer lands per-target bytes, and the proofs over the journal then cover no managed target",
       "file": "spec/30-run.md",
-      "line": 641,
+      "line": 639,
       "scenarios": [
         "WHEN a backfill chunk's provider step crashes after half its pages and the provider replays the step, THEN the engine resumes from its recorded pages and the chunk's parts match the uninterrupted run's bytes."
       ]
@@ -12478,7 +12478,7 @@
       "statement": "A provider adapter disables provider per-step retries. The schedule in {{run.retry.one-layer}} is the only retry layer. A failed step closes its table or chunk as the engine closes it.",
       "why": "because a provider retry around an engine schedule multiplies attempts against a shared quota",
       "file": "spec/30-run.md",
-      "line": 643,
+      "line": 641,
       "scenarios": [
         "WHEN a provider step's pull meets a throttle, THEN the engine's schedule retries inside the step and the provider records one step attempt."
       ]
@@ -12492,7 +12492,7 @@
       "statement": "Every orchestrator runs a delegate under {{surface.delegate.binding}} inside the engine's journaled step within a provider step. No adapter dispatches a delegate as a separate provider step.",
       "why": "because a delegate reached outside the engine's step escapes the entry key, the fence and the item budget",
       "file": "spec/30-run.md",
-      "line": 645
+      "line": 643
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -17079,6 +17079,17 @@
       "line": 109
     },
     {
+      "id": "connector.declare-capability.dedup-window",
+      "contract": "connector",
+      "operation": "declare-capability",
+      "subject": "dedup-window",
+      "kind": "behavior",
+      "statement": "A connector manifest or a plan's `[connector]` table declares an optional `dedup_window_secs`, the whole seconds its destination deduplicates a repeated idempotency key; each pull's guard records it under {{run.callback-guard.identity}}, `none` when absent.",
+      "why": "because only the connector's author knows how long its vendor holds a key",
+      "file": "spec/40-connector.md",
+      "line": 111
+    },
+    {
       "id": "connector.widen.host-inclusion",
       "contract": "connector",
       "operation": "widen",
@@ -17087,7 +17098,7 @@
       "statement": "Host inclusion succeeds when every candidate entry has a covering predecessor entry under {{connector.declare-capability.host-allowlist}}. Success admits no host the predecessor refuses.",
       "why": "A-connector#manifest-widening-binds",
       "file": "spec/40-connector.md",
-      "line": 138,
+      "line": 140,
       "scenarios": [
         "WHEN `*.eu.example.com` replaces `*.example.com`, THEN host inclusion succeeds."
       ]
@@ -17101,7 +17112,7 @@
       "statement": "Every reported host witness passes the candidate's outbound matcher and fails the predecessor's outbound matcher.",
       "why": "A-connector#manifest-widening-binds",
       "file": "spec/40-connector.md",
-      "line": 140,
+      "line": 142,
       "scenarios": [
         "WHEN `*.example.com` replaces `x.example.com`, THEN a host witness differs from the already admitted exact host."
       ]
@@ -17115,7 +17126,7 @@
       "statement": "A connector declares a limiter capability naming the shared vendor quota, the traffic class of its requests, and the vendor quota-state response headers to forward.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 154
+      "line": 156
     },
     {
       "id": "connector.meter.forward-credential",
@@ -17126,7 +17137,7 @@
       "statement": "A limiter declaration forwarding `authorization`, `proxy-authorization`, `cookie` or `set-cookie` raises `ConnectorForwardRejected` at load.",
       "why": "because the report carries forwarded headers verbatim to a party outside the vendor credential's scope",
       "file": "spec/40-connector.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "connector.meter.limiter-binding",
@@ -17137,7 +17148,7 @@
       "statement": "The operator binds that quota name to an endpoint, a bearer token held by reference, and a permit batch size.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 157
+      "line": 159
     },
     {
       "id": "connector.meter.quota-unbound",
@@ -17148,7 +17159,7 @@
       "statement": "A declared quota with no binding raises `ConnectorQuotaUnbound` at load.",
       "why": "A-connector#host-access-quota",
       "file": "spec/40-connector.md",
-      "line": 158
+      "line": 160
     },
     {
       "id": "connector.meter.binding-transport",
@@ -17159,7 +17170,7 @@
       "statement": "A limiter endpoint that is neither HTTPS nor loopback or carries a query, fragment or userinfo, and a limiter token that is not a `secret://` reference, raise `ConnectorLimiterBindingRejected` at load.",
       "why": "A-connector#egress-passes-transport",
       "file": "spec/40-connector.md",
-      "line": 160
+      "line": 162
     },
     {
       "id": "connector.meter.limiter-address",
@@ -17170,7 +17181,7 @@
       "statement": "A limiter endpoint may resolve to a private or loopback address; the engine's check of vendor-host addresses does not apply to it.",
       "why": "because the operator authors the limiter endpoint and no vendor answer supplies it",
       "file": "spec/40-connector.md",
-      "line": 162
+      "line": 164
     },
     {
       "id": "connector.meter.reservation-point",
@@ -17181,7 +17192,7 @@
       "statement": "The host reserves at the mediation point, the guest's outgoing-HTTP import or the engine's shared client. One permit covers one outbound request, and the limiter counts requests and prices none.",
       "why": "because one call issues any number of requests for paging, retries and token refresh",
       "file": "spec/40-connector.md",
-      "line": 164
+      "line": 166
     },
     {
       "id": "connector.meter.permit-batch",
@@ -17192,7 +17203,7 @@
       "statement": "An acquire may grant a batch of permits under a short TTL. Each request spends one, and the next report surrenders the unspent.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 166
+      "line": 168
     },
     {
       "id": "connector.meter.acquire",
@@ -17203,7 +17214,7 @@
       "statement": "Acquire is an authenticated POST of quota, class and permit count, answered granted with permits and a TTL, or denied with a retry-after. A bare `429` with `Retry-After`, and a zero-permit grant, read as denials.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 167
+      "line": 169
     },
     {
       "id": "connector.meter.acquire-call",
@@ -17214,7 +17225,7 @@
       "statement": "Each limiter call takes at most 5 s. A reservation does not sleep: denial returns `RateLimited` without waiting. The run's retry schedule performs the specified wait.",
       "why": "A-run#meter-reservation-holds",
       "file": "spec/40-connector.md",
-      "line": 168
+      "line": 170
     },
     {
       "id": "connector.meter.unreadable-answer",
@@ -17225,7 +17236,7 @@
       "statement": "An unreadable limiter response raises `ConnectorLimiterUnreadable` and grants no permits.",
       "why": "A-connector#host-access-quota",
       "file": "spec/40-connector.md",
-      "line": 170
+      "line": 172
     },
     {
       "id": "connector.meter.denial-ceiling",
@@ -17236,7 +17247,7 @@
       "statement": "A limiter wait, whether a retry-after or a zero-permit grant's TTL, reads as at most the ceiling of {{run.retry.retry-after}}.",
       "why": "because an unbounded wait named by the limiter parks the run past any retry its schedule allows",
       "file": "spec/40-connector.md",
-      "line": 172
+      "line": 174
     },
     {
       "id": "connector.meter.report",
@@ -17247,7 +17258,7 @@
       "statement": "Report is an authenticated POST of quota, class, granted, spent, one entry per vendor response (status, retry-after, verbatim headers), an observation instant and the run id.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 174
+      "line": 176
     },
     {
       "id": "connector.meter.report-delivery",
@@ -17258,7 +17269,7 @@
       "statement": "The run delivers reports at least once with bounded backoff and makes one delivery attempt before each refill. An undelivered report accompanies the next. The run audits a report that remains undelivered without failing anything.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 175
+      "line": 177
     },
     {
       "id": "connector.meter.unmetered-request",
@@ -17269,7 +17280,7 @@
       "statement": "Under a declared limiter, a vendor request without a granted reservation raises `ConnectorUnmetered`, including for an unreachable, unbound or failing limiter. These failures do not indicate expired vendor credentials.",
       "why": "A-connector#host-access-quota",
       "file": "spec/40-connector.md",
-      "line": 176
+      "line": 178
     },
     {
       "id": "connector.meter.pre-send-hook",
@@ -17280,7 +17291,7 @@
       "statement": "Each outbound hop passes one pre-send hook after the allowlist and before name resolution, carrying the hop's intent: method, scrubbed URL, host, port, traffic class, run id and request body bytes.",
       "why": "A-connector#egress-passes-transport",
       "file": "spec/40-connector.md",
-      "line": 178
+      "line": 180
     },
     {
       "id": "connector.meter.hook-composition",
@@ -17291,7 +17302,7 @@
       "statement": "The limiter reservation is the pre-send hook's innermost implementation, behind the allowlist and any operator hook, so a request either refuses makes no limiter call and spends no permit.",
       "why": "A-connector#egress-passes-transport",
       "file": "spec/40-connector.md",
-      "line": 180
+      "line": 182
     },
     {
       "id": "connector.meter.hook-refusal",
@@ -17302,7 +17313,7 @@
       "statement": "A hook refusing an intent raises `ConnectorEgressRefused`, naming the host and reason. The host resolves no name, and the retry schedule does not retry the request.",
       "why": "P6",
       "file": "spec/40-connector.md",
-      "line": 182
+      "line": 184
     },
     {
       "id": "connector.meter.hook-settle",
@@ -17313,7 +17324,7 @@
       "statement": "The hook receives each admitted hop's outcome after the body read or the failure: the status or transport failure, the request body bytes sent, and the response body bytes the host read. A followed redirect is two intents.",
       "why": "A-connector#egress-passes-transport",
       "file": "spec/40-connector.md",
-      "line": 184
+      "line": 186
     },
     {
       "id": "connector.meter.held-back-request",
@@ -17324,7 +17335,7 @@
       "statement": "A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.",
       "why": "P2",
       "file": "spec/40-connector.md",
-      "line": 186
+      "line": 188
     },
     {
       "id": "connector.meter.synthesized-throttle",
@@ -17335,7 +17346,7 @@
       "statement": "A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.",
       "why": "because a connector mapping vendor throttles needs no second interface",
       "file": "spec/40-connector.md",
-      "line": 188
+      "line": 190
     },
     {
       "id": "connector.infer.model-endpoint",
@@ -17346,7 +17357,7 @@
       "statement": "Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.",
       "why": "A-topology#one-egress",
       "file": "spec/40-connector.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "connector.infer.mediated-call",
@@ -17357,7 +17368,7 @@
       "statement": "A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.",
       "why": "A-connector#egress-passes-transport",
       "file": "spec/40-connector.md",
-      "line": 228
+      "line": 230
     },
     {
       "id": "connector.infer.data-fence",
@@ -17368,7 +17379,7 @@
       "statement": "No ingested value reaches a model outside its data boundary markers: a pair whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 230
+      "line": 232
     },
     {
       "id": "connector.infer.fence-is-not-a-boundary",
@@ -17379,7 +17390,7 @@
       "statement": "Data boundary markers lower the success rate of injected instructions and bound nothing. No clause treats the output of a marked call as trusted.",
       "why": "because spotlighting reduces injection and guarantees nothing",
       "file": "spec/40-connector.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "connector.infer.output-taint",
@@ -17390,7 +17401,7 @@
       "statement": "Model output carries the least-trusted provenance label among its marked inputs, and lands under that label.",
       "why": "because output re-landing as fresh data launders injected text",
       "file": "spec/40-connector.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "connector.infer.provenance-order",
@@ -17401,7 +17412,7 @@
       "statement": "Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call marking no value carries `operator`.",
       "why": "because the least-trusted input is defined only over a total order, and a call marking nothing sends the operator's template alone",
       "file": "spec/40-connector.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "connector.infer.marker-derivation",
@@ -17412,7 +17423,7 @@
       "statement": "Every marker of one call carries one token of 16 B, derived from every label and value the call marks, as marked.",
       "why": "because closing one's own block then requires content containing the digest of a batch that contains it",
       "file": "spec/40-connector.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "connector.infer.replay",
@@ -17423,7 +17434,7 @@
       "statement": "The same values, labels, cap and rules mark to the same bytes, and a change to any value or label moves the token.",
       "why": "because a replayed call sends an identical prompt, and a token read from one batch closes no other",
       "file": "spec/40-connector.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "connector.infer.value-cap",
@@ -17434,7 +17445,7 @@
       "statement": "Marking removes control characters other than newline and tab from a value, and a value past its declared character cap keeps its first cap characters and a truncation mark, its closing line still following.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "connector.infer.label-hygiene",
@@ -17445,7 +17456,7 @@
       "statement": "Marking truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.",
       "why": "because a label is built from connector-supplied table names and row ids",
       "file": "spec/40-connector.md",
-      "line": 242
+      "line": 244
     },
     {
       "id": "connector.infer.empty-batch",
@@ -17456,7 +17467,7 @@
       "statement": "A call marking no value renders an explicit no-data line instead of an empty section.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 244
+      "line": 246
     },
     {
       "id": "connector.infer.cutoffs",
@@ -17467,7 +17478,7 @@
       "statement": "A model reference carries a pinned snapshot id and pre-training and post-training cutoffs, each tagged `documented` or `estimated`. An undeclared cutoff compares as the call's own instant.",
       "why": "because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one",
       "file": "spec/40-connector.md",
-      "line": 245,
+      "line": 247,
       "scenarios": [
         "WHEN a model reference carries a pre-training cutoff and no post-training cutoff, THEN the post-training cutoff compares as the call's own instant."
       ]
@@ -17481,7 +17492,7 @@
       "statement": "A call record carries the input and output token counts of the endpoint's `usage` beside the content, and token log-probabilities where the endpoint exposes them; an answer without counts records none.",
       "why": "because probe-based leakage estimates read first-token probabilities",
       "file": "spec/40-connector.md",
-      "line": 247,
+      "line": 249,
       "scenarios": [
         "WHEN an endpoint returns token log-probabilities, THEN the call record carries them beside the response."
       ]
@@ -17495,7 +17506,7 @@
       "statement": "A traced call records one client span under the caller's span: `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `server.address` and, on failure, `error.type`. The span excludes message content. The request's `traceparent` names this span.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "connector.infer.hosted-tools",
@@ -17506,7 +17517,7 @@
       "statement": "A model call under a credential carrying {{authority.grant.horizon}} that declares a provider-hosted tool, such as search, browse or fetch, raises `InferHostedToolUnderHorizon`, naming the tool, before any byte leaves.",
       "why": "because search inside the provider never reaches the mediated client, so no hook sees it",
       "file": "spec/40-connector.md",
-      "line": 250
+      "line": 252
     },
     {
       "id": "connector.package.distribution-form",
@@ -17517,7 +17528,7 @@
       "statement": "A connector resolves in one of four forms: in-tree by name, a project-local artifact path, an HTTPS URL, or an OCI reference.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "connector.package.built-in-registry",
@@ -17528,7 +17539,7 @@
       "statement": "The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 265
+      "line": 267
     },
     {
       "id": "connector.package.remote-transport",
@@ -17539,7 +17550,7 @@
       "statement": "HTTPS artifact, OCI manifest and OCI layer requests pass through the mediated client with only the reference's authority admitted, under {{connector.attach.transport-port}}, before {{connector.package.digest-mismatch}}.",
       "why": "A-connector#remote-artifacts-use",
       "file": "spec/40-connector.md",
-      "line": 266,
+      "line": 268,
       "scenarios": [
         "WHEN the host fetches a pinned HTTPS or OCI artifact, THEN the mediated client admits only the reference authority before compilation."
       ]
@@ -17553,7 +17564,7 @@
       "statement": "An OCI artifact reference is `oci://<registry>/<repository>[:<tag>|@sha256:<digest>]`, with `latest` for an absent selector; an empty registry, repository or selector raises `ConnectorOciReferenceInvalid` before network access.",
       "why": "because a malformed reference must not turn a registry name into an unintended request destination",
       "file": "spec/40-connector.md",
-      "line": 268,
+      "line": 270,
       "scenarios": [
         "WHEN an OCI reference has an empty repository, THEN validation raises `ConnectorOciReferenceInvalid` without a request."
       ]
@@ -17567,7 +17578,7 @@
       "statement": "An OCI reference resolves a schema-2 image manifest with exactly one layer, whose media type is `application/vnd.wasm.content.layer.v1+wasm`; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.",
       "why": "A-connector#content-pin-trust",
       "file": "spec/40-connector.md",
-      "line": 270,
+      "line": 272,
       "scenarios": [
         "WHEN an OCI manifest has two component layers, THEN the run raises `ConnectorOciArtifactUnsupported` before compilation."
       ]
@@ -17581,7 +17592,7 @@
       "statement": "The fetched OCI layer matches its manifest descriptor's SHA-256 digest and the source pin under {{connector.package.digest-mismatch}}; a descriptor mismatch raises `ConnectorOciLayerMismatch` before cache publication.",
       "why": "A-connector#pin-builder-runs",
       "file": "spec/40-connector.md",
-      "line": 272,
+      "line": 274,
       "scenarios": [
         "WHEN the layer bytes disagree with the manifest descriptor, THEN the run raises `ConnectorOciLayerMismatch` and caches nothing."
       ]
@@ -17595,7 +17606,7 @@
       "statement": "An optional `config.toml` `[connector.registry.\"<authority>\"] authorization = \"Bearer ${secret://<name>}\"` binds one OCI registry authority; hydration reaches manifest and layer requests alone under {{connector.resolve.hydration-is-just-in-time}}.",
       "why": "A-connector#content-pin-trust",
       "file": "spec/40-connector.md",
-      "line": 274,
+      "line": 276,
       "scenarios": [
         "WHEN the registry requires a bearer, THEN manifest and layer requests carry its resolved binding while guest requests do not."
       ]
@@ -17609,7 +17620,7 @@
       "statement": "A remote artifact admitted under {{connector.package.digest-mismatch}} enters the project cache at `.contextful/artifacts/sha256/<digest>` atomically; a later fire reads matching cached bytes before any network request.",
       "why": "A-connector#executables-content-pinned, A-connector#remote-artifacts-use",
       "file": "spec/40-connector.md",
-      "line": 276,
+      "line": 278,
       "scenarios": [
         "WHEN a second fire names a cached pin, THEN it loads matching bytes without a registry or HTTPS request."
       ]
@@ -17623,7 +17634,7 @@
       "statement": "Cached artifact bytes whose SHA-256 differs from their cache key raise `ConnectorArtifactCacheCorrupt`; the host neither fetches a replacement nor compiles those bytes.",
       "why": "because a replay must refuse when its recorded artifact bytes are damaged",
       "file": "spec/40-connector.md",
-      "line": 278,
+      "line": 280,
       "scenarios": [
         "WHEN cached bytes disagree with their key, THEN the run raises `ConnectorArtifactCacheCorrupt` without fetching or compiling."
       ]
@@ -17637,7 +17648,7 @@
       "statement": "If fetching a remote artifact's manifest or bytes fails, the host raises `ConnectorArtifactFetchFailed`, naming the scrubbed reference. The host writes no run row and compiles no component.",
       "why": "because a failed installation cannot be mistaken for a source returning no rows",
       "file": "spec/40-connector.md",
-      "line": 280,
+      "line": 282,
       "scenarios": [
         "WHEN a remote endpoint refuses a required fetch, THEN the run raises `ConnectorArtifactFetchFailed` and writes no run row."
       ]
@@ -17651,7 +17662,7 @@
       "statement": "A remote artifact carrying no 64-hex content pin raises `ConnectorRemoteUnpinned` at parse.",
       "why": "A-connector#content-pin-trust",
       "file": "spec/40-connector.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "connector.package.insecure-artifact",
@@ -17662,7 +17673,7 @@
       "statement": "A plain-HTTP artifact reference raises `ConnectorInsecureArtifact`.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/40-connector.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "connector.package.digest-mismatch",
@@ -17673,7 +17684,7 @@
       "statement": "The host re-hashes the resolved bytes and raises `ConnectorDigestMismatch` on a difference, before the bytes reach the engine.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/40-connector.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "connector.package.artifact-cache",
@@ -17684,7 +17695,7 @@
       "statement": "On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.",
       "why": "A-connector#precompiled-components-reuse",
       "file": "spec/40-connector.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "connector.package.pin-requirement",
@@ -17695,7 +17706,7 @@
       "statement": "Either of two switches requires a local artifact pin: store-wide `[connector] require_pin` in the store's `config.toml`, or `require_wasm_pin` in the connector manifest.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 290
+      "line": 292
     },
     {
       "id": "connector.package.local-unpinned",
@@ -17706,7 +17717,7 @@
       "statement": "With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/40-connector.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "connector.package.manifest-posture",
@@ -17717,7 +17728,7 @@
       "statement": "An adopted manifest carries a digest from the fixed builder platform. A template manifest carries a pin requirement and placeholder. The parser accepts a template; the loader refuses it.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 298,
+      "line": 300,
       "group": "build"
     },
     {
@@ -17729,7 +17740,7 @@
       "statement": "A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler, package manager and command, and a `build.source` leaving the manifest directory refuses under {{connector.package.manifest-keys}}.",
       "why": "A-connector#pin-builder-runs",
       "file": "spec/40-connector.md",
-      "line": 299,
+      "line": 301,
       "group": "build",
       "scenarios": [
         "WHEN a manifest declares `[build] source = \"../guest\"`, THEN `connector pin` raises `ConnectorManifestRejected` naming `build.source` and builds nothing."
@@ -17744,7 +17755,7 @@
       "statement": "`contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.",
       "why": "A-connector#pin-builder-runs",
       "file": "spec/40-connector.md",
-      "line": 301,
+      "line": 303,
       "group": "build"
     },
     {
@@ -17756,7 +17767,7 @@
       "statement": "`--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.",
       "why": "A-connector#pin-builder-runs",
       "file": "spec/40-connector.md",
-      "line": 303,
+      "line": 305,
       "group": "build"
     },
     {
@@ -17768,7 +17779,7 @@
       "statement": "Every build remaps the source root and the package cache, so checkout location is not a digest input.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 305,
+      "line": 307,
       "group": "build"
     },
     {
@@ -17780,7 +17791,7 @@
       "statement": "A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.",
       "why": "because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there",
       "file": "spec/40-connector.md",
-      "line": 311,
+      "line": 313,
       "group": "components"
     },
     {
@@ -17792,7 +17803,7 @@
       "statement": "A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 313,
+      "line": 315,
       "group": "components"
     },
     {
@@ -17804,7 +17815,7 @@
       "statement": "A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `manifest`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 314,
+      "line": 316,
       "group": "components"
     },
     {
@@ -17816,7 +17827,7 @@
       "statement": "A component source's manifest takes {{type:contextful_core::connector::manifest::Raw}}; an absent manifest, another key at any depth, or a value off its shape raises `ConnectorManifestRejected` naming the key.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 315,
+      "line": 317,
       "group": "components",
       "scenarios": [
         "WHEN a component source names no `manifest`, THEN validation raises `ConnectorManifestRejected` naming `manifest`.",
@@ -17832,7 +17843,7 @@
       "statement": "A manifest's `wasm_sha256` pins the artifact its component source loads; a source `sha256` differing from it refuses under {{connector.package.manifest-keys}} before the artifact loads.",
       "why": "because one artifact admitted against two pins holds no single reviewed digest",
       "file": "spec/40-connector.md",
-      "line": 317,
+      "line": 319,
       "group": "components",
       "scenarios": [
         "WHEN a manifest pins one digest and the component source's `sha256` another, THEN the load raises `ConnectorManifestRejected` naming `wasm_sha256` and writes no run row."
@@ -17847,7 +17858,7 @@
       "statement": "A component source's `manifest` names a project-relative TOML file; at load, each `allow` host must fit its `[capabilities] allow_hosts` declaration or refuses under {{connector.declare-capability.undeclared-access}}, naming the excess host.",
       "why": "because an operator grant cannot extend past the connector's declared host access",
       "file": "spec/40-connector.md",
-      "line": 319,
+      "line": 321,
       "group": "components"
     },
     {
@@ -17859,7 +17870,7 @@
       "statement": "`pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.",
       "why": "A-connector#content-pin-trust",
       "file": "spec/40-connector.md",
-      "line": 321,
+      "line": 323,
       "group": "components"
     },
     {
@@ -17871,7 +17882,7 @@
       "statement": "A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.",
       "why": "A-connector#pin-builder-runs",
       "file": "spec/40-connector.md",
-      "line": 323,
+      "line": 325,
       "group": "components"
     },
     {
@@ -17883,7 +17894,7 @@
       "statement": "`pipeline validate` resolves a local component artifact against the same directory as `pipeline run`, then loads it and runs discovery. Missing exports or world mismatches fail before runs. Validation checks remote artifacts without I/O.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 325,
+      "line": 327,
       "group": "components"
     },
     {
@@ -17895,7 +17906,7 @@
       "statement": "`incremental` beside a component source, the `file` or drive source, or the `s3` source under `skip_unchanged = true` raises `ConnectorPositionOwned` at validation; the source's own position is the run's position.",
       "why": "because a watermark over one field replaces the cursor the guest resumes from, so its next read opens at a position it never reported",
       "file": "spec/40-connector.md",
-      "line": 327,
+      "line": 329,
       "group": "components"
     },
     {
@@ -17907,7 +17918,7 @@
       "statement": "`pipeline run` and `pipeline validate` compile components for the interpreted target when `--component-target pulley` or `CONTEXTFUL_COMPONENT_TARGET=pulley` selects it; native stays the default.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 329,
+      "line": 331,
       "group": "components"
     },
     {
@@ -17919,7 +17930,7 @@
       "statement": "A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 330,
+      "line": 332,
       "group": "components"
     },
     {
@@ -17931,7 +17942,7 @@
       "statement": "A read call carries a 30 s wall-clock deadline and a discovery call a 60 s one, armed by epoch interruption at 100 ms granularity.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 331,
+      "line": 333,
       "group": "components"
     },
     {
@@ -17943,7 +17954,7 @@
       "statement": "A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 332,
+      "line": 334,
       "group": "components"
     },
     {
@@ -17955,7 +17966,7 @@
       "statement": "A guest's outbound request body carries at most 8 MiB. The host stops reading past it and fails the call as a deterministic refusal before the request reaches the vendor.",
       "why": "because the body buffers in host memory, outside the guest's linear-memory cap",
       "file": "spec/40-connector.md",
-      "line": 333,
+      "line": 335,
       "group": "components"
     },
     {
@@ -17967,7 +17978,7 @@
       "statement": "A compiled-in source decodes behind {{run.land.parse-boundary}}.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 373
+      "line": 375
     },
     {
       "id": "connector.source.http-headers",
@@ -17978,7 +17989,7 @@
       "statement": "The generic HTTP source binds credentials through a `headers` table whose values are templates in the {{connector.reference.value-template}} grammar, hydrated per read.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/40-connector.md",
-      "line": 380,
+      "line": 382,
       "group": "http"
     },
     {
@@ -17990,7 +18001,7 @@
       "statement": "Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.",
       "why": "because a failed walk resumes at the page it stopped on, and the next run walks the whole table again",
       "file": "spec/40-connector.md",
-      "line": 382,
+      "line": 384,
       "group": "http"
     },
     {
@@ -18002,7 +18013,7 @@
       "statement": "Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries a page URL.",
       "why": "because a next URL's query may carry a credential, and a position lands unscrubbed in the journal",
       "file": "spec/40-connector.md",
-      "line": 384,
+      "line": 386,
       "group": "http"
     },
     {
@@ -18014,7 +18025,7 @@
       "statement": "Under an incremental field without next-URL or Link-header pagination, one generic HTTP source pull reads one page from the stored watermark; its position carries that watermark and the next page's token, and the walk's last page carries none.",
       "why": "A-run#backfill-commits-checkpoints",
       "file": "spec/40-connector.md",
-      "line": 386,
+      "line": 388,
       "group": "http"
     },
     {
@@ -18026,7 +18037,7 @@
       "statement": "The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 388,
+      "line": 390,
       "group": "http"
     },
     {
@@ -18038,7 +18049,7 @@
       "statement": "The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 389,
+      "line": 391,
       "group": "http"
     },
     {
@@ -18050,7 +18061,7 @@
       "statement": "The generic HTTP source decompresses a body only when `compression` declares `gzip` or `zip`, bounded by {{connector.source.object-expansion}}. The URL extension does not select compression.",
       "why": "because a URL path names a route, not how the vendor stored the bytes",
       "file": "spec/40-connector.md",
-      "line": 390,
+      "line": 392,
       "group": "http"
     },
     {
@@ -18062,7 +18073,7 @@
       "statement": "`conditional = true` issues one request sending the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`, and those validators are the whole position. A `304` lands no rows and holds it; a `2xx` commits the validators served.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 392,
+      "line": 394,
       "group": "http"
     },
     {
@@ -18074,7 +18085,7 @@
       "statement": "`conditional` beside a pagination shape or a declared `incremental` raises `ConnectorConditionalRejected` at build.",
       "why": "because a validator names one document, and a watermark position leaves the validators nowhere to commit",
       "file": "spec/40-connector.md",
-      "line": 393,
+      "line": 395,
       "group": "http"
     },
     {
@@ -18086,7 +18097,7 @@
       "statement": "A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a cursor parameter, a next-URL path, or link-header following.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 395,
+      "line": 397,
       "group": "http"
     },
     {
@@ -18098,7 +18109,7 @@
       "statement": "Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`, and declaring both expansion pointer forms raises `ConnectorPointerAmbiguous`.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 396,
+      "line": 398,
       "group": "http"
     },
     {
@@ -18110,7 +18121,7 @@
       "statement": "One walk issues at most 1000 requests; a watermark walk counts them from its last page whose every clock passes every clock the walk served before.",
       "why": "A-run#backfill-commits-checkpoints",
       "file": "spec/40-connector.md",
-      "line": 398,
+      "line": 400,
       "group": "http"
     },
     {
@@ -18122,7 +18133,7 @@
       "statement": "A vendor returning a token or link it already served raises `ConnectorPageLoop`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 400,
+      "line": 402,
       "group": "http"
     },
     {
@@ -18134,7 +18145,7 @@
       "statement": "The host checks a vendor-supplied next link as a hop under {{connector.attach.weakened-hop}}.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/40-connector.md",
-      "line": 402,
+      "line": 404,
       "group": "http"
     },
     {
@@ -18146,7 +18157,7 @@
       "statement": "A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own position.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 404,
+      "line": 406,
       "group": "http"
     },
     {
@@ -18158,7 +18169,7 @@
       "statement": "A table not matching the declared pattern, binding `.` or `..` into a placeholder, a `file` table other than `documents`, or a drive table other than `files` or `pages` raises `ConnectorTableUnmatched` ahead of any request or walk.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 405,
+      "line": 407,
       "group": "http"
     },
     {
@@ -18170,7 +18181,7 @@
       "statement": "A URL or bound-column placeholder naming neither `{table}` nor a table-pattern field raises `ConnectorPlaceholderUnbound` at build.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 407,
+      "line": 409,
       "group": "http"
     },
     {
@@ -18182,7 +18193,7 @@
       "statement": "`bound_columns` maps a column name to a template over `{table}` and the table pattern's fields; every row a read fetches carries each column at its filled value, unencoded.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 409,
+      "line": 411,
       "group": "http"
     },
     {
@@ -18194,7 +18205,7 @@
       "statement": "A fetched row already carrying a bound column raises `ConnectorBoundColumnOccupied`, failing the read.",
       "why": "because the vendor's value and the table's value otherwise disagree with nothing recording which one landed",
       "file": "spec/40-connector.md",
-      "line": 410,
+      "line": 412,
       "group": "http"
     },
     {
@@ -18206,7 +18217,7 @@
       "statement": "`recipes/github.toml` lands issues without pull requests, keyed on `id`, and commits, keyed on `sha`, per `<owner>/<repo>` table, following the `Link` header, stamping `repo_full_name`, and clocking commits at `/commit/committer/date`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 412,
+      "line": 414,
       "group": "http"
     },
     {
@@ -18218,7 +18229,7 @@
       "statement": "An expansion block names its pointer as a URL template over the landed row's scalar columns, percent-encoded, or as a column holding a URL, and names the column the fetched document lands under.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 413,
+      "line": 415,
       "group": "http"
     },
     {
@@ -18230,7 +18241,7 @@
       "statement": "After filtering by watermark, the source expands rows with one follow-up request at a time.",
       "why": "because a rejected row then costs no vendor request and no batch bursts one host",
       "file": "spec/40-connector.md",
-      "line": 414,
+      "line": 416,
       "group": "http"
     },
     {
@@ -18242,7 +18253,7 @@
       "statement": "A failed follow-up raises `ConnectorExpansionFailed` for the whole read.",
       "why": "because a position committed past a row missing its detail strands that row",
       "file": "spec/40-connector.md",
-      "line": 416,
+      "line": 418,
       "group": "http"
     },
     {
@@ -18254,7 +18265,7 @@
       "statement": "One expanding read issues at most 200 requests of follow-up, judged before the first, buffers at most 256 MiB, and runs at most 600 s. Each budget refuses rather than truncating.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 418,
+      "line": 420,
       "group": "http"
     },
     {
@@ -18266,7 +18277,7 @@
       "statement": "A pointer template carrying no placeholder, or binding one into the URL authority, raises `ConnectorTemplateRejected` at build.",
       "why": "because a response body then names a credential's destination",
       "file": "spec/40-connector.md",
-      "line": 420,
+      "line": 422,
       "group": "http"
     },
     {
@@ -18278,7 +18289,7 @@
       "statement": "A placeholder naming a column the rows lack, or carry as an array, raises `ConnectorPointerColumnMissing` on the first row, ahead of its request.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 422,
+      "line": 424,
       "group": "http"
     },
     {
@@ -18290,7 +18301,7 @@
       "statement": "A target column any landed index row already carries raises `ConnectorTargetColumnOccupied` ahead of the walk.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 424,
+      "line": 426,
       "group": "http"
     },
     {
@@ -18302,7 +18313,7 @@
       "statement": "`format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file and object sources infer them from extensions compared without case.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 431,
+      "line": 433,
       "group": "formats"
     },
     {
@@ -18314,7 +18325,7 @@
       "statement": "`json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 432,
+      "line": 434,
       "group": "formats"
     },
     {
@@ -18326,7 +18337,7 @@
       "statement": "`json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 433,
+      "line": 435,
       "group": "formats"
     },
     {
@@ -18338,7 +18349,7 @@
       "statement": "`records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 434,
+      "line": 436,
       "group": "formats"
     },
     {
@@ -18350,7 +18361,7 @@
       "statement": "`json-object` admits cursor, next-URL and Link-header pagination; page-number pagination refuses under {{connector.source.format-key-mismatch}} before I/O.",
       "why": "because one object never supplies the empty record array that terminates page-number pagination",
       "file": "spec/40-connector.md",
-      "line": 435,
+      "line": 437,
       "group": "formats"
     },
     {
@@ -18362,7 +18373,7 @@
       "statement": "A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 437,
+      "line": 439,
       "group": "formats"
     },
     {
@@ -18374,7 +18385,7 @@
       "statement": "A delimited source lands every cell as a string and an empty unquoted field as null.",
       "why": "because a dimension file's schema then depends on no data",
       "file": "spec/40-connector.md",
-      "line": 439,
+      "line": 441,
       "group": "formats"
     },
     {
@@ -18386,7 +18397,7 @@
       "statement": "A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.",
       "why": "P1",
       "file": "spec/40-connector.md",
-      "line": 441,
+      "line": 443,
       "group": "formats"
     },
     {
@@ -18398,7 +18409,7 @@
       "statement": "On `format = \"csv\"`, `delimiter` names one field delimiter character, defaulting to `,`. Validation accepts a tab and refuses a quote, line break or longer value at build.",
       "why": "because a field delimiter that also opens a quote or ends a record leaves every line two readings",
       "file": "spec/40-connector.md",
-      "line": 443,
+      "line": 445,
       "group": "formats"
     },
     {
@@ -18410,7 +18421,7 @@
       "statement": "`columns` on `format = \"csv\"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.",
       "why": "because a headerless body under a short list otherwise lands a shifted cell under the wrong name",
       "file": "spec/40-connector.md",
-      "line": 445,
+      "line": 447,
       "group": "formats"
     },
     {
@@ -18422,7 +18433,7 @@
       "statement": "A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.",
       "why": "because the watermark compares text",
       "file": "spec/40-connector.md",
-      "line": 447,
+      "line": 449,
       "group": "formats"
     },
     {
@@ -18434,7 +18445,7 @@
       "statement": "`format = \"feed\"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 449,
+      "line": 451,
       "group": "formats"
     },
     {
@@ -18446,7 +18457,7 @@
       "statement": "A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.",
       "why": "because a primary key over `entry_id` then collapses every re-fetched entry onto one row",
       "file": "spec/40-connector.md",
-      "line": 450,
+      "line": 452,
       "group": "formats"
     },
     {
@@ -18458,7 +18469,7 @@
       "statement": "`published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.",
       "why": "because a watermark over `published_at` then orders instants, whatever offset the feed spells",
       "file": "spec/40-connector.md",
-      "line": 452,
+      "line": 454,
       "group": "formats"
     },
     {
@@ -18470,7 +18481,7 @@
       "statement": "`categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.",
       "why": "because a model then selects items by a facet through `json_extract` over one declared column",
       "file": "spec/40-connector.md",
-      "line": 454,
+      "line": 456,
       "group": "formats"
     },
     {
@@ -18482,7 +18493,7 @@
       "statement": "The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external entity.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 456,
+      "line": 458,
       "group": "formats"
     },
     {
@@ -18494,7 +18505,7 @@
       "statement": "A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 458,
+      "line": 460,
       "group": "formats"
     },
     {
@@ -18506,7 +18517,7 @@
       "statement": "One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.",
       "why": "because shared-string fan-out turns a small input into an unbounded output",
       "file": "spec/40-connector.md",
-      "line": 460,
+      "line": 462,
       "group": "formats"
     },
     {
@@ -18518,7 +18529,7 @@
       "statement": "A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 462,
+      "line": 464,
       "group": "formats"
     },
     {
@@ -18530,7 +18541,7 @@
       "statement": "An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/40-connector.md",
-      "line": 464,
+      "line": 466,
       "group": "formats"
     },
     {
@@ -18542,7 +18553,7 @@
       "statement": "The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached formula values without evaluating formulas.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 466,
+      "line": 468,
       "group": "formats"
     },
     {
@@ -18554,7 +18565,7 @@
       "statement": "An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.",
       "why": "because a variable-width serial number advances a lexicographic watermark past unlanded rows",
       "file": "spec/40-connector.md",
-      "line": 468,
+      "line": 470,
       "group": "formats"
     },
     {
@@ -18566,7 +18577,7 @@
       "statement": "A directory walk reaches the configured root and nothing outside it, skips dot-entries, and traverses in sorted order. A decode-selecting key narrows nothing.",
       "why": "because a sorted walk over an unchanged tree reproduces across hosts",
       "file": "spec/40-connector.md",
-      "line": 475,
+      "line": 477,
       "group": "objects"
     },
     {
@@ -18578,7 +18589,7 @@
       "statement": "A directory walk records on the run record what it declined, tallied by extension, and reports the total as its {{run.record.skipped-count}}.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 477,
+      "line": 479,
       "group": "objects"
     },
     {
@@ -18590,7 +18601,7 @@
       "statement": "The `s3` source reads one `bucket` by exactly one of `key` or `prefix`; declaring both or neither raises `ConnectorObjectAddressRejected` at build.",
       "why": "because a key beside a prefix leaves which objects land to a guess, and neither names no object",
       "file": "spec/40-connector.md",
-      "line": 479,
+      "line": 481,
       "group": "objects"
     },
     {
@@ -18602,7 +18613,7 @@
       "statement": "A prefix read lists every key under the prefix in key order, narrowed by an optional `suffix`, and lands each object through one decoder. `pick = \"latest\"` lands the greatest listed key alone.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 481,
+      "line": 483,
       "group": "objects"
     },
     {
@@ -18614,7 +18625,7 @@
       "statement": "With `compression` undeclared, a key ending `.gz` reads as `gzip` and one ending `.zip` as `zip`. `gzip` decompresses an object before decode, `zip` decodes one archive member, and `none` reads it as stored.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 482,
+      "line": 484,
       "group": "objects"
     },
     {
@@ -18626,7 +18637,7 @@
       "statement": "The decoder reads an archive's single member or the member selected by `member`. Multiple members without a selection, or a missing selected member, refuse the read under {{connector.source.configuration-fault}}.",
       "why": "because landing one member of several by archive order picks rows the declaration never named",
       "file": "spec/40-connector.md",
-      "line": 483,
+      "line": 485,
       "group": "objects"
     },
     {
@@ -18638,7 +18649,7 @@
       "statement": "One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the body lands nothing, named as the object or the scrubbed URL, and an HTTP read refuses whole.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 485,
+      "line": 487,
       "group": "objects"
     },
     {
@@ -18650,7 +18661,7 @@
       "statement": "An unreadable object, or one exceeding {{connector.source.object-expansion}}, lands no data rows and one {{run.land.dead-letter}} row naming `s3://<bucket>/<key>`. The rest of the read lands.",
       "why": "A-connector#unreadable-objects-files",
       "file": "spec/40-connector.md",
-      "line": 486,
+      "line": 488,
       "group": "objects"
     },
     {
@@ -18662,7 +18673,7 @@
       "statement": "An object or file read in which every input it reaches is unreadable, none landing or held unchanged, refuses whole under {{run.land.unreadable-input}}, naming each input.",
       "why": "because every input failing names a declaration fault, such as a wrong `format`, rather than damaged inputs",
       "file": "spec/40-connector.md",
-      "line": 488,
+      "line": 490,
       "group": "objects"
     },
     {
@@ -18674,7 +18685,7 @@
       "statement": "A compiled-out decoder, unknown `encoding`, missing selected archive member, unselected multi-member archive, or first record mismatching `columns` fails the whole object or file read as a configuration fault. The source names the error and dead-letters nothing.",
       "why": "because dead-lettering each changed input under a declaration none satisfies records one fault as many damaged inputs",
       "file": "spec/40-connector.md",
-      "line": 490,
+      "line": 492,
       "group": "objects"
     },
     {
@@ -18686,7 +18697,7 @@
       "statement": "With `skip_unchanged = true` a position holds a dead-lettered object at its ETag, and the `file` position holds a dead-lettered file at its digest, so a later read skips it until it changes.",
       "why": "because a dead letter re-landing on every fire fills the dead-letter table with one fault",
       "file": "spec/40-connector.md",
-      "line": 492,
+      "line": 494,
       "group": "objects"
     },
     {
@@ -18698,7 +18709,7 @@
       "statement": "`replay_dead_letters = true` on the `s3` or `file` source re-reads every input its position holds dead-lettered, whatever its ETag or digest, landing it or dead-lettering it again.",
       "why": "because a fixed decoder reads unchanged bytes, which no ETag or digest change announces",
       "file": "spec/40-connector.md",
-      "line": 494,
+      "line": 496,
       "group": "objects"
     },
     {
@@ -18710,7 +18721,7 @@
       "statement": "A read that dead-letters an input reports no complete snapshot, so a replacing table retires none of that input's earlier rows.",
       "why": "because a complete snapshot claim tombstones every row the read omits",
       "file": "spec/40-connector.md",
-      "line": 496,
+      "line": 498,
       "group": "objects"
     },
     {
@@ -18722,7 +18733,7 @@
       "statement": "With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 498,
+      "line": 500,
       "group": "objects"
     },
     {
@@ -18734,7 +18745,7 @@
       "statement": "The `s3` source declares `access_key_id` and `secret_access_key` together, plus an optional session token for a temporary credential, each one `secret://<name>` reference hydrated per read. Without them, requests go unsigned; a literal refuses under {{connector.reference.material-in-a-declaration}}.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 499,
+      "line": 501,
       "group": "objects"
     },
     {
@@ -18746,7 +18757,7 @@
       "statement": "`credentials = \"role\"` on the `s3` source signs under {{store.endpoint.role-credentials}} in place of the key pair, refusing alongside a key under {{store.endpoint.role-conflict}}.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 500,
+      "line": 502,
       "group": "objects"
     },
     {
@@ -18758,7 +18769,7 @@
       "statement": "The `s3` source presigns each request through the S3 bucket adapter of {{store.endpoint.addressing}} and sends it through the mediated client, allowlisting the endpoint host alone; a skip compares listed or head-request ETags and downloads no object.",
       "why": "because one S3 client then signs every bucket request while the mediated client stays the one attachment point for source egress",
       "file": "spec/40-connector.md",
-      "line": 501,
+      "line": 503,
       "group": "objects"
     },
     {
@@ -18770,7 +18781,7 @@
       "statement": "At build, the host refuses an `s3` source binding a key pair to a cleartext endpoint outside loopback under {{connector.attach.cleartext-endpoint}}.",
       "why": "because a presigned URL is a bearer capability for its lifetime",
       "file": "spec/40-connector.md",
-      "line": 503,
+      "line": 505,
       "group": "objects"
     },
     {
@@ -18782,7 +18793,7 @@
       "statement": "A document source lands one row per page, or one row per heading past a length threshold, each identified by a slug plus an ordinal, chunked or not. With a base URL, each row links to its own page anchor.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 510,
+      "line": 512,
       "group": "documents"
     },
     {
@@ -18794,7 +18805,7 @@
       "statement": "An encrypted document or a document with no extractable text on any page counts as unreadable input under {{run.land.unreadable-input}}. The source stores no empty pages for these documents.",
       "why": "P2",
       "file": "spec/40-connector.md",
-      "line": 511,
+      "line": 513,
       "group": "documents"
     },
     {
@@ -18806,7 +18817,7 @@
       "statement": "A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated key or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 513,
+      "line": 515,
       "group": "documents"
     },
     {
@@ -18818,7 +18829,7 @@
       "statement": "A compound-binary office container, detected by an office extension or by magic bytes under an extension the source reads, raises `ConnectorConversionRequired` naming the conversion command.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 515,
+      "line": 517,
       "group": "documents"
     },
     {
@@ -18830,7 +18841,7 @@
       "statement": "The `file` source resolves `root` against the project directory and walks into one `documents` table: `.md` and `.markdown` notes, `.txt` plain text, `.pdf` pages. The source declines other extensions without opening them.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 517,
+      "line": 519,
       "group": "documents"
     },
     {
@@ -18842,7 +18853,7 @@
       "statement": "The source reads a root-relative path if no `exclude` glob matches and either an `include` glob matches or none is declared. `*` and `?` match within one segment; a `**` segment matches any number.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 518,
+      "line": 520,
       "group": "documents"
     },
     {
@@ -18854,7 +18865,7 @@
       "statement": "The `file` walk follows no symbolic link, to a file or a directory.",
       "why": "because a link is the one path out of the root that a sorted walk of names cannot see",
       "file": "spec/40-connector.md",
-      "line": 519,
+      "line": 521,
       "group": "documents"
     },
     {
@@ -18866,7 +18877,7 @@
       "statement": "A document's slug is its root-relative path without extension, lowercased, each run of characters other than ASCII letters and digits in a segment folded to `-`. Two files folding to one slug fail the read naming both.",
       "why": "because a slug is the identity a link and a citation carry, and two files under one identity overwrite each other's rows",
       "file": "spec/40-connector.md",
-      "line": 521,
+      "line": 523,
       "group": "documents"
     },
     {
@@ -18878,7 +18889,7 @@
       "statement": "A note whose body past its frontmatter exceeds 8192 B lands one row per heading section, the text before its first heading as its own row; a shorter note and a text file land one row.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 523,
+      "line": 525,
       "group": "documents"
     },
     {
@@ -18890,7 +18901,7 @@
       "statement": "A document row carries slug, ordinal, root-relative path, kind, title, heading, text, url, the file's SHA-256 and a `removed` flag. The title is the frontmatter `title`, else the first level-one heading, else the file stem.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 524,
+      "line": 526,
       "group": "documents"
     },
     {
@@ -18902,7 +18913,7 @@
       "statement": "Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a JSON array.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 525,
+      "line": 527,
       "group": "documents"
     },
     {
@@ -18914,7 +18925,7 @@
       "statement": "With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 526,
+      "line": 528,
       "group": "documents"
     },
     {
@@ -18926,7 +18937,7 @@
       "statement": "The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 527,
+      "line": 529,
       "group": "documents"
     },
     {
@@ -18938,7 +18949,7 @@
       "statement": "An unreadable file lands no data rows and one {{run.land.dead-letter}} row. The source retains earlier rows and continues the read.",
       "why": "A-connector#unreadable-objects-files",
       "file": "spec/40-connector.md",
-      "line": 528,
+      "line": 530,
       "group": "documents"
     },
     {
@@ -18950,7 +18961,7 @@
       "statement": "A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.",
       "why": "because a tombstone on an identity the read lands live removes the renamed document",
       "file": "spec/40-connector.md",
-      "line": 530,
+      "line": 532,
       "group": "documents"
     },
     {
@@ -18962,7 +18973,7 @@
       "statement": "The source declines a file over 64 MiB without reading past the leading bytes identifying its format.",
       "why": "because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory",
       "file": "spec/40-connector.md",
-      "line": 532,
+      "line": 534,
       "group": "documents"
     },
     {
@@ -18974,7 +18985,7 @@
       "statement": "A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 534,
+      "line": 536,
       "group": "documents"
     },
     {
@@ -18986,7 +18997,7 @@
       "statement": "An async-report source commits the vendor run id when creation returns. Exhausting the polling budget ends the read successfully. The source recreates an expired vendor run for the same window.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 540,
+      "line": 542,
       "group": "reports, images, search and receive"
     },
     {
@@ -18998,7 +19009,7 @@
       "statement": "Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 542,
+      "line": 544,
       "group": "reports, images, search and receive"
     },
     {
@@ -19010,7 +19021,7 @@
       "statement": "A response announcing another page while naming its cursor in neither the cursor field nor the next link raises `ConnectorPageCursorMissing`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 543,
+      "line": 545,
       "group": "reports, images, search and receive"
     },
     {
@@ -19022,7 +19033,7 @@
       "statement": "The source holds report watermarks per partition: account, grain, breakdown and any split dimension. One position contains the versioned watermark map.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 545,
+      "line": 547,
       "group": "reports, images, search and receive"
     },
     {
@@ -19034,7 +19045,7 @@
       "statement": "A retryable failure on one partition holds it at its committed position and keeps the pages other partitions drained.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 546,
+      "line": 548,
       "group": "reports, images, search and receive"
     },
     {
@@ -19046,7 +19057,7 @@
       "statement": "A metric read at a grain where the vendor estimates rather than computes it raises `ConnectorMetricGrainRejected`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 548,
+      "line": 550,
       "group": "reports, images, search and receive"
     },
     {
@@ -19058,7 +19069,7 @@
       "statement": "A caught-up partition re-opens its lookback window every run, the pull window is at least that wide, and each row carries a deterministic key over partition, entity, date and breakdown.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 550,
+      "line": 552,
       "group": "reports, images, search and receive"
     },
     {
@@ -19070,7 +19081,7 @@
       "statement": "A report row's event time is an RFC 3339 instant at midnight UTC of the window-start day, null where the vendor gave no usable date.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 551,
+      "line": 553,
       "group": "reports, images, search and receive"
     },
     {
@@ -19082,7 +19093,7 @@
       "statement": "Ordering a report stream by the engine-injected ingest stamp raises `ConnectorOrderingColumnRejected`.",
       "why": "because a late seed then outranks a live restatement",
       "file": "spec/40-connector.md",
-      "line": 552,
+      "line": 554,
       "group": "reports, images, search and receive"
     },
     {
@@ -19094,7 +19105,7 @@
       "statement": "Report rows enter the batch as untyped JSON. The source recognizes throttling from a throttle status or an error body containing a throttle code.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 554,
+      "line": 556,
       "group": "reports, images, search and receive"
     },
     {
@@ -19106,7 +19117,7 @@
       "statement": "An authentication failure on a report read raises `ConnectorAuthTerminal`, terminal against the retry schedule.",
       "why": "P6",
       "file": "spec/40-connector.md",
-      "line": 555,
+      "line": 557,
       "group": "reports, images, search and receive"
     },
     {
@@ -19118,7 +19129,7 @@
       "statement": "An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 557,
+      "line": 559,
       "group": "reports, images, search and receive"
     },
     {
@@ -19130,7 +19141,7 @@
       "statement": "An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 558,
+      "line": 560,
       "group": "reports, images, search and receive"
     },
     {
@@ -19142,7 +19153,7 @@
       "statement": "Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 560,
+      "line": 562,
       "group": "reports, images, search and receive"
     },
     {
@@ -19154,7 +19165,7 @@
       "statement": "An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 561,
+      "line": 563,
       "group": "reports, images, search and receive"
     },
     {
@@ -19166,7 +19177,7 @@
       "statement": "Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/40-connector.md",
-      "line": 563,
+      "line": 565,
       "group": "reports, images, search and receive"
     },
     {
@@ -19178,7 +19189,7 @@
       "statement": "A `receive` source declares `format = \"jsonl\"` and a positive `max_batch_bytes`, `max_queue_depth` and `key_retention_secs`, none defaulted, and no `schedule`; it serves every declared table and requests nothing from outside.",
       "why": "because a ceiling the sender fills must be the operator's choice, not a guess the binary carries",
       "file": "spec/40-connector.md",
-      "line": 565,
+      "line": 567,
       "group": "reports, images, search and receive",
       "scenarios": [
         "WHEN a `receive` source omits `max_queue_depth`, THEN validation refuses naming the key."
@@ -19193,7 +19204,7 @@
       "statement": "The engine bounds and records a delivered batch before storing its rows.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 567,
+      "line": 569,
       "group": "reports, images, search and receive"
     },
     {
@@ -19205,7 +19216,7 @@
       "statement": "A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 568,
+      "line": 570,
       "group": "reports, images, search and receive",
       "scenarios": [
         "WHEN line 2 of a body names an undeclared table, THEN the batch fails naming line 2 and no table lands."
@@ -19220,7 +19231,7 @@
       "statement": "The drive source walks `folder_id` breadth-first through `files.list`, paging each folder within `drive_id` when declared. The source lists each folder once, sorts children by name and id, and follows no shortcut.",
       "why": "because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot",
       "file": "spec/40-connector.md",
-      "line": 574,
+      "line": 576,
       "group": "drive"
     },
     {
@@ -19232,7 +19243,7 @@
       "statement": "Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 576,
+      "line": 578,
       "group": "drive",
       "scenarios": [
         "WHEN `folder_ids` is empty or accompanies `folder_id`, THEN validation raises `ConnectorDriveRootsInvalid` before listing."
@@ -19247,7 +19258,7 @@
       "statement": "With `folder_ids`, every selected root names a folder in the declared `drive_id`. A missing or outside-drive root raises `ConnectorDriveRootRejected` before the source lists any selected folder.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 578,
+      "line": 580,
       "group": "drive",
       "scenarios": [
         "WHEN one selected root belongs to another Shared Drive, THEN `ConnectorDriveRootRejected` names it before the source lists any selected folder."
@@ -19262,7 +19273,7 @@
       "statement": "With `folder_ids`, the drive source applies {{connector.source.drive-walk}} to each root while confining descendants to the declared drive, listing each folder once across overlaps.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 580,
+      "line": 582,
       "group": "drive"
     },
     {
@@ -19274,7 +19285,7 @@
       "statement": "A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 582,
+      "line": 584,
       "group": "drive"
     },
     {
@@ -19286,7 +19297,7 @@
       "statement": "A file reachable through multiple selected roots lands once by `file_id`. Its `resolved_root` is the lexicographically least selected root id reaching the file.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 583,
+      "line": 585,
       "group": "drive",
       "scenarios": [
         "WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`."
@@ -19301,7 +19312,7 @@
       "statement": "The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 585,
+      "line": 587,
       "group": "drive"
     },
     {
@@ -19313,7 +19324,7 @@
       "statement": "`mode` selects `bytes-and-pages` by default or `metadata-only`; another spelling raises `ConnectorDriveModeUnknown` before any request.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 586,
+      "line": 588,
       "group": "drive"
     },
     {
@@ -19325,7 +19336,7 @@
       "statement": "Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 588,
+      "line": 590,
       "group": "drive"
     },
     {
@@ -19337,7 +19348,7 @@
       "statement": "In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 589,
+      "line": 591,
       "group": "drive",
       "scenarios": [
         "WHEN a downloaded version has known bytes, THEN its SHA-256 matches those bytes, which the source discards after capture.",
@@ -19353,7 +19364,7 @@
       "statement": "After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.",
       "why": "because a digest of newer bytes cannot witness the version named by the file row",
       "file": "spec/40-connector.md",
-      "line": 591,
+      "line": 593,
       "group": "drive",
       "scenarios": [
         "WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor."
@@ -19368,7 +19379,7 @@
       "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 593,
+      "line": 595,
       "group": "drive"
     },
     {
@@ -19380,7 +19391,7 @@
       "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
-      "line": 594,
+      "line": 596,
       "group": "drive",
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no page content row lands."
@@ -19395,7 +19406,7 @@
       "statement": "In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 596,
+      "line": 598,
       "group": "drive",
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes."
@@ -19410,7 +19421,7 @@
       "statement": "For a file over `max_file_bytes`, 64 MiB by default, the source stores a file row with a `skipped` reason naming the cap, without pages. The source reads no bytes past the cap and continues.",
       "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
       "file": "spec/40-connector.md",
-      "line": 597,
+      "line": 599,
       "group": "drive",
       "scenarios": [
         "WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap."
@@ -19425,7 +19436,7 @@
       "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
       "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
       "file": "spec/40-connector.md",
-      "line": 599,
+      "line": 601,
       "group": "drive"
     },
     {
@@ -19437,7 +19448,7 @@
       "statement": "A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.",
       "why": "because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file",
       "file": "spec/40-connector.md",
-      "line": 601,
+      "line": 603,
       "group": "drive"
     },
     {
@@ -19449,7 +19460,7 @@
       "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 603,
+      "line": 605,
       "group": "drive"
     },
     {
@@ -19461,7 +19472,7 @@
       "statement": "The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 604,
+      "line": 606,
       "group": "drive",
       "scenarios": [
         "WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files."
@@ -19476,7 +19487,7 @@
       "statement": "A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 606,
+      "line": 608,
       "group": "drive",
       "scenarios": [
         "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.",
@@ -19492,7 +19503,7 @@
       "statement": "For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.",
       "why": "because a changed version needs a fresh byte witness even when the file id stays stable",
       "file": "spec/40-connector.md",
-      "line": 608,
+      "line": 610,
       "group": "drive",
       "scenarios": [
         "WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest."
@@ -19507,7 +19518,7 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 610,
+      "line": 612,
       "group": "drive"
     },
     {
@@ -19519,7 +19530,7 @@
       "statement": "A selected-root walk shares {{connector.source.page-cap}} across roots; reaching it with a pending folder or page token raises `ConnectorDriveListingExceeded`, naming the folder and committing no selection removals.",
       "why": "because an incomplete listing cannot prove a file left the selected trees",
       "file": "spec/40-connector.md",
-      "line": 611,
+      "line": 613,
       "group": "drive",
       "scenarios": [
         "WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone."
@@ -19534,7 +19545,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 613,
+      "line": 615,
       "group": "drive"
     },
     {
@@ -19546,7 +19557,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 614,
+      "line": 616,
       "group": "drive"
     },
     {
@@ -19558,7 +19569,7 @@
       "statement": "Before any request, the source checks that `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold exactly one `${secret://<name>}` reference and nothing else.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 616,
+      "line": 618,
       "group": "drive"
     },
     {
@@ -19570,7 +19581,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 617,
+      "line": 619,
       "group": "drive"
     },
     {
@@ -27226,6 +27237,17 @@
       "line": 256
     },
     {
+      "id": "surface.delegate.dedup-window",
+      "contract": "surface",
+      "operation": "delegate",
+      "subject": "dedup-window",
+      "kind": "behavior",
+      "statement": "A binding's optional `dedup_window_secs` declares the whole seconds the delegate deduplicates a repeated `idempotency_key`; each `call` request's guard records it under {{run.callback-guard.identity}}, `none` when absent.",
+      "why": "because a paid call deduplicates only while the delegate's response cache holds its key",
+      "file": "spec/70-control-plane.md",
+      "line": 258
+    },
+    {
       "id": "surface.delegate.clocks",
       "contract": "surface",
       "operation": "delegate",
@@ -27234,7 +27256,7 @@
       "statement": "Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.",
       "why": "because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires",
       "file": "spec/70-control-plane.md",
-      "line": 258
+      "line": 260
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -27245,7 +27267,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "surface.edit.connector-upload",
@@ -27256,7 +27278,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "surface.edit.store-draft",
@@ -27267,7 +27289,7 @@
       "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "surface.apply.version-race",
@@ -27278,7 +27300,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 281
+      "line": 283
     },
     {
       "id": "surface.apply.validation",
@@ -27289,7 +27311,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 283
+      "line": 285
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -27300,7 +27322,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -27311,7 +27333,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 287
+      "line": 289
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -27322,7 +27344,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 289
+      "line": 291
     },
     {
       "id": "surface.apply.local-claim",
@@ -27333,7 +27355,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -27344,7 +27366,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 293
+      "line": 295
     },
     {
       "id": "surface.apply.receipt-message",
@@ -27355,7 +27377,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 295,
+      "line": 297,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -27369,7 +27391,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "surface.apply.receipt-file",
@@ -27380,7 +27402,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 299,
+      "line": 301,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -27394,7 +27416,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "surface.apply.guarded-import",
@@ -27405,7 +27427,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; an import over a directory holding a version claims nothing, names that version and exits zero.",
       "why": "because a restart on a warm disk runs import before apply, and a refusal there stops the restart",
       "file": "spec/70-control-plane.md",
-      "line": 303,
+      "line": 305,
       "scenarios": [
         "WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds."
       ]
@@ -27419,7 +27441,7 @@
       "statement": "Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.",
       "why": "because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped",
       "file": "spec/70-control-plane.md",
-      "line": 305,
+      "line": 307,
       "scenarios": [
         "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.",
         "WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.",
@@ -27435,7 +27457,7 @@
       "statement": "Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains",
       "file": "spec/70-control-plane.md",
-      "line": 307
+      "line": 309
     },
     {
       "id": "surface.apply.self-valid",
@@ -27446,7 +27468,7 @@
       "statement": "Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.",
       "why": "because a signed head failing its own adoption refuses every cold start until a reset",
       "file": "spec/70-control-plane.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "surface.apply.draft-claim",
@@ -27457,7 +27479,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -27468,7 +27490,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -27479,7 +27501,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface#applied-jobs-retain",
       "file": "spec/70-control-plane.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "surface.apply.draft-absent",
@@ -27490,7 +27512,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -27501,7 +27523,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "surface.apply.served-malformed",
@@ -27512,7 +27534,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -27523,7 +27545,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "surface.reside.region-entries",
@@ -27534,7 +27556,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "A-surface#residency-divergence-detected",
       "file": "spec/70-control-plane.md",
-      "line": 339
+      "line": 341
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -27545,7 +27567,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 341
+      "line": 343
     },
     {
       "id": "surface.reside.site-regions",
@@ -27556,7 +27578,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface#residency-divergence-detected",
       "file": "spec/70-control-plane.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "surface.connection.routes",
@@ -27567,7 +27589,7 @@
       "statement": "`POST /connections` creates, `POST /connections/{id}/pause` pauses, and `DELETE /connections/{id}` deletes a connection outside the operator-only `/control/*` routes.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 350
+      "line": 352
     },
     {
       "id": "surface.connection.create",
@@ -27578,7 +27600,7 @@
       "statement": "A served connection create binds an admitted tenant, principal, source selection, secret name and pipeline id in one versioned control claim under {{surface.apply.version-race}}.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "surface.connection.authority",
@@ -27589,7 +27611,7 @@
       "statement": "A connection mutation requires an admitted write credential for its tenant and principal, checked on the request before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.",
       "why": "because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential",
       "file": "spec/70-control-plane.md",
-      "line": 353
+      "line": 355
     },
     {
       "id": "surface.connection.idempotent-create",
@@ -27600,7 +27622,7 @@
       "statement": "Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.",
       "why": "because a retried consent callback must not produce a second scheduled pipeline",
       "file": "spec/70-control-plane.md",
-      "line": 355,
+      "line": 357,
       "scenarios": [
         "WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain."
       ]
@@ -27614,7 +27636,7 @@
       "statement": "Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 357
+      "line": 359
     },
     {
       "id": "surface.connection.malformed",
@@ -27625,7 +27647,7 @@
       "statement": "A create body outside {{type:contextful_cli::connection::Declaration}}, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.",
       "why": "because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline",
       "file": "spec/70-control-plane.md",
-      "line": 358,
+      "line": 360,
       "scenarios": [
         "WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version."
       ]
@@ -27639,7 +27661,7 @@
       "statement": "A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.",
       "why": "because a retired id reused by a new declaration restarts a pipeline whose credential is revoked",
       "file": "spec/70-control-plane.md",
-      "line": 360
+      "line": 362
     },
     {
       "id": "surface.connection.pause",
@@ -27650,7 +27672,7 @@
       "statement": "Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "surface.connection.delete",
@@ -27661,7 +27683,7 @@
       "statement": "Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "surface.connection.schedule-scale",
@@ -27672,7 +27694,7 @@
       "statement": "Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "surface.connection.consent-boundary",
@@ -27683,7 +27705,7 @@
       "statement": "The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 366
+      "line": 368
     },
     {
       "id": "surface.open-console.page-routes",
@@ -32764,7 +32786,7 @@
     "authority.revoke": "Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist, the scoped epoch, key rotation, format withdrawal.",
     "authority.verify": "Admission at a checkpoint: signatures, audience, timestamps, possession proof, key sets, and the admitted-authority value.",
     "connector.attach": "Host handling of outbound requests: network transport, permitted hosts and addresses, credential headers, redirects and URL scrubbing.",
-    "connector.declare-capability": "Manifest-declared host access and the probe that checks a bound credential's granted scopes.",
+    "connector.declare-capability": "Manifest-declared host access, the probe that checks a bound credential's granted scopes, and the window a connector's destination deduplicates a key for.",
     "connector.drive-changes": "Change cursors and complete listings of a selected Drive corpus.",
     "connector.drive-domain-auth": "Organization-approved Drive access and the principal whose authority each request carries.",
     "connector.drive-picks": "Files a principal selects through Picker, the selection position, and the rows a tenant connection stores.",
@@ -36219,6 +36241,10 @@
       "store.reconcile.binary-and-vector"
     ],
     [
+      "connector.declare-capability.dedup-window",
+      "run.callback-guard.identity"
+    ],
+    [
       "connector.widen.host-inclusion",
       "connector.declare-capability.host-allowlist"
     ],
@@ -37099,6 +37125,10 @@
       "run.own.pinned-plan-changed"
     ],
     [
+      "surface.delegate.dedup-window",
+      "run.callback-guard.identity"
+    ],
+    [
       "surface.apply.synced-attestation",
       "authority.issue.signing-port"
     ],
@@ -37484,6 +37514,9 @@
         },
         {
           "name": "capabilities"
+        },
+        {
+          "name": "dedup_window_secs"
         }
       ],
       "clauses": [
@@ -52180,6 +52213,29 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/component.rs",
         "name": "a_wall_clock_import_without_the_clock_grant_fails_to_load",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.declare-capability.dedup-window": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/manifest.rs",
+        "name": "a_manifest_declares_its_deduplication_window_and_defaults_to_none",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/run/plan.rs",
+        "name": "a_plan_connector_declares_its_deduplication_window_and_defaults_to_none",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/guarded_callback.rs",
+        "name": "each_pull_guard_records_the_window_its_connector_declares",
         "verdict": "performed",
         "proved": false
       }
@@ -70367,6 +70423,22 @@
         "kind": "test",
         "path": "apps/cloudflare-delegate/test/delegate.test.ts",
         "name": "apps/cloudflare-delegate/test/delegate.test.ts::signature timestamps ride this side's system clock, not the envelope's deadline",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "surface.delegate.dedup-window": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/surface/delegate.rs",
+        "name": "a_binding_declares_its_deduplication_window_in_whole_seconds_and_defaults_to_none",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/guarded_callback.rs",
+        "name": "a_row_call_guard_records_the_window_its_body_names",
         "verdict": "performed",
         "proved": false
       }
