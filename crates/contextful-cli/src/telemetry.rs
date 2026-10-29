@@ -3,6 +3,10 @@
 //! operator's `OTEL_EXPORTER_OTLP_*` variables configure (`disclosure.record.span-export`).
 //! With no endpoint set no exporter exists and no span leaves the process
 //! (`disclosure.record.span-unconfigured`).
+//!
+//! The read plane links this module for read spans alone; run and model-call spans are the
+//! data plane's.
+#![cfg_attr(not(feature = "data-plane"), allow(dead_code))]
 
 use contextful_core::run::record::RunRow;
 use contextful_core::trace::{Span, SpanKind, SpanSink, TraceContext};
