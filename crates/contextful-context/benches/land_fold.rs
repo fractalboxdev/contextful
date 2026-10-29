@@ -1,10 +1,12 @@
-//! `run.land.session` and `store.fold.pass` at 1,000 and 10,000 unfolded single-row runs on
-//! one table: land latency per run through one landing session, the latency of a read
-//! over every unfolded run, and the bytes the pass folding them writes.
+//! `run.land.session` and `store.fold.pass` at N unfolded single-row runs on one table: land
+//! latency per run through one landing session, the latency of a read over every unfolded
+//! run, and the bytes the pass folding them writes.
 //!
-//! `cargo bench -p contextful-context --bench land_fold` prints each figure; under
-//! `contextful-ci measure` each one is recorded for its ledger entry. The workspace test
-//! stage builds no bench target.
+//! `cargo bench -p contextful-context --bench land_fold` measures 1,000 runs, the size the
+//! ledger records under `contextful-ci measure`. Each numeric argument after `--` names
+//! another size, measured in order: `cargo bench -p contextful-context --bench land_fold --
+//! 1000 10000` adds 10,000 runs, about an hour on a 28-core workstation. Every size prints
+//! its figures; the workspace test stage builds no bench target.
 
 // The session's precommit closure returns the store's own error type.
 #![allow(clippy::result_large_err)]
@@ -27,8 +29,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant as Clock;
 
-/// The unfolded-run counts measured.
-const SIZES: [usize; 2] = [1_000, 10_000];
+/// The unfolded-run count measured when no argument names one.
+const DEFAULT_RUNS: usize = 1_000;
 /// Timed reads per size, after one untimed read.
 const READS: usize = 5;
 /// A run-count trigger above every size, so each run stays unfolded until the measured pass.
@@ -112,20 +114,25 @@ fn measure(runs: usize) -> Figures {
 }
 
 fn main() {
-    for runs in SIZES {
+    // `cargo bench` passes `--bench` ahead of the caller's arguments; only sizes count.
+    let mut sizes: Vec<usize> = std::env::args().skip(1).filter_map(|a| a.parse().ok()).collect();
+    if sizes.is_empty() {
+        sizes.push(DEFAULT_RUNS);
+    }
+    for runs in sizes {
         let f = measure(runs);
-        let k = runs / 1_000;
         println!(
             "land-fold at {runs} unfolded runs: land p50 {:.0} µs, p95 {:.0} µs; schema.json parsed {}×; read p50 {:.1} ms; fold {:.0} ms, {} B written for {} B landed",
             f.land_p50_us, f.land_p95_us, f.schema_reads, f.read_ms, f.fold_ms, f.fold_bytes, f.landed_bytes
         );
         assert_eq!(f.schema_reads, 1, "one session parses schema.json once while its version holds");
-        emit(&format!("land-session-p50-{k}k"), f.land_p50_us, runs as u64, 0);
-        emit(&format!("land-session-p95-{k}k"), f.land_p95_us, runs as u64, 0);
-        if runs == 10_000 {
-            emit("land-session-schema-reads-10k", f.schema_reads as f64, runs as u64, 0);
+        // The ledger records the default size alone.
+        if runs == DEFAULT_RUNS {
+            emit("land-session-p50-1k", f.land_p50_us, runs as u64, 0);
+            emit("land-session-p95-1k", f.land_p95_us, runs as u64, 0);
+            emit("land-session-schema-reads-1k", f.schema_reads as f64, runs as u64, 0);
+            emit("read-unfolded-p50-1k", f.read_ms, READS as u64, 0);
+            emit("fold-unfolded-bytes-1k", f.fold_bytes as f64, runs as u64, 0);
         }
-        emit(&format!("read-unfolded-p50-{k}k"), f.read_ms, READS as u64, 0);
-        emit(&format!("fold-unfolded-bytes-{k}k"), f.fold_bytes as f64, runs as u64, 0);
     }
 }

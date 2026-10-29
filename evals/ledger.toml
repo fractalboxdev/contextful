@@ -916,8 +916,9 @@ direction = "lower_is_better"
 method = { probe = "fold-passages-peak-rss" }
 seed   = 0x5eed_00f5
 
-# One landing session lands 1,000 or 10,000 single-row runs on one table and leaves every
-# run unfolded; one read counts them all, then one pass folds them.
+# One landing session lands 1,000 single-row runs on one table and leaves every run
+# unfolded; one read counts them all, then one pass folds them. Larger sizes run on demand
+# through the bench's size arguments and record nothing.
 [entry.land-session-p50-1k]
 clause = "run.land.session"
 metric = "land.session.runs_1k.wall_us.p50"
@@ -934,25 +935,9 @@ tier   = "trend"
 direction = "lower_is_better"
 method = { bench = "contextful_context::land_fold" }
 
-[entry.land-session-p50-10k]
-clause = "run.land.session"
-metric = "land.session.runs_10k.wall_us.p50"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::land_fold" }
-
-[entry.land-session-p95-10k]
-clause = "run.land.session"
-metric = "land.session.runs_10k.wall_us.p95"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::land_fold" }
-
-[entry.land-session-schema-reads-10k]
+[entry.land-session-schema-reads-1k]
 clause = "run.land.session-schema"
-metric = "land.session.runs_10k.schema_reads"
+metric = "land.session.runs_1k.schema_reads"
 kind   = "bench"
 tier   = "trend"
 direction = "lower_is_better"
@@ -967,25 +952,9 @@ tier   = "trend"
 direction = "lower_is_better"
 method = { bench = "contextful_context::land_fold" }
 
-[entry.read-unfolded-p50-10k]
-clause = "store.fold.includes-runs"
-metric = "read.unfolded.runs_10k.wall_ms.p50"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::land_fold" }
-
 [entry.fold-unfolded-bytes-1k]
 clause = "store.fold.pass"
 metric = "fold.unfolded.runs_1k.written_bytes"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::land_fold" }
-
-[entry.fold-unfolded-bytes-10k]
-clause = "store.fold.pass"
-metric = "fold.unfolded.runs_10k.written_bytes"
 kind   = "bench"
 tier   = "trend"
 direction = "lower_is_better"
