@@ -6,9 +6,10 @@ use contextful_core::run::suspend::AwakeableState;
 use contextful_core::run::RunError;
 use contextful_engine::awake::{AwakeError, Awaited, Registry};
 use contextful_engine::Journal;
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 
 fn registry(dir: &std::path::Path) -> Registry {
-    Registry::open(dir, Journal::open(dir))
+    Registry::open(dir, Journal::over(FileJournalStore::open(dir), FileBlobStore::open(dir)))
 }
 
 fn files(dir: &std::path::Path) -> Vec<String> {
@@ -57,7 +58,7 @@ fn a_resumed_run_reads_its_payload_back_from_the_journal() {
     r.resolve(&a.token, b"{\"ok\":true}", at("2030-01-01T00:00:10Z")).unwrap();
     let key = contextful_engine::awake::resume_key("x-1", &a.token);
     assert_eq!(key.input_hash, sha256_hex(format!("awakeable:{}", a.token).as_bytes()));
-    assert!(Journal::open(dir.path()).row(&key).unwrap().is_some(), "the payload is a journal entry");
+    assert!(Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())).row(&key).unwrap().is_some(), "the payload is a journal entry");
     // After a crash, a fresh registry reads the recorded payload, even past the deadline.
     let reopened = registry(dir.path());
     assert_eq!(reopened.awaited("x-1", &a.token, at("2030-01-01T05:00:00Z")).unwrap(), Awaited::Resumed(b"{\"ok\":true}".to_vec()));
@@ -93,7 +94,7 @@ fn a_payload_above_the_cutoff_lands_in_the_blob_store() {
     let row = r.state(&a.token, at("2030-01-01T00:00:02Z")).unwrap();
     let sha = sha256_hex(&big);
     assert_eq!(row.payload.as_ref().and_then(|p| p.blob()), Some(sha.as_str()));
-    assert!(Journal::open(dir.path()).blob_path(&sha).exists());
+    assert!(Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())).blob_path(&sha).exists());
     assert_eq!(r.referenced_blobs().unwrap(), [sha]);
     let raw = std::fs::read_to_string(dir.path().join("awakeables").join(format!("{}.json", a.token))).unwrap();
     assert!(raw.len() < 4096, "the row holds a reference, not the payload");

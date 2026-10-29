@@ -9,6 +9,7 @@ use contextful_core::run::Failure;
 use contextful_engine::cancel::{Cadence, Keeper};
 use contextful_engine::project::Hub;
 use contextful_engine::{Engine, Journal, LocalCatalog};
+use contextful_engine::stores::{FileBlobStore, FileJournalStore};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
@@ -183,7 +184,7 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
     let hub = Hub::new(crate::support::at(crate::support::T0));
     let engine = Engine {
         catalog: Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone()))),
-        journal: Journal::open(dir.path()),
+        journal: Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())),
         awakeables: None,
         keeper: Keeper::default(),
         emitter: Some(hub.emitter()),
@@ -208,7 +209,7 @@ fn a_run_lands_the_same_whether_its_projection_drops_every_event_or_none() {
         let clock = SetClock::new(crate::support::T0);
         let engine = Engine {
             catalog: Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock))),
-            journal: Journal::open(dir.path()),
+            journal: Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())),
             awakeables: None,
             keeper: Keeper::default(),
             emitter,
@@ -257,7 +258,7 @@ fn a_received_batch_counts_its_catalog_calls_per_landing() {
     // A keeper whose poll and renewal never come due inside a landing, so every call is the runner's own.
     let engine = Engine {
         catalog: counted.clone(),
-        journal: Journal::open(dir.path()),
+        journal: Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path())),
         awakeables: None,
         keeper: Keeper::new(Cadence { poll: Duration::from_secs(3600), renew: Duration::from_secs(3600) }),
         emitter: None,

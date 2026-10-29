@@ -8,7 +8,7 @@ use contextful_core::run::journal::{sweep_due, EntryKey, Row, Stored};
 use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore};
 use contextful_core::run::retry::NOT_BEFORE_PREFIX;
 use contextful_core::run::{Failure, RunError};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// Interval at which a caller waiting on another's claim re-reads it.
@@ -58,11 +58,6 @@ pub struct Journal<J = FileJournalStore, B = FileBlobStore> {
 }
 
 impl Journal {
-    /// The journal over the file tree rooted at `root`.
-    pub fn open(root: &Path) -> Journal {
-        Journal::over(FileJournalStore::open(root), FileBlobStore::open(root))
-    }
-
     /// The directory holding every blob.
     pub fn blob_dir(&self) -> PathBuf {
         self.blobs.dir()
