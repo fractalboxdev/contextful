@@ -175,6 +175,9 @@ pub enum StoreError {
     /// A generation pull meets a local file the generation does not list. (`store.pull.generation-diverged`)
     #[error("SyncGenerationDiverged: {0}")]
     SyncGenerationDiverged(String),
+    /// A store's `[sync] pull_tables` holds no pattern. (`store.pull.tables-empty`)
+    #[error("SyncPullTablesEmpty: {0}")]
+    SyncPullTablesEmpty(String),
     /// A bucket or generation manifest carries a format newer than the reader parses. (`store.push.format-unsupported`)
     #[error("SyncManifestFormatUnsupported: {0}")]
     SyncManifestFormatUnsupported(String),

@@ -498,6 +498,9 @@ pub struct PushReport {
     /// Local keys another node owns that the committed manifest neither lists nor
     /// tombstones, with their owner (`store.push.stranded`).
     pub stranded: Vec<(String, String)>,
+    /// The run ids of this node whose run manifest the committed manifest lists under any
+    /// table (`store.drain.clear`).
+    pub listed_runs: BTreeSet<String>,
 }
 
 /// What one manifest commit did.
@@ -507,6 +510,7 @@ struct Commit {
     rounds: u32,
     refused: Vec<String>,
     stranded: Vec<(String, String)>,
+    listed_runs: BTreeSet<String>,
 }
 
 /// One generation manifest the bucket holds: its number, stamp, and the project's entry and
@@ -1081,6 +1085,7 @@ impl Syncer {
         report.rounds = first.rounds;
         report.refused = first.refused;
         report.stranded = first.stranded;
+        report.listed_runs = first.listed_runs;
         // Pointers after the commit: every object a carried snapshot reaches is listed (`store.push.pointer-carry`).
         for local in &locals {
             match self.publish_local(local)? {
@@ -1096,6 +1101,7 @@ impl Syncer {
             report.generation = second.generation;
             report.rounds += second.rounds;
             report.stranded = second.stranded;
+            report.listed_runs = second.listed_runs;
         }
         Ok(report)
     }
@@ -1227,6 +1233,7 @@ impl Syncer {
                         .filter(|(k, _)| !committed.entries.contains_key(*k) && !committed.tombstones.contains_key(*k))
                         .map(|(k, e)| (k.clone(), e.owner.clone()))
                         .collect(),
+                    listed_runs: committed.entries.keys().filter(|k| in_project(k)).filter_map(|k| run_of(k, &self.node)).collect(),
                 });
             }
         }
@@ -1477,7 +1484,8 @@ impl Syncer {
             }
             None => None,
         };
-        let pushed = crate::run_state::state_path(self.store.root(), &self.node).exists();
+        // This node's keys the store held at its last sync: one absent now is its own deletion.
+        let held = self.held_keys(self.pushed_before())?;
         let mut report = PullReport::default();
         let mut shortfall: Option<String> = None;
         let mut manifest = BucketManifest::default();
@@ -1536,9 +1544,9 @@ impl Syncer {
                     }
                     d.sha256
                 });
-                // This node's own keys are authoritative here, except in a restore or where a
-                // store that never pushed as this node lacks them (`store.pull.cold-own-keys`).
-                if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) && (pushed || local.is_some()) {
+                // This node's own keys are authoritative here, except in a restore or where the
+                // store lacks one it never held (`store.pull.cold-own-keys`).
+                if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) && (local.is_some() || held.holds(key)) {
                     return Ok(Fetched::Kept);
                 }
                 let schema = key.ends_with("/schema.json");
@@ -2027,6 +2035,12 @@ fn renew_at(bucket: &dyn ObjectStore, held_path: &Path, held: &Held, now: Instan
 fn is_run_manifest(key: &str) -> bool {
     let segs: Vec<&str> = key.split('/').collect();
     segs.len() >= 5 && segs[segs.len() - 1] == MANIFEST_FILE && segs[segs.len() - 5..segs.len() - 3] == ["data", "runs"]
+}
+
+/// The run id of `key` when it is a run manifest written by `node`.
+fn run_of(key: &str, node: &str) -> Option<String> {
+    let segs: Vec<&str> = key.split('/').collect();
+    (is_run_manifest(key) && segs[segs.len() - 2] == node).then(|| segs[segs.len() - 3].to_string())
 }
 
 /// The first part of `snapshot` absent under `table_dir`, or `None` when it is whole.

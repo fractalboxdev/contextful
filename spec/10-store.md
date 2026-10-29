@@ -616,8 +616,8 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because a read resolves every run whose `_manifest.json` exists*
 - `tombstone-applied` — Pull deletes local keys tombstoned and absent from entries; a tombstoned key with no local copy goes unverified and unreported.
   *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
-- `cold-own-keys` — A store lacking its own `nodes/<node-id>/run-state.json` pulls the missing keys its node owns, so a replacement host reusing the node id tombstones none of them.
-  *because a replacement host otherwise reads none of its node's run history*
+- `cold-own-keys` — A pull downloads each key its node owns that the store lacks and {{store.merge.held-record}} does not list, so a replacement host or a widened table scope reusing the node id reads every such key.
+  *because only a key the store held and lost is its own deletion; one it never held carries rows nothing local replaces*
 - `pointer-read` — Pull and push read the pointer of each table the bucket manifest lists by its key, `tables/<t>/_pointer.json`, and list no table objects, so the read grows with the tables and not with their objects.
   *because a bucket gathers parts with every landing, and a pointer read listing them grows with the store's history*
 - `pointer-advance` — Pull advances a pointer to a higher fence, or the same fence with a later snapshot, and otherwise only under {{store.pull.pointer-adopt}}, verifying every advancing table before writing any pointer.
@@ -630,6 +630,8 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because rows landed locally carry columns the bucket's copy may lack*
 - `table-scope` — `contextful sync pull --table <pattern>`, repeatable, pulls only the tables its patterns cover through {{authority.grant.one-matcher}}. Without the flag, a pull takes `[sync] pull_tables`, and without either, every table.
   *because a disposable disk serving one table otherwise downloads every table the bucket holds*
+- `tables-empty` — A `[sync] pull_tables` holding no pattern raises `SyncPullTablesEmpty` when the config is read; `["*"]` names every table.
+  *because an empty list reads as no table to one operator and every table to another*
 - `scope-shared` — A table-scoped pull also takes `store-id`, `control/`, every `nodes/<node-id>/run-state.json` and every `cursors/` entry, and no other key outside `tables/`.
   *because run states and commit-log entries name no table, and a scoped store lacking them restarts each source*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull the tables {{store.pull.table-scope}} selects before their first read, a failed pull stopping the command.

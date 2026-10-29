@@ -93,7 +93,7 @@ pub struct SyncConfig {
     #[serde(default)]
     pub pull_before_run: Option<bool>,
     /// The tables a pull without `--table` takes; absent, every table (`store.pull.table-scope`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "pull_tables")]
     pub pull_tables: Option<Vec<crate::grant::TablePattern>>,
     /// Push the store once a fire's runs close, success or failure (`store.push.after-run`).
     #[serde(default)]
@@ -172,6 +172,18 @@ fn host_of(authority: &str) -> &str {
         Some(rest) => rest.split_once(']').map_or(authority, |(h, _)| h),
         None => authority.split(':').next().unwrap_or(authority),
     }
+}
+
+/// `[sync] pull_tables`, each entry a grant pattern; a list holding none refuses
+/// (`store.pull.tables-empty`).
+fn pull_tables<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Vec<crate::grant::TablePattern>>, D::Error> {
+    let tables = Vec::<crate::grant::TablePattern>::deserialize(d)?;
+    if tables.is_empty() {
+        return Err(serde::de::Error::custom(StoreError::SyncPullTablesEmpty(
+            "`[sync] pull_tables` holds no pattern; name the tables to pull, `[\"*\"]` for every table, or drop the key".into(),
+        )));
+    }
+    Ok(Some(tables))
 }
 
 impl SyncConfig {

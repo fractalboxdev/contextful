@@ -522,7 +522,7 @@ fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
     };
     let report = s.push(at)?;
     if let Some(c) = &catalog {
-        settle(c.as_ref(), &s.store, &s.redistribution.withheld, &s.node, &marked)?;
+        settle(c.as_ref(), &s.store, &s.redistribution.withheld, &s.node, &marked, &report.listed_runs)?;
         prune_lost(c.as_ref())?;
     }
     Ok(report)
@@ -594,19 +594,21 @@ fn run_list(rows: &[RunRow]) -> String {
 }
 
 /// After a committed push, clear each mark whose run the store held when the push began,
-/// which the push carried, and mark lost each whose run the store does not hold and no live
-/// owner is running (`store.drain.clear`).
-fn settle(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, node: &str, marked: &[(RunRow, bool)]) -> Result<()> {
+/// which the push carried, or whose run manifest the committed manifest `listed`, and mark
+/// lost each other whose run the store does not hold and no live owner is running
+/// (`store.drain.clear`).
+fn settle(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, node: &str, marked: &[(RunRow, bool)], listed: &BTreeSet<String>) -> Result<()> {
     let now = catalog.now()?;
     let runs = carried_runs(store, withheld)?;
     for (row, held_before) in marked {
-        let lost = !held_before && !holds_run(&runs, &row.run_id, node) && !live(row, now);
-        if !held_before && !lost {
+        let carried = *held_before || listed.contains(&row.run_id);
+        let lost = !carried && !holds_run(&runs, &row.run_id, node) && !live(row, now);
+        if !carried && !lost {
             continue;
         }
         catalog.update_run(&row.run_id, &mut |r| {
             let ours = r.unpushed.as_ref().is_some_and(|u| u.node == node);
-            if ours && *held_before {
+            if ours && carried {
                 r.unpushed = None;
             } else if let Some(u) = r.unpushed.as_mut().filter(|_| ours) {
                 u.lost = true;

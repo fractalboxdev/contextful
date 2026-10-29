@@ -339,6 +339,16 @@ fn pull_tables_reads_grant_patterns_and_refuses_a_misplaced_star() {
     assert!(refused.to_string().contains("GrantPatternMalformed"), "{refused}");
 }
 
+/// An explicit `[sync] pull_tables = []` refuses at config read, naming `["*"]` for every table.
+// spec: store.pull.tables-empty@822440c2
+#[test]
+fn an_empty_pull_tables_refuses_at_config_read() {
+    let refused = toml::from_str::<SyncConfig>("endpoint = \"file:///b\"\nbucket = \"b\"\npull_tables = []\n").unwrap_err();
+    assert!(refused.to_string().contains("SyncPullTablesEmpty") && refused.to_string().contains("[\"*\"]"), "{refused}");
+    let every: SyncConfig = toml::from_str("endpoint = \"file:///b\"\nbucket = \"b\"\npull_tables = [\"*\"]\n").unwrap();
+    assert_eq!(every.pull_tables, Some(vec![TablePattern::All]));
+}
+
 fn endpoint(e: &str) -> SyncConfig {
     SyncConfig { endpoint: e.into(), bucket: "context-team".into(), ..SyncConfig::default() }
 }

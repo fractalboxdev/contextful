@@ -766,9 +766,9 @@ fn a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot() {
     assert_eq!(torn, 0, "{torn} torn reads over {observations} observations");
 }
 
-/// A store holding no run state of its own node pulls that node's keys it lacks, so a replacement
-/// host reusing the node id tombstones none of them; a store that pushed keeps its own deletions.
-// spec: store.pull.cold-own-keys@025660b7
+/// A store pulls the keys of its own node that it lacks and never held, so a replacement host
+/// reusing the node id tombstones none of them; a key its held record lists stays deleted.
+// spec: store.pull.cold-own-keys@8b103c9e
 #[test]
 fn a_cold_store_pulls_its_own_node_keys_and_its_push_tombstones_none() {
     let dir = tempfile::tempdir().unwrap();
@@ -786,13 +786,39 @@ fn a_cold_store_pulls_its_own_node_keys_and_its_push_tombstones_none() {
     let listed: BucketManifest = serde_json::from_slice(&bytes).unwrap();
     assert!(listed.entries.contains_key(part) && listed.tombstones.is_empty(), "{:?}", listed.tombstones.keys().collect::<Vec<_>>());
 
-    // A store whose push recorded its node's run state treats its own absent key as its deletion.
-    let store = contextful_context::Store::open(replacement._dir.path(), "research").unwrap();
-    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None, sources: Vec::new() };
-    contextful_sync::run_state::record(&store, &state).unwrap();
+    // A key the held record lists and the store lacks is the store's own deletion.
     std::fs::remove_dir_all(replacement.root().join("tables/filings/data/runs/run-1")).unwrap();
     replacement.syncer.pull(&PullScope::default()).unwrap();
     assert!(!replacement.root().join("tables/filings/data/runs/run-1").exists());
+}
+
+/// A store reusing a node id that pulled one table, recorded its node's run state and pushed,
+/// then pulls every table, downloads that node's runs in the tables it never held.
+// spec: store.pull.cold-own-keys@8b103c9e
+#[test]
+fn a_widened_pull_under_a_reused_node_id_downloads_the_tables_it_never_held() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let first = node("ingest-a", b.clone(), "");
+    first.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    first.land_into("memos", "run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    first.syncer.push(at(NOW)).unwrap();
+
+    let replacement = node("ingest-a", b.clone(), "");
+    replacement.syncer.pull(&PullScope { tables: vec![pattern("filings")], ..PullScope::default() }).unwrap();
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None, sources: Vec::new() };
+    contextful_sync::run_state::record(&replacement.syncer.store, &state).unwrap();
+    replacement.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    assert!(!replacement.root().join("tables/memos").exists());
+
+    replacement.syncer.pull(&PullScope::default()).unwrap();
+    let memos = replacement.syncer.store.committed_runs("memos").unwrap();
+    assert_eq!(memos.iter().map(|m| m.run_id.as_str()).collect::<Vec<_>>(), ["run-1"]);
+    assert!(replacement.root().join("tables/memos/data/runs/run-1/ingest-a/part-00000.parquet").exists());
+    replacement.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
+    let (bytes, _) = b.get("team/manifest.json").unwrap().unwrap();
+    let listed: BucketManifest = serde_json::from_slice(&bytes).unwrap();
+    assert!(listed.tombstones.is_empty(), "{:?}", listed.tombstones.keys().collect::<Vec<_>>());
 }
 
 /// A tombstone naming a key the pulling store holds no copy of deletes nothing and raises nothing.

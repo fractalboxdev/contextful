@@ -4811,8 +4811,8 @@
       "operation": "pull",
       "subject": "cold-own-keys",
       "kind": "behavior",
-      "statement": "A store lacking its own `nodes/<node-id>/run-state.json` pulls the missing keys its node owns, so a replacement host reusing the node id tombstones none of them.",
-      "why": "because a replacement host otherwise reads none of its node's run history",
+      "statement": "A pull downloads each key its node owns that the store lacks and {{store.merge.held-record}} does not list, so a replacement host or a widened table scope reusing the node id reads every such key.",
+      "why": "because only a key the store held and lost is its own deletion; one it never held carries rows nothing local replaces",
       "file": "spec/10-store.md",
       "line": 619
     },
@@ -4883,6 +4883,17 @@
       "line": 631
     },
     {
+      "id": "store.pull.tables-empty",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "tables-empty",
+      "kind": "refusal",
+      "statement": "A `[sync] pull_tables` holding no pattern raises `SyncPullTablesEmpty` when the config is read; `[\"*\"]` names every table.",
+      "why": "because an empty list reads as no table to one operator and every table to another",
+      "file": "spec/10-store.md",
+      "line": 633
+    },
+    {
       "id": "store.pull.scope-shared",
       "contract": "store",
       "operation": "pull",
@@ -4891,7 +4902,7 @@
       "statement": "A table-scoped pull also takes `store-id`, `control/`, every `nodes/<node-id>/run-state.json` and every `cursors/` entry, and no other key outside `tables/`.",
       "why": "because run states and commit-log entries name no table, and a scoped store lacking them restarts each source",
       "file": "spec/10-store.md",
-      "line": 633
+      "line": 635
     },
     {
       "id": "store.pull.before-run",
@@ -4902,7 +4913,7 @@
       "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull the tables {{store.pull.table-scope}} selects before their first read, a failed pull stopping the command.",
       "why": "because a container on an empty disk otherwise serves without other nodes' runs",
       "file": "spec/10-store.md",
-      "line": 635
+      "line": 637
     },
     {
       "id": "store.pull.serve-refresh",
@@ -4913,7 +4924,7 @@
       "statement": "Under {{store.pull.before-run}}, `serve` pulls again every 30 s and maps the new generation for reads starting after that pull; a failed refresh keeps serving the held generation and logs the failure.",
       "why": "because a separate query face otherwise serves its starting generation until restart",
       "file": "spec/10-store.md",
-      "line": 637
+      "line": 639
     },
     {
       "id": "store.pull.generation",
@@ -4924,7 +4935,7 @@
       "statement": "`contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads its in-scope keys at their listed digests and writes exactly its pointers regardless of fence.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 639
+      "line": 641
     },
     {
       "id": "store.pull.generation-list",
@@ -4935,7 +4946,7 @@
       "statement": "`contextful sync generations` lists the bucket's `gen-<N>.json` files in ascending order with `committed_at`, `committed_by` and the project's entry and tombstone counts, a missing stamp printing as `-`.",
       "why": "because generation numbers carry no time",
       "file": "spec/10-store.md",
-      "line": 640
+      "line": 642
     },
     {
       "id": "store.pull.generation-absent",
@@ -4946,7 +4957,7 @@
       "statement": "A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.",
       "why": "because a restore falling back to another generation reads a state nobody named",
       "file": "spec/10-store.md",
-      "line": 642
+      "line": 644
     },
     {
       "id": "store.pull.generation-diverged",
@@ -4957,7 +4968,7 @@
       "statement": "A local syncable file in scope that the generation omits makes generation pull raise `SyncGenerationDiverged`, naming the file, and write nothing.",
       "why": "because a kept unlisted run adds rows the generation never held",
       "file": "spec/10-store.md",
-      "line": 644
+      "line": 646
     },
     {
       "id": "store.pull.generation-schema",
@@ -4968,7 +4979,7 @@
       "statement": "A generation pull merges the bucket's current `schema.json` under {{store.pull.schema-merge}}, refusing nothing over a differing generation digest.",
       "why": "because the lattice keeps every column an earlier generation carried",
       "file": "spec/10-store.md",
-      "line": 646
+      "line": 648
     },
     {
       "id": "store.pull.generation-run-state",
@@ -4979,7 +4990,7 @@
       "statement": "Generation pull exempts `nodes/<node-id>/run-state.json` from {{store.pull.generation-diverged}}, keeping run states the generation omits; other unlisted files under `nodes/` meet that refusal.",
       "why": "because a run state summarizes history outside the store root",
       "file": "spec/10-store.md",
-      "line": 648
+      "line": 650
     },
     {
       "id": "store.pull.run-state-cursor",
@@ -4990,7 +5001,7 @@
       "statement": "At run open, a run resumes from a pulled run state's cursor when that pipeline and table's commit marker is newer than every local one.",
       "why": "because a collected run takes its cursor out of the bucket, so a cold node re-reads the source",
       "file": "spec/10-store.md",
-      "line": 650
+      "line": 652
     },
     {
       "id": "store.pull.control-head",
@@ -5001,7 +5012,7 @@
       "statement": "Pull downloads the bucket manifest's project-scoped control head, snapshot and receipt ancestry at their listed digests. The local applied pointer stays unchanged for {{surface.reconcile.pulled-control}}.",
       "why": "A-surface#synced-control-head",
       "file": "spec/10-store.md",
-      "line": 652,
+      "line": 654,
       "scenarios": [
         "WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head."
       ]
@@ -5015,7 +5026,7 @@
       "statement": "With `[sync] lazy_parts = true`, pull skips table Parquet data parts, which the store fetches whole on first read or fold use and verifies under {{store.pull.digest-mismatch}}.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 659,
+      "line": 661,
       "group": "lazy parts"
     },
     {
@@ -5027,7 +5038,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, {{store.pull.pointer-last}} waits for the named snapshot's `_manifest.json` alone; a part's digest comes from the bucket manifest when a read first fetches it.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 661,
+      "line": 663,
       "group": "lazy parts"
     },
     {
@@ -5039,7 +5050,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, {{store.pull.before-run}} waits for every in-scope object except data parts and the manifests {{store.pull.lazy-folded-runs}} skips.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 663,
+      "line": 665,
       "group": "lazy parts"
     },
     {
@@ -5051,7 +5062,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 665,
+      "line": 667,
       "group": "lazy parts"
     },
     {
@@ -5063,7 +5074,7 @@
       "statement": "Each pull rewrites `.skipped-runs.json` to the listed manifests still absent locally, keeping entries of tables outside its scope; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
-      "line": 667,
+      "line": 669,
       "group": "lazy parts"
     },
     {
@@ -5075,7 +5086,7 @@
       "statement": "Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 669,
+      "line": 671,
       "group": "lazy parts"
     },
     {
@@ -5087,7 +5098,7 @@
       "statement": "A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, naming the manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 671,
+      "line": 673,
       "group": "lazy parts"
     },
     {
@@ -5099,7 +5110,7 @@
       "statement": "A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
-      "line": 673,
+      "line": 675,
       "group": "lazy parts"
     },
     {
@@ -5111,7 +5122,7 @@
       "statement": "Every command opening a store whose `[sync]` declares `lazy_parts` registers the bucket's part source once per process, whether or not the command pulls.",
       "why": "because a command reading runs without pulling otherwise meets {{store.pull.folded-runs-unreachable}}",
       "file": "spec/10-store.md",
-      "line": 675,
+      "line": 677,
       "group": "lazy parts"
     },
     {
@@ -5123,7 +5134,7 @@
       "statement": "`[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts; above it, the cache deletes the least recently read part no statement or fold holds.",
       "why": "A-store#cold-store-boots",
       "file": "spec/10-store.md",
-      "line": 677,
+      "line": 679,
       "group": "lazy parts"
     },
     {
@@ -5135,7 +5146,7 @@
       "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.",
       "why": "because a partial acquisition and a lost index leave completed downloads subject to eviction",
       "file": "spec/10-store.md",
-      "line": 679,
+      "line": 681,
       "group": "lazy parts"
     },
     {
@@ -5147,7 +5158,7 @@
       "statement": "A part {{store.pull.lazy-parts}} needs and the bucket lacks raises `SyncPartCollected`, naming the part and snapshot; the next pull advances the pointer past that snapshot.",
       "why": "because `sync collect` deletes a tombstoned run's parts while a container whose pointer predates the tombstone reads them",
       "file": "spec/10-store.md",
-      "line": 681,
+      "line": 683,
       "group": "lazy parts"
     },
     {
@@ -5159,7 +5170,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 718
+      "line": 720
     },
     {
       "id": "store.merge.tombstone-signed",
@@ -5170,7 +5181,7 @@
       "statement": "Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 720
+      "line": 722
     },
     {
       "id": "store.merge.tombstone-unverified",
@@ -5181,7 +5192,7 @@
       "statement": "Unsigned tombstones, invalid signatures, or keys absent from the key-set ledger's verifying set at `deleted_at` raise `SyncTombstoneUnverified`. Merge preserves the named entry; pull deletes nothing.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 722
+      "line": 724
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -5192,7 +5203,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 724
+      "line": 726
     },
     {
       "id": "store.merge.retries",
@@ -5203,7 +5214,7 @@
       "statement": "`[sync] push_retries`, default 5 attempts, bounds consecutive re-commit rounds whose re-read manifest carries no newer generation than the round before.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 725
+      "line": 727
     },
     {
       "id": "store.merge.round-ceiling",
@@ -5214,7 +5225,7 @@
       "statement": "A push stops its manifest commit loop after 64 rounds, whatever generations those rounds meet.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 727
+      "line": 729
     },
     {
       "id": "store.merge.exhausted",
@@ -5225,7 +5236,7 @@
       "statement": "Exhausting {{store.merge.retries}} or {{store.merge.round-ceiling}} raises `SyncManifestRebaseExhausted`, reports every uploaded object as in the bucket and asks for a re-run.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 729
+      "line": 731
     },
     {
       "id": "store.merge.cursor-recency",
@@ -5236,7 +5247,7 @@
       "statement": "Resolving a cursor by last-write time raises `SyncCursorConflict`. A cursor resolves through its commit.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/10-store.md",
-      "line": 731
+      "line": 733
     },
     {
       "id": "store.merge.scoped-union",
@@ -5247,7 +5258,7 @@
       "statement": "A merge takes local entries owned by this writer or unowned, and all other remote entries. It tombstones a writer-owned remote entry only when {{store.merge.held-record}} lists the key and the store lacks the file.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 733
+      "line": 735
     },
     {
       "id": "store.merge.held-record",
@@ -5258,7 +5269,7 @@
       "statement": "Push records locally held owned keys under its node id in `.sync-held.json`, adding before commit and replacing that node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 735
+      "line": 737
     },
     {
       "id": "store.merge.held-absent",
@@ -5269,7 +5280,7 @@
       "statement": "With no keys for the node in `.sync-held.json`, a surviving `.push.lock` means the store holds every remote key the node owns, and none without it.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 737
+      "line": 739
     },
     {
       "id": "store.merge.held-unreadable",
@@ -5280,7 +5291,7 @@
       "statement": "An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.",
       "why": "because corruption establishes no ownership and a replacement discards other nodes' entries",
       "file": "spec/10-store.md",
-      "line": 739
+      "line": 741
     },
     {
       "id": "store.merge.collected",
@@ -5291,7 +5302,7 @@
       "statement": "A merge drops from its entries each key a collected record names, a local copy included, and carries the record, unsigned, until it reaches the age {{store.merge.tombstone-ttl}} sets.",
       "why": "A-store#bucket-collect",
       "file": "spec/10-store.md",
-      "line": 741
+      "line": 743
     },
     {
       "id": "store.merge.ownership",
@@ -5302,7 +5313,7 @@
       "statement": "A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state directory; any other key is unowned and propagates no deletion.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
-      "line": 743
+      "line": 745
     },
     {
       "id": "store.snapshot.capture",
@@ -5724,12 +5735,13 @@
       "operation": "drain",
       "subject": "clear",
       "kind": "behavior",
-      "statement": "A committed push clears the marks of manifests its included tables held at push start, and sets `lost` on marked runs with no local manifest and no live owner, naming them on stderr.",
+      "statement": "A committed push clears each mark whose run manifest its included tables held at push start or its committed bucket manifest lists. It sets `lost` on other marks with no local manifest and no live owner, naming them on stderr.",
       "why": "because no retry restores a commit the store has lost",
       "file": "spec/14-drain.md",
       "line": 20,
       "scenarios": [
-        "WHEN a replacement disk holding none of a marked run's files pushes, THEN the run turns `lost` and `sync status` lists it without refusing."
+        "WHEN a replacement disk holding none of a marked run's files pushes, THEN the run turns `lost` and `sync status` lists it without refusing.",
+        "WHEN a disk whose `pull_tables` excludes a marked run's table pushes while the bucket lists that run's manifest, THEN the mark clears and the run never turns `lost`."
       ]
     },
     {
@@ -34855,6 +34867,10 @@
       "store.pull.unconverged"
     ],
     [
+      "store.pull.cold-own-keys",
+      "store.merge.held-record"
+    ],
+    [
       "store.pull.pointer-advance",
       "store.pull.pointer-adopt"
     ],
@@ -44922,6 +44938,10 @@
           "SyncPullDidNotConverge": {
             "clause": "store.pull.unconverged",
             "gloss": "A pull exhausted its retries against keys moving beneath it."
+          },
+          "SyncPullTablesEmpty": {
+            "clause": "store.pull.tables-empty",
+            "gloss": "A store's `[sync] pull_tables` holds no pattern."
           },
           "SyncPushInFlight": {
             "clause": "store.push.in-flight",
@@ -67061,6 +67081,13 @@
         "name": "a_replacement_disk_marks_a_run_no_push_carried_lost",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/unpushed.rs",
+        "name": "a_scoped_disk_clears_the_mark_of_a_run_the_bucket_lists",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.drain.deadline": [
@@ -68866,6 +68893,13 @@
         "name": "a_cold_store_pulls_its_own_node_keys_and_its_push_tombstones_none",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/pull.rs",
+        "name": "a_widened_pull_under_a_reused_node_id_downloads_the_tables_it_never_held",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.pull.control-head": [
@@ -69221,6 +69255,15 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/pull_tables.rs",
         "name": "pull_tables_scopes_the_pull_before_a_run_and_a_pull_without_table",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.pull.tables-empty": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/store/sync.rs",
+        "name": "an_empty_pull_tables_refuses_at_config_read",
         "verdict": "performed",
         "proved": false
       }

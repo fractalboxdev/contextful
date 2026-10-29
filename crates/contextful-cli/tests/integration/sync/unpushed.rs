@@ -150,6 +150,15 @@ impl Disk {
         }
     }
 
+    /// Mark `run` unpushed on node `site` again, as a disk stopping between a push's commit
+    /// and the clearing of its marks leaves it.
+    fn remark(&self, run: &str) {
+        let mut row = self.row(run).unwrap();
+        row["unpushed"] = serde_json::json!({ "node": "site" });
+        let db = contextful_d1::D1::connect(&self.d1).unwrap();
+        db.query("UPDATE contextful_run SET row = ? WHERE run_id = ?", vec![serde_json::json!(row.to_string()), serde_json::json!(run)]).unwrap();
+    }
+
     /// `sync status` with `extra` arguments: its exit code and its standard output.
     fn status_out(&self, extra: &[&str]) -> (Option<i32>, Vec<u8>) {
         let out = self.command(&[&["sync", "status", "--project", "research"], extra].concat()).output().unwrap();
@@ -245,7 +254,7 @@ fn a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal(
 
 /// A container replaced before any push carried its marked run: the next push finds no copy
 /// of the run, marks it `lost` and names it, and the status lists it without refusing.
-// spec: store.drain.clear@692e405a
+// spec: store.drain.clear@e1aa635f
 #[test]
 fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
     let s3 = S3Server::start("conformance");
@@ -537,6 +546,34 @@ fn a_nested_tables_refused_run_stays_marked_until_a_push_carries_it() {
     assert!(!stderr.contains("marked lost"), "{stderr}");
     assert!(bucket_holds_in(&s3, "ns/events", "r1"));
     assert!(disk.row("r1").unwrap().get("unpushed").is_none(), "the committed push clears the mark");
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
+}
+
+/// A replacement disk whose `pull_tables` leaves out a marked run's table pushes while the
+/// bucket already lists that run's manifest: the mark clears and the run never turns lost.
+// spec: store.drain.clear@e1aa635f
+#[test]
+fn a_scoped_disk_clears_the_mark_of_a_run_the_bucket_lists() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    disk.declare("memos", "");
+    let first = disk.start("r1");
+    assert!(first.status.success(), "{}", String::from_utf8_lossy(&first.stderr));
+    assert!(bucket_holds_in(&s3, "memos", "r1"));
+    disk.remark("r1");
+
+    disk.fresh();
+    let config = disk.root().join(STORE).join("config.toml");
+    let text = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(&config, format!("{text}pull_tables = ['filings']\n")).unwrap();
+    let next = disk.start("r2");
+    let stderr = String::from_utf8_lossy(&next.stderr);
+    assert!(next.status.success(), "{stderr}");
+    assert!(!stderr.contains("marked lost"), "{stderr}");
+    assert!(!disk.root().join(STORE).join("tables/memos").exists(), "the scoped pull leaves `memos` in the bucket");
+    assert!(disk.row("r1").unwrap().get("unpushed").is_none(), "{:?}", disk.row("r1"));
     let (code, status, stderr) = disk.status();
     assert_eq!(code, Some(0), "{stderr}");
     assert!(runs(&status).is_empty(), "{status}");
