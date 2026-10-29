@@ -3,6 +3,10 @@
 //! operator's `OTEL_EXPORTER_OTLP_*` variables configure (`disclosure.record.span-export`).
 //! With no endpoint set no exporter exists and no span leaves the process
 //! (`disclosure.record.span-unconfigured`).
+//!
+//! The read plane links this module for read spans alone; run and model-call spans are the
+//! data plane's.
+#![cfg_attr(not(feature = "data-plane"), allow(dead_code))]
 
 use contextful_core::run::record::RunRow;
 use contextful_core::trace::{Span, SpanKind, SpanSink, TraceContext};
@@ -41,6 +45,12 @@ fn telemetry() -> &'static Telemetry {
 /// Where spans go, when an exporter is configured.
 pub fn sink() -> Option<Arc<dyn SpanSink>> {
     telemetry().exporter.clone().map(|e| e as Arc<dyn SpanSink>)
+}
+
+/// Where the read face records each read tool call's span, when an exporter is configured;
+/// with none, the face records no span and parses no carrier (`disclosure.record.read-span`).
+pub fn read_spans() -> Option<contextful_agent::mcp::ReadSpans> {
+    sink().map(|sink| contextful_agent::mcp::ReadSpans { sink, fresh: fresh_trace, now: contextful_outbound::telemetry::now_unix_nanos })
 }
 
 /// The trace a model call joins and the span it parents under: the caller's, or the

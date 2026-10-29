@@ -116,6 +116,8 @@ pub enum Attr {
     Str(String),
     Int(i64),
     Bool(bool),
+    /// A list of strings, exported as one OTLP array value.
+    List(Vec<String>),
 }
 
 impl From<&str> for Attr {
@@ -133,6 +135,12 @@ impl From<String> for Attr {
 impl From<u64> for Attr {
     fn from(n: u64) -> Attr {
         Attr::Int(i64::try_from(n).unwrap_or(i64::MAX))
+    }
+}
+
+impl From<Vec<String>> for Attr {
+    fn from(items: Vec<String>) -> Attr {
+        Attr::List(items)
     }
 }
 
@@ -195,6 +203,7 @@ fn any_value(v: &Attr) -> Value {
         Attr::Str(s) => json!({ "stringValue": s }),
         Attr::Int(n) => json!({ "intValue": n.to_string() }),
         Attr::Bool(b) => json!({ "boolValue": b }),
+        Attr::List(items) => json!({ "arrayValue": { "values": items.iter().map(|s| json!({ "stringValue": s })).collect::<Vec<_>>() } }),
     }
 }
 

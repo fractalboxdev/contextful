@@ -5,3 +5,4 @@ mod http;
 mod mcp;
 mod point_in_time;
 mod subscribe;
+mod trace;

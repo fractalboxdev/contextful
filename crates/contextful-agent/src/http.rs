@@ -12,11 +12,12 @@
 //! no protocol session, opens no server stream and serves no raw statement
 //! (`read.guard.statement-provenance`).
 
-use crate::mcp::{Caller, ReadRecord, Tools};
+use crate::mcp::{Caller, Carrier, ReadRecord, ReadSpans, Tools};
 use contextful_context::read::Face;
 use contextful_core::grant::{Action, TablePattern};
 use contextful_core::ports::Clock;
 use contextful_core::read::{ReadError, Refusal};
+use contextful_core::trace::{TRACEPARENT, TRACESTATE};
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::refuse::payload;
 use contextful_policy::keyset::KeyCheckpoint;
@@ -391,6 +392,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         self
     }
 
+    /// Record each read tool call's span through `spans`, under the caller's span its
+    /// `traceparent` header or `_meta` names (`disclosure.record.face-carrier`).
+    pub fn with_spans(mut self, spans: ReadSpans) -> Self {
+        self.tools = self.tools.with_spans(spans);
+        self
+    }
+
     /// Attach the store's control API without adding tools to the closed read face.
     pub fn with_control(mut self, control: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)) -> Self {
         self.control = Some(control);
@@ -717,7 +725,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
                 Err(e) => return HttpResponse::rpc_error(PARSE_ERROR, format!("the request body is not JSON: {e}")),
             };
             let boundary = |a: &AdmittedAuthority| effect_boundary(a, admission);
-            match self.tools.handle(Caller { authority, boundary: &boundary }, &message) {
+            let carrier = Carrier { traceparent: request.header(TRACEPARENT), tracestate: request.header(TRACESTATE) };
+            match self.tools.handle(Caller { authority, boundary: &boundary, carrier }, &message) {
                 Some(answer) => HttpResponse::json(200, &answer),
                 None => HttpResponse::empty(202),
             }

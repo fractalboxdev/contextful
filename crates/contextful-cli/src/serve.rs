@@ -403,6 +403,10 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         .with_exchange(&exchange_route, exchange.is_none())
         .with_build(crate::build_identity())
         .with_hydration(&hydration);
+    let http = match crate::telemetry::read_spans() {
+        Some(spans) => http.with_spans(spans),
+        None => http,
+    };
     #[cfg(feature = "data-plane")]
     let http = http.with_control(&control).with_connections(&connections);
     #[cfg(feature = "data-plane")]
@@ -486,7 +490,6 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
             }
             eprintln!("draining: a stop signal arrived; no new request is admitted");
             let unanswered = http.drain(contextful_agent::http::DRAIN_BOUND);
-            #[cfg(feature = "data-plane")]
             crate::telemetry::finish();
             if unanswered == 0 {
                 eprintln!("drained: every accepted connection is answered");

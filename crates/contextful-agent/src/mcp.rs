@@ -22,6 +22,8 @@ use contextful_core::read::horizon::{horizon, inherit, within};
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::run::journal::sha256_hex;
+use contextful_core::trace::{Span, SpanKind, SpanSink, TraceContext, TRACEPARENT, TRACESTATE};
+use std::sync::Arc;
 
 /// The block a bounded answer echoes its bounds under (`store.bound-time.echo`).
 const BOUNDS_BLOCK: &str = "contextful.bounds";
@@ -61,11 +63,81 @@ pub fn build_identity() -> BuildIdentity {
 /// The re-check an effect boundary runs against the carried authority.
 pub type Boundary<'a> = dyn Fn(&AdmittedAuthority) -> Result<(), AuthorityError> + 'a;
 
-/// The authority one message is answered for, and the boundary re-reading it.
+/// The authority one message is answered for, the boundary re-reading it, and the trace
+/// carriers its transport read beside the message.
 #[derive(Clone, Copy)]
 pub struct Caller<'c> {
     pub authority: &'c AdmittedAuthority,
     pub boundary: &'c Boundary<'c>,
+    pub carrier: Carrier<'c>,
+}
+
+/// The W3C carriers a transport reads beside a message: an HTTP request's `traceparent` and
+/// `tracestate` headers. A `tools/call`'s `params._meta.traceparent` wins over them
+/// (`disclosure.record.face-carrier`).
+#[derive(Clone, Copy, Default)]
+pub struct Carrier<'c> {
+    pub traceparent: Option<&'c str>,
+    pub tracestate: Option<&'c str>,
+}
+
+/// Where read spans go, with the identifiers and wall clock they record: this package draws
+/// no randomness and reads no wall clock of its own (`disclosure.record.read-span`).
+#[derive(Clone)]
+pub struct ReadSpans {
+    pub sink: Arc<dyn SpanSink>,
+    /// A fresh, sampled trace position; a read under a caller's trace takes its span id alone.
+    pub fresh: fn() -> TraceContext,
+    /// The wall clock in Unix nanoseconds a span's interval records.
+    pub now: fn() -> i128,
+}
+
+/// The read span's name.
+const READ_SPAN: &str = "contextful.read";
+/// The read span's tool attribute, as the read's entry names it.
+const TOOL: &str = "contextful.tool";
+/// The read span's statement digest attribute.
+const QUERY_HASH: &str = "contextful.query.hash";
+/// The OpenTelemetry error attribute; `_OTHER` names a failure carrying no identifier.
+const ERROR_TYPE: &str = "error.type";
+const OTHER_ERROR: &str = "_OTHER";
+/// The outcome of a read that failed without a refusal.
+const FAILED: &str = "failed";
+
+/// What a read tool call's span records of it: rows released, the relations it read where
+/// the read reported them, its outcome and a refused or failed read's error identifier.
+struct Observed {
+    rows: u64,
+    tables: Option<Vec<String>>,
+    outcome: &'static str,
+    error: Option<String>,
+}
+
+impl Observed {
+    fn served(rows: u64, tables: Option<Vec<String>>) -> Observed {
+        Observed { rows, tables, outcome: attr::SERVED, error: None }
+    }
+
+    fn refused(identifier: &str) -> Observed {
+        Observed { rows: 0, tables: None, outcome: attr::REFUSED, error: Some(identifier.to_string()) }
+    }
+
+    fn failed(error: Option<String>) -> Observed {
+        Observed { rows: 0, tables: None, outcome: FAILED, error: Some(error.unwrap_or_else(|| OTHER_ERROR.to_string())) }
+    }
+}
+
+/// Where a read sits in its caller's trace: the transport's carrier, the call's params holding
+/// any `_meta`, and the span's start.
+struct Traced<'t> {
+    carrier: Carrier<'t>,
+    params: &'t Map<String, Value>,
+    start: i128,
+}
+
+/// The error identifier an in-band error answer carries.
+fn identifier(answer: &Value) -> Option<String> {
+    answer["structuredContent"]["error"]["identifier"].as_str().map(str::to_string)
 }
 
 /// Where a read's audit entry goes: the read path appends through it and releases the
@@ -140,6 +212,8 @@ pub struct Tools<'a> {
     record: &'a dyn ReadRecord,
     /// The identity the handshake reports and every read tool call checks.
     build: BuildIdentity,
+    /// Where each read tool call's span goes; `None` records no span and parses no carrier.
+    spans: Option<ReadSpans>,
 }
 
 /// The tool protocol over standard input and output for one admitted authority.
@@ -292,6 +366,11 @@ impl<'a> Server<'a> {
         Server { tools: self.tools.with_build(build), ..self }
     }
 
+    /// The server recording each read tool call's span through `spans`.
+    pub fn with_spans(self, spans: ReadSpans) -> Server<'a> {
+        Server { tools: self.tools.with_spans(spans), ..self }
+    }
+
     /// Serve until the input closes.
     pub fn serve(&self, input: impl BufRead, mut output: impl Write) -> std::io::Result<()> {
         for line in input.lines() {
@@ -309,7 +388,7 @@ impl<'a> Server<'a> {
 
     /// Answer one message; a notification has no answer.
     pub fn handle(&self, line: &str) -> Option<Value> {
-        self.tools.handle_text(Caller { authority: &self.authority, boundary: self.boundary }, line)
+        self.tools.handle_text(Caller { authority: &self.authority, boundary: self.boundary, carrier: Carrier::default() }, line)
     }
 }
 
@@ -320,7 +399,7 @@ impl<'a> Tools<'a> {
         for tool in TOOLS {
             register_tool(FaceScope::Organization, tool, ToolKind::Read).map_err(|e| e.to_string())?;
         }
-        Ok(Tools { face, clock, record, build: build_identity() })
+        Ok(Tools { face, clock, record, build: build_identity(), spans: None })
     }
 
     /// The tool set reporting `build` in place of this binary's linked identity. A build
@@ -328,6 +407,13 @@ impl<'a> Tools<'a> {
     /// (`read.embed.absent-read-backend`).
     pub fn with_build(mut self, build: BuildIdentity) -> Tools<'a> {
         self.build = build;
+        self
+    }
+
+    /// The tool set recording each read tool call's span through `spans`
+    /// (`disclosure.record.read-span`).
+    pub fn with_spans(mut self, spans: ReadSpans) -> Tools<'a> {
+        self.spans = Some(spans);
         self
     }
 
@@ -414,40 +500,89 @@ impl<'a> Tools<'a> {
             Some(Value::Object(m)) => m.clone(),
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
+        let Some(spans) = &self.spans else { return self.read(caller, name, &args).map(|(answer, _)| answer) };
+        let start = (spans.now)();
+        let (answer, observed) = self.read(caller, name, &args)?;
+        let context = Traced { carrier: caller.carrier, params, start };
+        spans.sink.record(self.read_span(spans, context, name, &args, observed));
+        Ok(answer)
+    }
+
+    /// Answer one read tool call, its entry durable before the result leaves.
+    fn read(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<(Value, Observed), Protocol> {
         let read = |rows, refusal, claims, tables: Option<Vec<String>>| ReadEntry {
             tool: name,
             authority: caller.authority,
             rows,
             at: self.clock.now(),
-            tables: tables.unwrap_or_else(|| self.relations(name, &args)),
+            tables: tables.unwrap_or_else(|| self.relations(name, args)),
             refusal,
             claims,
         };
-        match self.dispatch(caller, name, &args) {
+        let faulted = |fault: &ReadFault| (json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true }), Observed::failed(None));
+        let unrecorded = |e: &AuditError| {
+            let answer = unrecorded(e);
+            let observed = Observed::failed(identifier(&answer));
+            (answer, observed)
+        };
+        Ok(match self.dispatch(caller, name, args)? {
             // The result leaves only once its entry is durable; otherwise no row does.
-            Ok(Ok((value, rows, session, tables))) => match self.bound_entry(name, &args, &value, &session).map(|bound| {
-                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value), tables));
+            Ok((value, rows, session, tables)) => match self.bound_entry(name, args, &value, &session).map(|bound| {
+                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value), tables.clone()));
                 if let (Value::Object(a), Some(bound)) = (&mut attributes, bound) {
                     a.extend(bound);
                 }
                 attributes
             }) {
-                Err(fault) => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
+                Err(fault) => faulted(&fault),
                 Ok(attributes) => match self.record.record(attributes) {
-                    Ok(()) => Ok(result(value)),
-                    Err(e) => Ok(unrecorded(&e)),
+                    Ok(()) => (result(value), Observed::served(rows, tables)),
+                    Err(e) => unrecorded(&e),
                 },
             },
             // A refusal is recorded before it answers (`disclosure.record.refused-read`).
-            Ok(Err(fault)) => match fault.refusal() {
+            Err(fault) => match fault.refusal() {
                 Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier()), None, None))) {
-                    Ok(()) => Ok(refused(r)),
-                    Err(e) => Ok(unrecorded(&e)),
+                    Ok(()) => (refused(r), Observed::refused(r.identifier())),
+                    Err(e) => unrecorded(&e),
                 },
-                None => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
+                None => faulted(&fault),
             },
-            Err(protocol) => Err(protocol),
+        })
+    }
+
+    /// The read's span (`disclosure.record.read-span`): a child of the caller's span that
+    /// `params._meta` names, else the transport's carrier, or a fresh trace's root. It carries
+    /// the statement's SHA-256, never its text, a subject member or a row value
+    /// (`disclosure.record.read-span-content`).
+    fn read_span(&self, spans: &ReadSpans, traced: Traced<'_>, name: &str, args: &Map<String, Value>, observed: Observed) -> Span {
+        let meta = traced.params.get("_meta").and_then(Value::as_object);
+        let carried = |key: &str| meta.and_then(|m| m.get(key)).and_then(Value::as_str);
+        let (traceparent, tracestate) = match carried(TRACEPARENT) {
+            Some(parent) => (Some(parent), carried(TRACESTATE)),
+            None => (traced.carrier.traceparent, traced.carrier.tracestate),
+        };
+        let fresh = (spans.fresh)();
+        let (context, parent) = match traceparent.and_then(|p| TraceContext::parse(p, tracestate)) {
+            Some(caller) => (caller.child(fresh.span_id), Some(caller.span_id)),
+            None => (fresh, None),
+        };
+        let tables = observed.tables.unwrap_or_else(|| self.relations(name, args));
+        let mut span = Span::at(&context, parent, READ_SPAN, SpanKind::Server)
+            .with(TOOL, name)
+            .with(attr::TABLES, tables)
+            .with(attr::ROWS, observed.rows)
+            .with(attr::OUTCOME, observed.outcome);
+        if let Some(statement) = self.statement(name, args) {
+            span = span.with(QUERY_HASH, sha256_hex(statement.as_bytes()));
         }
+        if let Some(error) = observed.error {
+            span = span.with(ERROR_TYPE, error.as_str());
+            span.error = Some(error);
+        }
+        span.start_unix_nanos = traced.start;
+        span.end_unix_nanos = (spans.now)();
+        span
     }
 
     /// A bounded read's added entry attributes (`disclosure.record.bound-entry`): the
@@ -464,21 +599,27 @@ impl<'a> Tools<'a> {
             }
         }
         let snapshots = self.face.snapshot_ids(session, tables.iter().map(String::as_str))?;
-        let template = |id: &str| self.face.templates().iter().find(|t| t.id == id).map(|t| t.sql.clone());
-        let query = match name {
-            "context.query" => string(args, "sql").ok().flatten(),
-            "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
-            "corpus.retrieve" => string(args, "query").ok().flatten(),
-            "context.file" => string(args, "path").ok().flatten(),
-            "context.describe" | "context.reference" => string(args, "table").ok().flatten(),
-            other => template(other),
-        };
+        let query = self.statement(name, args);
         let mut attributes = Map::new();
         attributes.insert(BOUNDS_BLOCK.into(), echoed.clone());
         attributes.insert("contextful.read.snapshots".into(), json!(snapshots));
         attributes.insert("contextful.read.query".into(), json!(query));
         attributes.insert("contextful.result.sha256".into(), json!(sha256_hex(&serde_json::to_vec(value).unwrap_or_default())));
         Ok(Some(attributes))
+    }
+
+    /// The statement a read runs: a query's SQL, a template's statement, a retrieval's query
+    /// text, a file's path or a described table; `None` for a read running none.
+    fn statement(&self, name: &str, args: &Map<String, Value>) -> Option<String> {
+        let template = |id: &str| self.face.templates().iter().find(|t| t.id == id).map(|t| t.sql.clone());
+        match name {
+            "context.query" => string(args, "sql").ok().flatten(),
+            "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
+            "corpus.retrieve" => string(args, "query").ok().flatten(),
+            "context.file" => string(args, "path").ok().flatten(),
+            "context.describe" | "context.reference" => string(args, "table").ok().flatten(),
+            other => template(other),
+        }
     }
 
     /// The claim ids a memory read returned (`read.recall.usage-ledger`): every row's

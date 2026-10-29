@@ -130,6 +130,12 @@ Spans leave the process over OTLP only when an endpoint is configured.
 
 - `trace-carrier` — A well-formed W3C `traceparent` names the trace and the parent of the operation's span; a malformed one is ignored and the operation starts a fresh trace.
   *because a caller's broken header must cost it the link to its trace, never the operation*
+- `face-carrier` — A read tool call takes {{disclosure.record.trace-carrier}} from its HTTP request's `traceparent` and `tracestate` headers, or from `params._meta.traceparent` and `params._meta.tracestate`; a `_meta` `traceparent` wins over the header.
+  *because `_meta` travels with the one message it traces, while a header can belong to a proxy's connection*
+- `read-span` — With an exporter configured, each read tool call exports one `contextful.read` span carrying `contextful.tool`, `contextful.tables`, `contextful.result.rows`, `contextful.read.outcome`, a refused or failed read's error identifier as `error.type`, and the statement's SHA-256 as `contextful.query.hash`.
+  *because a host tracing its own requests sees the substrate's read as a child of its span, and the digest joins it to the audit entry*
+- `read-span-content` — A read span carries no statement text, subject member or row value.
+  *because a collector sits outside the audit chain's custody, so a span discloses only digests, counts and identifiers*
 - `span-export` — With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave as OTLP/HTTP JSON to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.
 - `span-unconfigured` — With neither endpoint set, no exporter exists: no span leaves the process and telemetry opens no socket.
   *because egress reachable under a default configuration is telemetry the operator never chose*
