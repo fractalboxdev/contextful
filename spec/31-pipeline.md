@@ -561,6 +561,8 @@ An Iceberg export publishes one audience's admitted rows of one landed table as 
 - `run.export-iceberg.type-refused`: WHEN a table holding a nanosecond timestamp column exports under `format_version = 2`, THEN preflight refuses naming the column and no Parquet file is written.
 - `run.export-iceberg.frontier`: WHEN an export runs twice with no commit and no grant change between, THEN the second run commits no snapshot.
 
+unsettled: Does a failed export list the multipart uploads under its data prefix, aborting one whose creation answer it lost? owner: pipeline affects: run.export-iceberg
+
 ## backfill
 
 The scheduler loads history through chunk plans with fenced leases and supports rewinding a declared range.
