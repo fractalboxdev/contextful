@@ -32,6 +32,8 @@ arrow-array = "58"
 futures = "0.3"
 
 [dev-dependencies]
+# A third-party S3 client: it presigns the multipart calls the loopback bucket answers.
+rusty-s3 = "0.10"
 # A third-party reader: the store's Parquet opens with no engine code in the process.
 parquet = { version = "58", default-features = false, features = ["zstd"] }
 # A third-party network client: it signs each request's holder proof with no engine code.

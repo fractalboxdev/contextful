@@ -1,12 +1,14 @@
 //! A loopback S3 server holding one bucket in memory. `s3s` parses the S3 wire protocol
 //! and verifies every request's Signature Version 4, header or query form, against the one
 //! key pair the server admits; each conditional put is judged and applied under one lock,
-//! so compare-and-set holds across concurrent clients as on a real backend.
+//! so compare-and-set holds across concurrent clients as on a real backend. A multipart
+//! upload holds its parts apart until completion assembles them into one object.
 
 use s3s::auth::SimpleAuth;
 use s3s::dto::{
-    DeleteObjectInput, DeleteObjectOutput, ETag, ETagCondition, GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsV2Input,
-    ListObjectsV2Output, Object, PutObjectInput, PutObjectOutput, StreamingBlob,
+    AbortMultipartUploadInput, AbortMultipartUploadOutput, CompleteMultipartUploadInput, CompleteMultipartUploadOutput, CreateMultipartUploadInput,
+    CreateMultipartUploadOutput, DeleteObjectInput, DeleteObjectOutput, ETag, ETagCondition, GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput,
+    ListObjectsV2Input, ListObjectsV2Output, Object, PutObjectInput, PutObjectOutput, StreamingBlob, UploadPartInput, UploadPartOutput,
 };
 use s3s::service::S3ServiceBuilder;
 use s3s::{s3_error, S3Error, S3ErrorCode, S3Request, S3Response, S3Result, S3};
@@ -17,15 +19,47 @@ use std::sync::{Arc, Mutex};
 pub const ACCESS_KEY: &str = "AKIACONTEXTFULTEST01";
 pub const SECRET_KEY: &str = "contextful-test-secret-access-key-0000001";
 
+/// The smallest part a multipart upload admits ahead of its last.
+const MIN_PART_BYTES: usize = 5 * 1024 * 1024;
+
+/// An open multipart upload: its key and each uploaded part with its ETag, by part number.
+struct Upload {
+    key: String,
+    parts: BTreeMap<i32, (Vec<u8>, String)>,
+}
+
 #[derive(Default)]
 struct State {
     objects: BTreeMap<String, (Vec<u8>, String)>,
     version: u64,
     /// Errors the next puts answer with, one each, ahead of any condition.
     scripted: VecDeque<S3ErrorCode>,
+    /// What the next part uploads answer with, one each: admitted, or an error.
+    scripted_parts: VecDeque<Option<S3ErrorCode>>,
+    uploads: BTreeMap<String, Upload>,
+    /// The size of every part uploaded, in arrival order.
+    part_sizes: Vec<u64>,
     puts: u64,
     gets: u64,
     heads: u64,
+}
+
+impl State {
+    fn etag(&mut self) -> String {
+        self.version += 1;
+        format!("{:032x}", self.version)
+    }
+}
+
+async fn body(blob: Option<StreamingBlob>) -> S3Result<Vec<u8>> {
+    use futures_util::StreamExt;
+    let mut bytes = Vec::new();
+    if let Some(mut body) = blob {
+        while let Some(chunk) = body.next().await {
+            bytes.extend_from_slice(&chunk.map_err(|e| S3Error::with_message(S3ErrorCode::IncompleteBody, e.to_string()))?);
+        }
+    }
+    Ok(bytes)
 }
 
 struct Backend {
@@ -48,15 +82,9 @@ impl Backend {
 #[async_trait::async_trait]
 impl S3 for Backend {
     async fn put_object(&self, req: S3Request<PutObjectInput>) -> S3Result<S3Response<PutObjectOutput>> {
-        use futures_util::StreamExt;
         let input = req.input;
         self.bucket(&input.bucket)?;
-        let mut bytes = Vec::new();
-        if let Some(mut body) = input.body {
-            while let Some(chunk) = body.next().await {
-                bytes.extend_from_slice(&chunk.map_err(|e| S3Error::with_message(S3ErrorCode::IncompleteBody, e.to_string()))?);
-            }
-        }
+        let bytes = body(input.body).await?;
         let mut state = self.state.lock().unwrap();
         state.puts += 1;
         if let Some(code) = state.scripted.pop_front() {
@@ -74,10 +102,76 @@ impl S3 for Backend {
                 }
             }
         }
-        state.version += 1;
-        let etag = format!("{:032x}", state.version);
+        let etag = state.etag();
         state.objects.insert(input.key, (bytes, etag.clone()));
         Ok(S3Response::new(PutObjectOutput { e_tag: Some(ETag::Strong(etag)), ..Default::default() }))
+    }
+
+    async fn create_multipart_upload(&self, req: S3Request<CreateMultipartUploadInput>) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
+        let input = req.input;
+        self.bucket(&input.bucket)?;
+        let mut state = self.state.lock().unwrap();
+        let id = format!("upload-{}", state.etag());
+        state.uploads.insert(id.clone(), Upload { key: input.key.clone(), parts: BTreeMap::new() });
+        Ok(S3Response::new(CreateMultipartUploadOutput { bucket: Some(input.bucket), key: Some(input.key), upload_id: Some(id), ..Default::default() }))
+    }
+
+    async fn upload_part(&self, req: S3Request<UploadPartInput>) -> S3Result<S3Response<UploadPartOutput>> {
+        let input = req.input;
+        self.bucket(&input.bucket)?;
+        let bytes = body(input.body).await?;
+        let mut state = self.state.lock().unwrap();
+        if let Some(Some(code)) = state.scripted_parts.pop_front() {
+            return Err(S3Error::new(code));
+        }
+        if !state.uploads.get(&input.upload_id).is_some_and(|u| u.key == input.key) {
+            return Err(s3_error!(NoSuchUpload));
+        }
+        let etag = state.etag();
+        state.part_sizes.push(bytes.len() as u64);
+        if let Some(upload) = state.uploads.get_mut(&input.upload_id) {
+            upload.parts.insert(input.part_number, (bytes, etag.clone()));
+        }
+        Ok(S3Response::new(UploadPartOutput { e_tag: Some(ETag::Strong(etag)), ..Default::default() }))
+    }
+
+    async fn complete_multipart_upload(&self, req: S3Request<CompleteMultipartUploadInput>) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
+        let input = req.input;
+        self.bucket(&input.bucket)?;
+        let listed = input.multipart_upload.and_then(|m| m.parts).unwrap_or_default();
+        let mut state = self.state.lock().unwrap();
+        let Some(upload) = state.uploads.get(&input.upload_id).filter(|u| u.key == input.key) else { return Err(s3_error!(NoSuchUpload)) };
+        if listed.is_empty() {
+            return Err(s3_error!(MalformedXML, "a completion lists no part"));
+        }
+        let (mut bytes, mut last) = (Vec::new(), 0);
+        for (i, part) in listed.iter().enumerate() {
+            let number = part.part_number.unwrap_or_default();
+            if number <= last {
+                return Err(s3_error!(InvalidPartOrder));
+            }
+            last = number;
+            let Some((held, etag)) = upload.parts.get(&number) else { return Err(s3_error!(InvalidPart, "no part {number}")) };
+            if part.e_tag.as_ref().map(ETag::value) != Some(etag.as_str()) {
+                return Err(s3_error!(InvalidPart, "part {number} holds another ETag"));
+            }
+            if i + 1 < listed.len() && held.len() < MIN_PART_BYTES {
+                return Err(s3_error!(EntityTooSmall, "part {number} is under 5 MiB"));
+            }
+            bytes.extend_from_slice(held);
+        }
+        state.uploads.remove(&input.upload_id);
+        let etag = state.etag();
+        state.objects.insert(input.key.clone(), (bytes, etag.clone()));
+        Ok(S3Response::new(CompleteMultipartUploadOutput { bucket: Some(input.bucket), key: Some(input.key), e_tag: Some(ETag::Strong(etag)), ..Default::default() }))
+    }
+
+    async fn abort_multipart_upload(&self, req: S3Request<AbortMultipartUploadInput>) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
+        self.bucket(&req.input.bucket)?;
+        match self.state.lock().unwrap().uploads.remove(&req.input.upload_id) {
+            Some(_) => Ok(S3Response::new(AbortMultipartUploadOutput::default())),
+            None => Err(s3_error!(NoSuchUpload)),
+        }
     }
 
     async fn get_object(&self, req: S3Request<GetObjectInput>) -> S3Result<S3Response<GetObjectOutput>> {
@@ -194,9 +288,29 @@ impl S3Server {
     /// Seed a source object before a consumer reads it.
     pub fn seed(&self, key: &str, bytes: &[u8]) {
         let mut state = self.state.lock().unwrap();
-        state.version += 1;
-        let etag = format!("{:032x}", state.version);
+        let etag = state.etag();
         state.objects.insert(key.to_string(), (bytes.to_vec(), etag));
+    }
+
+    /// Admit the next `skip` part uploads, then answer each following one with one of `codes`, in order.
+    pub fn fail_parts(&self, skip: usize, codes: &[&str]) {
+        let mut state = self.state.lock().unwrap();
+        state.scripted_parts.extend(std::iter::repeat_n(None, skip));
+        for c in codes {
+            state.scripted_parts.push_back(Some(S3ErrorCode::from_bytes(c.as_bytes()).unwrap_or(S3ErrorCode::InternalError)));
+        }
+    }
+
+    /// The key of every open multipart upload, sorted.
+    pub fn uploads(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.state.lock().unwrap().uploads.values().map(|u| u.key.clone()).collect();
+        keys.sort();
+        keys
+    }
+
+    /// The size of every part uploaded, in arrival order.
+    pub fn parts(&self) -> Vec<u64> {
+        self.state.lock().unwrap().part_sizes.clone()
     }
 
     /// Answer each of the next puts with one of `codes`, in order, before judging its condition.
