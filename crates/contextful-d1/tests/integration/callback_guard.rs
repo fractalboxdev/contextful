@@ -387,6 +387,42 @@ fn reconciling_a_live_holder_s_guard_raises_execution_guard_held() {
     operator.reconcile_guard(&token, &format!("receipt:{}:r-1", entry.idempotency_key()), "ops").unwrap();
 }
 
+/// A holder whose container stops before serve reaps it records no exit: its guard holds
+/// against takeover while the owner lease runs and after it lapses, and only reconciliation
+/// with matching evidence releases it, once the lease lapses.
+// spec: run.callback-guard.container-stop@fdff388d
+#[test]
+fn a_stopped_container_s_holder_keeps_its_guard_until_reconciled_after_its_lease_lapses() {
+    let (fixture, db) = database();
+    let stopped = catalog(&fixture);
+    let item = seat(&stopped, "item:a", "a", "a-run");
+    let entry = EntryKey::new("a", "pull", b"page-1");
+    std::mem::forget(stopped.execution_guard(&ExecutionAdmission::new(vec![item.clone()], vec![], false).unwrap().with_effect(entry.clone(), Some(600))).unwrap());
+    let holder = stopped.holder_identity().to_string();
+    let token = stopped.guards().unwrap()[0].token.clone();
+    let evidence = format!("receipt:{}:r-1", entry.idempotency_key());
+    // The container stops: no exit hook runs and no serve process reaps the holder.
+    std::mem::forget(stopped);
+    let exited = || !rows(&db, "SELECT exited_at FROM contextful_guard_holder").iter().all(|r| r["exited_at"].is_null());
+    let registered = rows(&db, "SELECT holder FROM contextful_guard_holder");
+    assert_eq!(registered, vec![json!({"holder": holder})], "the stopped holder registered before its guard");
+
+    let operator = catalog(&fixture);
+    assert!(operator.put_owner(&next_attempt(&item, "taker")).is_err(), "an unexpired owner lease admits no takeover");
+    let held = operator.reconcile_guard(&token, &evidence, "ops").unwrap_err().to_string();
+    assert!(held.contains("ExecutionGuardHeld"), "{held}");
+
+    lapse(&operator, "a-run");
+    assert!(!exited(), "a lapsed owner lease records no exit");
+    let refused = operator.put_owner(&next_attempt(&item, "taker")).unwrap_err().to_string();
+    assert!(refused.contains(&token), "a replay-safe guard holds while its holder records no exit: {refused}");
+    assert_eq!(rows(&db, "SELECT token FROM contextful_callback_guard"), vec![json!({"token": token})]);
+
+    operator.reconcile_guard(&token, &evidence, "on-call").unwrap();
+    assert!(operator.guards().unwrap().is_empty());
+    operator.put_owner(&next_attempt(&item, "taker")).unwrap();
+}
+
 /// Evidence releases a guard only when it carries the guard's recorded key: an idempotency
 /// key within its window, or a receipt; anything else raises `ExecutionGuardEvidenceMismatch`.
 // spec: run.callback-guard.evidence@8be2c9ea

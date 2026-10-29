@@ -185,6 +185,8 @@ A D1 callback guard under {{run.journal.d1-guard}}: the rows it protects, the ef
   *A-run#d1-execution-state*
 - `holder-gone` — A guard's holder is gone once its holder identity records an exit, written by the holder on stop or by the serve process reaping it under {{surface.dispatch.children-reaped}}; a lapsed owner lease confirms nothing.
   *because a stalled holder misses renewals while its request may still reach the destination*
+- `container-stop` — A container that stops before its serve process reaps a holder leaves that holder's guards held until {{run.callback-guard.manual}} releases them once the owner lease lapses; nothing else records the holder's exit.
+  *because no platform guarantee confirms that a reported container stop has ended every process the container ran, and a surviving one may still send the effect*
 - `replay` — Without an operator, a guard releases only when its holder is gone, its owner lease has lapsed and {{run.callback-guard.window}} still covers its key; release and takeover commit in one D1 batch, and replay sends that key.
   *A-run#d1-execution-state*
 - `manual` — Apart from {{run.callback-guard.release}} and {{run.callback-guard.replay}}, a guard releases only through `contextful storage reconcile-guard`, which deletes it and appends an audit row naming token, evidence and operator in one D1 batch.
@@ -213,8 +215,8 @@ A D1 callback guard under {{run.journal.d1-guard}}: the rows it protects, the ef
 - `run.callback-guard.live-holder`: WHEN an operator reconciles a guard whose owner lease is unexpired, THEN reconciliation raises `ExecutionGuardHeld` and the guard stays.
 - `run.callback-guard.evidence`: WHEN an operator supplies an idempotency key other than the guard's recorded key, THEN reconciliation raises `ExecutionGuardEvidenceMismatch` and the guard stays.
 - `run.callback-guard.evidence`: WHEN a guard's window is `none`, THEN its recorded key as `idempotency:` evidence raises `ExecutionGuardEvidenceMismatch`, and a receipt carrying that key releases it.
+- `run.callback-guard.container-stop`: WHEN a container stops before serve reaps its holder, THEN takeover refuses while the owner lease runs and after it lapses, and matching evidence releases the guard once it lapses.
 
-unsettled: What records a holder identity's exit when its whole container stops before any serve process reaps it? owner: run-path affects: run.callback-guard
 
 ## items
 
