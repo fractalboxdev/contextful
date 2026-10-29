@@ -464,7 +464,7 @@ enum Carry {
 }
 
 /// How a snapshot relates to the bucket pointer's, by its recorded ancestry.
-enum Ancestry {
+pub(crate) enum Ancestry {
     Descends,
     /// The recorded ancestry reaches a root without it.
     Diverges,
@@ -510,7 +510,7 @@ fn carry(store: &Store, local: &LocalPointer, remote: Option<&BucketPointer>) ->
 /// Whether `ancestor` precedes `snapshot` under `table_dir`, read from each manifest's
 /// `ancestors` (`store.lay-out.ancestors`), else its `parent`, so retention collecting
 /// the snapshots between them leaves the answer intact.
-fn ancestry(store: &Store, table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
+pub(crate) fn ancestry(store: &Store, table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
     let mut seen = BTreeSet::new();
     let mut at = snapshot.to_string();
     while seen.insert(at.clone()) {
@@ -1453,7 +1453,7 @@ impl Syncer {
         Err(StoreError::SyncManifestRebaseExhausted(format!("`{key}` moved under every merge; run the push again")).into())
     }
 
-    fn local_path(&self, key: &str) -> Option<PathBuf> {
+    pub(crate) fn local_path(&self, key: &str) -> Option<PathBuf> {
         self.local_rel(key).map(|rel| self.store.root().join(rel))
     }
 
@@ -1864,6 +1864,7 @@ impl Syncer {
             if let Some(local) = adopting {
                 let table = project_table(&self.project, &rel_key).unwrap_or_default();
                 let remedy = format!("the local pointer stays: land those rows again as new runs, then delete `{}` and pull", pointer_path.display());
+                let reland = format!("the local pointer stays: `contextful sync reland {table}` lands them again as new runs on `{snapshot}`, then pull");
                 match self.unrecoverable_runs(&table, &table_dir, &local, &snapshot, &manifest) {
                     Err(absent) => {
                         return Err(StoreError::SyncLocalFoldUnrecoverable(format!(
@@ -1873,7 +1874,7 @@ impl Syncer {
                     }
                     Ok(runs) if !runs.is_empty() => {
                         return Err(StoreError::SyncLocalFoldUnrecoverable(format!(
-                            "`{rel_key}` names snapshot `{local}`, off the bucket's chain at `{snapshot}`, and folds runs neither this store nor the bucket holds: {}; their rows live only in `{local}`'s parts, selectable by `_run_id`; {remedy}",
+                            "`{rel_key}` names snapshot `{local}`, off the bucket's chain at `{snapshot}`, and folds runs neither this store nor the bucket holds: {}; their rows live only in `{local}`'s parts, selectable by `_run_id`; {reland}",
                             runs.join(", ")
                         ))
                         .into())
@@ -1917,7 +1918,7 @@ impl Syncer {
     /// snapshot on the chain of the bucket's `head`, or to a root; a run is recoverable while its
     /// manifest is on disk, the bucket lists it or the head's chain folds it. `Err` names a branch
     /// snapshot whose manifest is not on disk.
-    fn unrecoverable_runs(&self, table: &str, table_dir: &Path, local: &str, head: &str, manifest: &BucketManifest) -> std::result::Result<Vec<String>, String> {
+    pub(crate) fn unrecoverable_runs(&self, table: &str, table_dir: &Path, local: &str, head: &str, manifest: &BucketManifest) -> std::result::Result<Vec<String>, String> {
         let read = |id: &str| -> Option<SnapshotManifest> {
             let path = table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(id).join(MANIFEST_FILE);
             std::fs::read(&path).ok().and_then(|b| self.store.open_metadata_bytes(&path, &b).ok()).and_then(|b| serde_json::from_slice(&b).ok())
@@ -2192,7 +2193,7 @@ fn run_of(key: &str, node: &str) -> Option<String> {
 }
 
 /// The first part of `snapshot` absent under `table_dir`, or `None` when it is whole.
-fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
+pub(crate) fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
     let dir = table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(snapshot);
     let manifest_path = dir.join(MANIFEST_FILE);
     let Ok(bytes) = std::fs::read(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };

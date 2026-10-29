@@ -217,6 +217,12 @@ pub enum StoreError {
     /// A local pointer off the bucket's chain folds runs neither the store nor the bucket holds. (`store.pull.local-fold-unrecoverable`)
     #[error("SyncLocalFoldUnrecoverable: {0}")]
     SyncLocalFoldUnrecoverable(String),
+    /// A reland names a table whose local pointer the next pull keeps or replaces without a refusal. (`store.pull.reland-unneeded`)
+    #[error("SyncRelandUnneeded: {0}")]
+    SyncRelandUnneeded(String),
+    /// A reland finds the bucket pointer's snapshot not whole on disk. (`store.pull.reland-head-absent`)
+    #[error("SyncRelandHeadAbsent: {0}")]
+    SyncRelandHeadAbsent(String),
     /// A push of one store waited past its bound for the push guard another push on the machine holds. (`store.push.in-flight`)
     #[error("SyncPushInFlight: {0}")]
     SyncPushInFlight(String),

@@ -283,6 +283,7 @@ fn a_pull_replaces_a_local_fold_that_never_reaches_the_bucket_head() {
 /// A local branch folding a run neither on disk, listed in the bucket nor folded on the bucket's chain, or ending
 /// at a missing manifest, makes pull raise `SyncLocalFoldUnrecoverable`, naming the runs, and keep the local pointer.
 // spec: store.pull.local-fold-unrecoverable@7e8f1715
+// spec: store.pull.reland-named@61ab1134
 #[test]
 fn a_pull_keeps_a_local_fold_whose_runs_only_its_parts_hold() {
     let (_dir, _a, c, head) = while_away();
@@ -295,11 +296,154 @@ fn a_pull_keeps_a_local_fold_whose_runs_only_its_parts_hold() {
     assert!(c.syncer.push(at("2030-02-01T00:00:00Z")).unwrap().pointers.is_empty());
     let err = c.syncer.pull(&PullScope::default()).unwrap_err();
     assert!(
-        matches!(&err, SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(m)) if m.contains("run-3/ingest-b") && m.contains(&local) && m.contains(&head)),
+        matches!(&err, SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(m)) if m.contains("run-3/ingest-b") && m.contains(&local) && m.contains(&head) && m.contains("`contextful sync reland filings`")),
         "{err}"
     );
     assert_eq!(local_pointer(&c), local, "the local pointer stays");
     assert_eq!(ids(&c), [1, 3], "run-3's row stays readable from the local snapshot");
+}
+
+/// The refusal above, reached: B folded run-3 off the bucket's chain and retention removed it, so only the local
+/// snapshot's parts hold its row. Returns the bucket head's and the local snapshot's ids.
+fn stranded() -> (tempfile::TempDir, crate::support::Node, crate::support::Node, String, String) {
+    let (dir, a, c, head) = while_away();
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let local = folded(&c, "2030-01-21T01:00:00Z");
+    contextful_context::fold::collect(&c.syncer.store, &TableDecl::named("filings"), at("2030-02-01T00:00:00Z")).unwrap();
+    assert!(!c.root().join("tables/filings/data/runs/run-3").exists());
+    (dir, a, c, head, local)
+}
+
+fn unrecoverable(n: &crate::support::Node) -> bool {
+    matches!(n.syncer.pull(&PullScope::default()), Err(SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(_))))
+}
+
+/// A reland commits each run the refusal names from the local snapshot's parts as a new run, then writes the bucket
+/// head as the local pointer: the pull proceeds, and every node reads each row once, before and after the next fold.
+// spec: store.pull.reland@abcaebd9
+// spec: store.pull.reland-rows@25a8d1ae
+#[test]
+fn a_reland_lands_a_stranded_folds_runs_on_the_bucket_head() {
+    let (_dir, a, c, head, local) = stranded();
+    assert!(unrecoverable(&c), "the pull that brings the head home refuses");
+    let report = c.syncer.reland(&TableDecl::named("filings")).unwrap();
+    assert_eq!((report.from.as_str(), report.onto.as_str()), (local.as_str(), head.as_str()));
+    assert_eq!(report.runs.len(), 1, "{report:?}");
+    let run = &report.runs[0];
+    assert_eq!((run.from.as_str(), run.rows, run.held, run.replay), ("run-3/ingest-b", 1, Some(1), false));
+    assert_eq!(run.run_id, contextful_context::reland::relanded_run_id(&local.clone().try_into().unwrap(), "run-3/ingest-b"));
+    assert_eq!(local_pointer(&c), head);
+
+    c.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(local_pointer(&c), head);
+    assert_eq!(ids(&c), [1, 2, 3]);
+    c.syncer.push(at("2030-02-01T01:00:00Z")).unwrap();
+    a.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(ids(&a), [1, 2, 3]);
+    let d = node("ingest-d", a.syncer.bucket.clone(), "");
+    d.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(ids(&d), [1, 2, 3]);
+
+    // The next fold folds the relanded run on the head.
+    folded(&c, "2030-02-01T02:00:00Z");
+    let (chain, _) = c.syncer.store.chain("filings").unwrap();
+    assert_eq!(chain[1].snapshot_id.to_string(), head);
+    assert_eq!(chain[0].includes_runs, [format!("{}/ingest-b", run.run_id)]);
+    assert_eq!(ids(&c), [1, 2, 3]);
+}
+
+/// A failure after the relanded runs commit and before the pointer write leaves the local pointer and the snapshot's
+/// parts as they stood and the runs on disk; a repeat replays those runs and moves the pointer.
+// spec: store.pull.reland-order@44bc6ad9
+#[test]
+fn a_reland_failing_before_its_pointer_write_leaves_the_stranded_rows_recoverable() {
+    let (_dir, _a, c, head, local) = stranded();
+    assert!(unrecoverable(&c));
+    let parts = || -> Vec<String> {
+        let dir = c.root().join(format!("tables/filings/data/snapshots/{local}"));
+        let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        names
+    };
+    let before = parts();
+    assert!(before.iter().any(|n| n.ends_with(".parquet")), "{before:?}");
+    #[allow(clippy::result_large_err)]
+    fn injected() -> contextful_sync::sync::Result<()> {
+        Err(SyncError::Context(contextful_context::ContextError::Invalid("injected before the pointer write".into())))
+    }
+    let err = c.syncer.reland_with(&TableDecl::named("filings"), &injected).unwrap_err();
+    assert!(err.to_string().contains("injected"), "{err}");
+    assert_eq!(local_pointer(&c), local, "the local pointer stays");
+    assert_eq!(parts(), before, "the local snapshot's parts stay");
+    let id = contextful_context::reland::relanded_run_id(&local.clone().try_into().unwrap(), "run-3/ingest-b");
+    assert!(c.root().join(format!("tables/filings/data/runs/{id}/ingest-b/_manifest.json")).exists(), "the relanded run is on disk");
+    assert!(unrecoverable(&c), "the pull still refuses while the pointer stands");
+
+    let report = c.syncer.reland(&TableDecl::named("filings")).unwrap();
+    assert_eq!((report.runs[0].run_id.as_str(), report.runs[0].replay), (id.as_str(), true));
+    assert_eq!(local_pointer(&c), head);
+    c.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(ids(&c), [1, 2, 3]);
+}
+
+/// A reland of a table the pull keeps, advances or replaces without a refusal raises `SyncRelandUnneeded` and writes
+/// no pointer: a store holding none, one on the bucket's chain, and one whose branch's runs are all on disk.
+// spec: store.pull.reland-unneeded@7966ae26
+#[test]
+fn a_reland_with_nothing_stranded_refuses() {
+    let unneeded = |n: &crate::support::Node| {
+        let err = n.syncer.reland(&TableDecl::named("filings")).unwrap_err();
+        assert!(matches!(&err, SyncError::Store(StoreError::SyncRelandUnneeded(m)) if m.contains("filings")), "{err}");
+    };
+    let (_dir, a, c, head) = while_away();
+    let fresh = node("ingest-d", a.syncer.bucket.clone(), "");
+    unneeded(&fresh);
+    assert!(!fresh.root().join("tables/filings/_pointer.json").exists());
+    c.syncer.pull(&PullScope::default()).unwrap();
+    unneeded(&c);
+    assert_eq!(local_pointer(&c), head);
+
+    // A branch folding only a run still on disk: the pull replaces the pointer and folds it again.
+    let (_dir, _a, c, _head) = while_away();
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let local = folded(&c, "2030-01-21T01:00:00Z");
+    c.syncer.pull(&PullScope::default()).unwrap();
+    let pointer = c.root().join("tables/filings/_pointer.json");
+    std::fs::write(&pointer, format!(r#"{{"snapshot_id":"{local}","fence":null}}"#)).unwrap();
+    unneeded(&c);
+    assert_eq!(local_pointer(&c), local);
+}
+
+/// A reland before the pull brings the bucket head's snapshot home raises `SyncRelandHeadAbsent`, naming it, and
+/// writes nothing.
+// spec: store.pull.reland-head-absent@15633830
+#[test]
+fn a_reland_before_the_head_is_home_refuses() {
+    let (_dir, _a, c, head) = while_away();
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let local = folded(&c, "2030-01-21T01:00:00Z");
+    contextful_context::fold::collect(&c.syncer.store, &TableDecl::named("filings"), at("2030-02-01T00:00:00Z")).unwrap();
+    let err = c.syncer.reland(&TableDecl::named("filings")).unwrap_err();
+    assert!(matches!(&err, SyncError::Store(StoreError::SyncRelandHeadAbsent(m)) if m.contains(&head)), "{err}");
+    assert_eq!(local_pointer(&c), local);
+    let id = contextful_context::reland::relanded_run_id(&local.clone().try_into().unwrap(), "run-3/ingest-b");
+    assert!(!c.root().join(format!("tables/filings/data/runs/{id}")).exists(), "no run is relanded");
+}
+
+/// A branch meeting a manifest no longer on disk names no runs, so a reland refuses as the pull does and writes nothing.
+// spec: store.pull.reland-unknown@7f374d55
+#[test]
+fn a_reland_of_a_branch_ending_at_a_missing_manifest_refuses() {
+    let (_dir, _a, c, _head) = while_away();
+    c.land("run-3", json!([{"id": 3}]), "2030-01-21T00:00:00Z");
+    let first = folded(&c, "2030-01-21T01:00:00Z");
+    c.land("run-4", json!([{"id": 4}]), "2030-01-21T02:00:00Z");
+    let local = folded(&c, "2030-01-21T03:00:00Z");
+    std::fs::remove_file(c.root().join(format!("tables/filings/data/snapshots/{first}/_manifest.json"))).unwrap();
+    assert!(unrecoverable(&c));
+    let err = c.syncer.reland(&TableDecl::named("filings")).unwrap_err();
+    assert!(matches!(&err, SyncError::Store(StoreError::SyncLocalFoldUnrecoverable(m)) if m.contains(&first)), "{err}");
+    assert_eq!(local_pointer(&c), local);
 }
 
 /// A local branch whose walk meets a missing manifest before the bucket's chain or a root refuses, whatever its runs.

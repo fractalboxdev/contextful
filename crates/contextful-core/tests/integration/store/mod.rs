@@ -39,6 +39,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         schema_diffs: Vec::new(),
         batch_digest: None,
         part_bytes: None,
+        relanded_from: None,
     }
 }
 

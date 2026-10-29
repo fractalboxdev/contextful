@@ -83,6 +83,8 @@ SyncPullTablesEmpty          = { clause = "store.pull.tables-empty", gloss = "A 
 SyncObjectDigestMismatch     = { clause = "store.pull.digest-mismatch", gloss = "A downloaded object's digest differs from its entry." }
 SyncPullDidNotConverge       = { clause = "store.pull.unconverged", gloss = "A pull exhausted its retries against keys moving beneath it." }
 SyncLocalFoldUnrecoverable   = { clause = "store.pull.local-fold-unrecoverable", gloss = "A local pointer off the bucket's chain folds runs neither the store nor the bucket holds." }
+SyncRelandUnneeded           = { clause = "store.pull.reland-unneeded", gloss = "A reland names a table whose local pointer the next pull keeps or replaces without a refusal." }
+SyncRelandHeadAbsent         = { clause = "store.pull.reland-head-absent", gloss = "A reland finds the bucket pointer's snapshot not whole on disk." }
 SyncControlDiverged          = { clause = "store.push.control-diverged", gloss = "A signed control head does not descend from the bucket's head." }
 SyncProbeInconclusive        = { clause = "store.probe.inconclusive", gloss = "The conditional-write probe met an unsupported method, a forbidden response or a transport error." }
 SyncCoordinationUnproven     = { clause = "store.probe.unproven", gloss = "`cas` is declared against a backend the probe did not demonstrate." }
