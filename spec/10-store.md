@@ -320,16 +320,6 @@ Compaction passes, their triggers and retention, and snapshot publication throug
   *because an inline pass decoding the whole table grows with history until memory runs out*
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on the key and valid-time line, keeping one row per line.
 - `includes-runs` — A snapshot's `includes_runs` names each folded run as `<run-id>/<node-id>`, matching the run directory. Reads include runs committed after the snapshot.
-- `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
-- `declared-trigger` — A positive `fold_max_unfolded_runs` replaces {{store.fold.triggers}}'s unfolded-run count for the table; parsing rejects zero.
-- `session-trigger` — A landing session counts the table's unfolded runs at open and each commit, recounting after another writer commits or folds, and runs a pass before landing returns once the trigger fires.
-  *because a continuous writer otherwise accrues thousands of unfolded runs between scheduled passes*
-- `land-trigger` — After a commit that is not a replay, `contextful context land` runs a pass before returning once the table's trigger fires; on a store declaring `[sync]` it runs none, leaving the pass to {{store.fold.job-pass-synced}}.
-  *because a writer landing through repeated one-shot commands otherwise accrues unfolded runs without bound*
-- `job-pass` — `contextful job fire` on a `fold` job runs a pass over its `target`, or over every table the store holds when it names none, reporting each table under {{store.fold.result}} and exiting non-zero once any table fails.
-  *A-surface#maintenance-kinds*
-- `job-pass-synced` — On a store declaring `[sync]`, a fold job's pass takes each table's compaction lease, pulls, folds, pushes and publishes as `contextful sync compact <table>` does; on any other store it folds locally as `contextful context compact <table>` does.
-  *because a node publishing a snapshot outside the lease races every other node's pass on the bucket pointer*
 - `retention` — `retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older than the window.
 - `reference-retention` — Collection keeps the parts, sidecar segments and folded-runs segments a retained snapshot references and removes the rest of the collected snapshot's directory, its manifest included save under {{store.fold.manifest-kept}}.
   *A-store#pass-carries-untouched*
@@ -359,6 +349,25 @@ Compaction passes, their triggers and retention, and snapshot publication throug
   *because local retention removes parts the bucket still holds, and a pull bringing them home makes the snapshot readable again*
 - `folded-index` — A pass writes `folded_runs` over its parent's valid index, carried by reference with the runs walked above it, or over a walk reaching a root, merging 4 segments of one size tier into one; otherwise it writes none.
   *A-store#folded-index*
+
+### pass scheduling
+
+When a table's pass fires, and which writer runs it.
+
+- `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
+- `declared-trigger` — A positive `fold_max_unfolded_runs` replaces {{store.fold.triggers}}'s unfolded-run count for the table; parsing rejects zero.
+- `declared-bytes` — A positive `fold_max_unfolded_bytes` also fires the table's pass once the `part_bytes` its unfolded run manifests record at commit reach it; a landing session keeps the sum per commit, and parsing rejects zero.
+  *because a run count bounds no fold's input when batch sizes vary*
+- `session-trigger` — A landing session counts the table's unfolded runs at open and each commit, recounting after another writer commits or folds, and runs a pass before landing returns once the trigger fires.
+  *because a continuous writer otherwise accrues thousands of unfolded runs between scheduled passes*
+- `session-synced` — On a store declaring `[sync]`, a landing session runs no pass, leaving it to {{store.fold.job-pass-synced}}.
+  *because a session pass outside the compaction lease races every other node's pass on the bucket pointer*
+- `land-trigger` — After a commit that is not a replay, `contextful context land` runs a pass before returning once the table's trigger fires; on a store declaring `[sync]` it runs none, leaving the pass to {{store.fold.job-pass-synced}}.
+  *because a writer landing through repeated one-shot commands otherwise accrues unfolded runs without bound*
+- `job-pass` — `contextful job fire` on a `fold` job runs a pass over its `target`, or over every table the store holds when it names none, reporting each table under {{store.fold.result}} and exiting non-zero once any table fails.
+  *A-surface#maintenance-kinds*
+- `job-pass-synced` — On a store declaring `[sync]`, a fold job's pass takes each table's compaction lease, pulls, folds, pushes and publishes as `contextful sync compact <table>` does; on any other store it folds locally as `contextful context compact <table>` does.
+  *because a node publishing a snapshot outside the lease races every other node's pass on the bucket pointer*
 
 A fold pass under the compaction lease, from run selection to the pointer commit.
 

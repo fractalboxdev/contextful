@@ -69,6 +69,35 @@ fn a_declared_run_count_replaces_the_fifty_run_trigger() {
     }
 }
 
+/// A positive `fold_max_unfolded_bytes` fires `due` once the unfolded runs' recorded part
+/// bytes reach it, a run recording none counting zero; parsing refuses zero.
+#[test]
+fn a_declared_byte_limit_fires_once_the_unfolded_part_bytes_reach_it() {
+    let t0 = at("2030-01-01T00:00:00Z");
+    let (early, later) = ("2030-01-01T00:00:00Z", "2030-01-01T00:00:01Z");
+    let declared = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"events\"\nfold_max_unfolded_bytes = 1000\n").unwrap().remove(0);
+    assert_eq!(declared.fold_byte_limit(), Some(1000));
+    assert_eq!(TableDecl::named("events").fold_byte_limit(), None);
+    let sized = |n: usize, bytes: u64| -> TableState {
+        let mut s = state(n, later, Some(early));
+        for r in &mut s.runs {
+            r.part_bytes = Some(bytes);
+        }
+        s
+    };
+    assert!(!due(&sized(3, 333), &declared, t0.plus_secs(60)), "999 of 1000 bytes");
+    let mut s = sized(3, 333);
+    s.runs.push(super::run("run-3", later, 1));
+    assert!(!due(&s, &declared, t0.plus_secs(60)), "a run recording no bytes counts zero");
+    s.runs.last_mut().unwrap().part_bytes = Some(1);
+    assert!(due(&s, &declared, t0.plus_secs(60)), "1000 bytes reach the limit");
+    assert!(!due(&sized(3, 333), &TableDecl::named("events"), t0.plus_secs(60)), "no declared limit, no byte trigger");
+    for invalid in ["0", "-1"] {
+        let text = format!("[[pipeline.tables]]\nname = \"events\"\nfold_max_unfolded_bytes = {invalid}\n");
+        assert!(TableDecl::parse_pipeline(&text).is_err(), "{invalid}");
+    }
+}
+
 /// The trigger reads from an unfolded count and the instant the interval runs from, so a
 /// writer counting its own commits decides a pass without reading the table's manifests.
 #[test]

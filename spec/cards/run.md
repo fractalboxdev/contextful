@@ -701,6 +701,7 @@ The struct at `crates/contextful-core/src/store/declare.rs`, named by `store.dec
 | `bloom_filter` | Columns whose Parquet parts carry a bloom filter (`store.index.kinds`). |
 | `retain_runs` |  |
 | `fold_max_unfolded_runs` | The unfolded run count that fires the table's pass in place of 50 (`store.fold.declared-trigger`); zero refuses the block. |
+| `fold_max_unfolded_bytes` | The part bytes, summed over the unfolded runs' manifests, that fire the table's pass (`store.fold.declared-bytes`); zero refuses the block. |
 | `allowed_lateness` | The window a `monotonic` poll of this table re-reads behind its stored position, spelled as a span (`run.advance.allowed-lateness`). |
 | `retain_rows` |  |
 | `retain_versions` | A derive output table keeping each task version's rows current under that version (`run.emit.version-retained`). |

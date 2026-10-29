@@ -1,6 +1,7 @@
 //! `store.fold`: when a pass fires, and what it reports per table.
 
 use super::declare::TableDecl;
+use super::lay_out::RunManifest;
 use super::resolve::TableState;
 use crate::time::Instant;
 
@@ -45,10 +46,26 @@ pub fn size_tier(rows: u64) -> u32 {
 /// passed since its previous pass published — or, before its first pass, since its oldest
 /// unfolded run committed. An explicit `contextful context compact <table>` fires
 /// regardless.
+/// A declared `fold_max_unfolded_bytes` fires it too once the part bytes the unfolded runs'
+/// manifests record reach it (`store.fold.declared-bytes`).
 pub fn due(state: &TableState, decl: &TableDecl, now: Instant) -> bool {
     let unfolded = state.unfolded_runs();
     let since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
-    trigger_fired(unfolded.len(), since, now, decl.fold_run_count())
+    let bytes = unfolded_bytes(&unfolded);
+    trigger_fired(unfolded.len(), since, now, decl.fold_run_count()) || bytes_fired(unfolded.len(), bytes, decl)
+}
+
+/// The part bytes `runs`' manifests record, a manifest recording none counting zero
+/// (`store.fold.declared-bytes`).
+pub fn unfolded_bytes(runs: &[&RunManifest]) -> u64 {
+    runs.iter().filter_map(|r| r.part_bytes).fold(0, u64::saturating_add)
+}
+
+/// Whether `unfolded` runs holding `bytes` part bytes reach `decl`'s declared
+/// `fold_max_unfolded_bytes`; a table declaring none never fires on bytes
+/// (`store.fold.declared-bytes`).
+pub fn bytes_fired(unfolded: usize, bytes: u64, decl: &TableDecl) -> bool {
+    unfolded > 0 && decl.fold_byte_limit().is_some_and(|limit| bytes >= limit)
 }
 
 /// [`due`] from its inputs alone: `unfolded` runs, the instant the interval runs from, and

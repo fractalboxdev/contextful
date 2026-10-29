@@ -985,6 +985,12 @@ fn create_manifest(
     if position.replace_frontier && (!parts.is_empty() || decl.write_mode() != WriteMode::Replace) {
         return Err(ContextError::Invalid(format!("table `{}`: an empty replacement frontier requires a no-part replacing run", decl.name)));
     }
+    // The parts' bytes on disk, which a declared byte trigger sums (`store.fold.declared-bytes`).
+    let mut part_bytes = 0u64;
+    for part in &parts {
+        let path = site.node_dir.join(&part.name);
+        part_bytes = part_bytes.saturating_add(std::fs::metadata(&path).at(&path)?.len());
+    }
     let manifest = RunManifest {
         format_version: Default::default(),
         run_id: ctx.injection.run_id.clone(),
@@ -1001,6 +1007,7 @@ fn create_manifest(
         group_root: group_root.map(str::to_string),
         schema_diffs: schema_diffs.to_vec(),
         batch_digest,
+        part_bytes: Some(part_bytes),
     };
     std::fs::create_dir_all(&site.node_dir).at(&site.node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
@@ -1376,14 +1383,18 @@ pub fn discard_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -
 /// (`run.land.session`). The count opens from the table's manifests and then moves per
 /// commit; a land recounts from the manifests only when the pointer or the committed-run
 /// listing moved past its own commit, and a land that fires the table's trigger runs a
-/// pass before it returns (`store.fold.session-trigger`). The session holds `schema.json`
-/// parsed until its version moves (`run.land.session-schema`).
+/// pass before it returns (`store.fold.session-trigger`), save on a store declaring
+/// `[sync]`, whose fold job owns the pass (`store.fold.session-synced`). The session sums
+/// the unfolded runs' part bytes beside the count (`store.fold.declared-bytes`) and holds
+/// `schema.json` parsed until its version moves (`run.land.session-schema`).
 pub struct LandSession<'a> {
     store: Store,
     opened: std::marker::PhantomData<&'a Store>,
     decl: TableDecl,
     node: NodeId,
     unfolded: usize,
+    /// The part bytes the unfolded runs' manifests record.
+    unfolded_bytes: u64,
     /// The instant the 6 h interval runs from: the previous pass, else the oldest
     /// unfolded run.
     since: Option<Instant>,
@@ -1407,7 +1418,7 @@ impl<'a> LandSession<'a> {
     /// snapshot omits.
     pub fn open(store: &'a Store, decl: TableDecl, node: NodeId) -> Result<LandSession<'a>> {
         let store = store.with_schema_cache();
-        let mut session = LandSession { store, opened: std::marker::PhantomData, decl, node, unfolded: 0, since: None, seen: (String::new(), 0) };
+        let mut session = LandSession { store, opened: std::marker::PhantomData, decl, node, unfolded: 0, unfolded_bytes: 0, since: None, seen: (String::new(), 0) };
         session.recount()?;
         Ok(session)
     }
@@ -1423,8 +1434,8 @@ impl<'a> LandSession<'a> {
     }
 
     /// Land `batch` as run `injection.run_id`, committed at `committed_at` with the source
-    /// cursor `position`, then run a pass when the table's trigger fires. `precommit` runs
-    /// before the commit, as it does for [`land_run`].
+    /// cursor `position`, then run a pass when the table's trigger fires on a store declaring
+    /// no `[sync]`. `precommit` runs before the commit, as it does for [`land_run`].
     pub fn land(
         &mut self,
         batch: &Batch,
@@ -1447,14 +1458,19 @@ impl<'a> LandSession<'a> {
         if observed == (self.seen.0.clone(), self.seen.1 + 1) {
             // Only this commit moved the table.
             self.unfolded += 1;
+            self.unfolded_bytes = self.unfolded_bytes.saturating_add(landing.manifest.as_ref().and_then(|m| m.part_bytes).unwrap_or(0));
             self.since.get_or_insert(committed_at);
             self.seen = observed;
         } else {
             // Another writer committed or folded since the last count.
             self.recount()?;
         }
-        let fired = contextful_core::store::fold::trigger_fired(self.unfolded, self.since, committed_at, self.decl.fold_run_count());
-        let fold = if fired {
+        use contextful_core::store::fold::{bytes_fired, trigger_fired};
+        let fired = trigger_fired(self.unfolded, self.since, committed_at, self.decl.fold_run_count())
+            || bytes_fired(self.unfolded, self.unfolded_bytes, &self.decl);
+        // On a store declaring `[sync]` the fold job runs the pass under the compaction lease
+        // (`store.fold.session-synced`).
+        let fold = if fired && !self.store.synced() {
             let outcome = crate::fold::fold(&self.store, &self.decl, committed_at)?;
             self.recount()?;
             Some(outcome)
@@ -1478,6 +1494,7 @@ impl<'a> LandSession<'a> {
         let state = self.store.state(&self.decl)?;
         let unfolded = state.unfolded_runs();
         self.unfolded = unfolded.len();
+        self.unfolded_bytes = contextful_core::store::fold::unfolded_bytes(&unfolded);
         self.since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
         self.seen = observed;
         Ok(())
