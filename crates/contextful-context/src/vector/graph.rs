@@ -5,7 +5,8 @@
 //!
 //! ```text
 //! header      magic[8] dim count m max_level entry element       (u32 each, 32 B)
-//! vectors     count * dim f32 or f16, unit length; `element` is its byte width, 4 or 2
+//! vectors     count * dim f32, f16 or i8, unit length; `element` is its byte width, 4, 2 or 1
+//! scales      count f32, an i8 graph's alone: element times scale is the stored value
 //! available   count i64: Unix nanoseconds, i64::MIN when unstamped
 //! levels      count u8, padded to 4 B
 //! layer 0     count * (1 + 2m) u32: a neighbour count, then the slots
@@ -19,7 +20,7 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 
 /// The format's magic and version.
-pub const MAGIC: &[u8; 8] = b"CFHNSW\x00\x03";
+pub const MAGIC: &[u8; 8] = b"CFHNSW\x00\x04";
 
 /// The `available` of a node carrying no availability instant.
 pub const UNSTAMPED: i64 = i64::MIN;
@@ -174,6 +175,9 @@ fn search_layer_admitting(
 struct Builder<'a> {
     vectors: Cow<'a, [f32]>,
     storage: VectorStorage,
+    /// An `i8` graph's codes and per-vector scales, empty for a float graph.
+    codes: Vec<i8>,
+    scales: Vec<f32>,
     dim: usize,
     m: usize,
     ef_construction: usize,
@@ -333,21 +337,51 @@ pub struct Params {
     pub seed: u64,
 }
 
+/// Symmetric per-vector quantization of `count * dim` row-major floats: a row's scale is its
+/// largest magnitude over 127, and each element the code nearest it over the scale, so a
+/// stored value is off by at most half a scale. A zero row takes scale 0 and zero codes,
+/// dividing by nothing (`store.index.i8-storage`).
+fn quantize(vectors: &[f32], dim: usize) -> (Vec<i8>, Vec<f32>) {
+    let mut codes = Vec::with_capacity(vectors.len());
+    let mut scales = Vec::with_capacity(vectors.len() / dim.max(1));
+    for row in vectors.chunks_exact(dim.max(1)) {
+        let largest = row.iter().fold(0f32, |a, x| a.max(x.abs()));
+        if largest > 0.0 && largest.is_finite() {
+            let scale = largest / 127.0;
+            codes.extend(row.iter().map(|x| (x / scale).round().clamp(-127.0, 127.0) as i8));
+            scales.push(scale);
+        } else {
+            codes.extend(std::iter::repeat_n(0, row.len()));
+            scales.push(0.0);
+        }
+    }
+    (codes, scales)
+}
+
 /// Build the graph over `vectors` (`count * dim` unit-length floats, row-major) and lay it
 /// out with `ids` and `available`, one each per vector. An `f16` graph rounds each element
-/// to half precision first, so construction measures the distances a probe reads.
+/// to half precision first, and an `i8` graph quantizes each vector, so construction
+/// measures the distances a probe reads.
 pub fn build(vectors: &[f32], dim: usize, ids: &[String], available: &[i64], params: Params) -> Vec<u8> {
     let Params { storage, m, ef_construction, seed } = params;
     let count = ids.len();
     debug_assert_eq!(vectors.len(), count * dim);
     debug_assert_eq!(available.len(), count);
+    let (mut codes, mut scales) = (Vec::new(), Vec::new());
     let vectors = match storage {
         VectorStorage::F32 => Cow::Borrowed(vectors),
         VectorStorage::F16 => Cow::Owned(vectors.iter().map(|&x| half::f16::from_f32(x).to_f32()).collect()),
+        VectorStorage::I8 => {
+            (codes, scales) = quantize(vectors, dim);
+            let values = codes.chunks_exact(dim.max(1)).zip(&scales).flat_map(|(row, &s)| row.iter().map(move |&c| f32::from(c) * s));
+            Cow::Owned(values.collect())
+        }
     };
     let mut b = Builder {
         vectors,
         storage,
+        codes,
+        scales,
         dim,
         m,
         ef_construction,
@@ -373,7 +407,7 @@ fn put(out: &mut Vec<u8>, v: u32) {
 fn lay_out(b: &Builder<'_>, ids: &[String], available: &[i64]) -> Vec<u8> {
     let count = ids.len();
     let element = b.storage.element_bytes() as usize;
-    let mut out = Vec::with_capacity(HEADER_LEN + b.vectors.len() * element + count * (1 + 2 * b.m) * 4);
+    let mut out = Vec::with_capacity(HEADER_LEN + b.vectors.len() * element + b.scales.len() * 4 + count * (1 + 2 * b.m) * 4);
     out.extend_from_slice(MAGIC);
     for v in [b.dim as u32, count as u32, b.m as u32, b.max_level as u32, b.entry.unwrap_or(u32::MAX), element as u32] {
         put(&mut out, v);
@@ -381,6 +415,10 @@ fn lay_out(b: &Builder<'_>, ids: &[String], available: &[i64]) -> Vec<u8> {
     match b.storage {
         VectorStorage::F32 => b.vectors.iter().for_each(|f| out.extend_from_slice(&f.to_le_bytes())),
         VectorStorage::F16 => b.vectors.iter().for_each(|&f| out.extend_from_slice(&half::f16::from_f32(f).to_le_bytes())),
+        VectorStorage::I8 => {
+            out.extend(b.codes.iter().map(|&c| c as u8));
+            b.scales.iter().for_each(|s| out.extend_from_slice(&s.to_le_bytes()));
+        }
     }
     for at in available {
         out.extend_from_slice(&at.to_le_bytes());
@@ -427,6 +465,8 @@ pub struct Layout {
     max_level: usize,
     entry: u32,
     vectors: usize,
+    /// An `i8` graph's scale array; for a float graph, `available`.
+    scales: usize,
     available: usize,
     layer0: usize,
     /// Per upper layer: node count, node-id offset, slot offset.
@@ -454,13 +494,15 @@ impl Layout {
         let storage = match field(5)? {
             4 => VectorStorage::F32,
             2 => VectorStorage::F16,
+            1 => VectorStorage::I8,
             _ => return None,
         };
         if dim == 0 || m < 2 || max_level > MAX_LEVEL || (count > 0 && entry as usize >= count) {
             return None;
         }
         let vectors = HEADER_LEN;
-        let available = vectors.checked_add(count.checked_mul(dim)?.checked_mul(storage.element_bytes() as usize)?)?;
+        let scales = vectors.checked_add(count.checked_mul(dim)?.checked_mul(storage.element_bytes() as usize)?)?;
+        let available = scales.checked_add(count.checked_mul(storage.scale_bytes() as usize)?)?;
         let levels = available.checked_add(count.checked_mul(8)?)?;
         let layer0 = levels.checked_add(count)?.next_multiple_of(4);
         let mut at = layer0.checked_add(count.checked_mul(1 + 2 * m)?.checked_mul(4)?)?;
@@ -478,7 +520,7 @@ impl Layout {
         if blob.checked_add(blob_len)? != bytes.len() {
             return None;
         }
-        Some(Layout { dim, count, storage, m, max_level, entry, vectors, available, layer0, upper, id_offsets, blob })
+        Some(Layout { dim, count, storage, m, max_level, entry, vectors, scales, available, layer0, upper, id_offsets, blob })
     }
 
     pub fn m(&self) -> usize {
@@ -492,6 +534,13 @@ impl Layout {
         let dot: f32 = match self.storage {
             VectorStorage::F32 => row.chunks_exact(4).zip(query).map(|(c, q)| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) * q).sum(),
             VectorStorage::F16 => row.chunks_exact(2).zip(query).map(|(c, q)| half::f16::from_le_bytes([c[0], c[1]]).to_f32() * q).sum(),
+            // Dequantized: the scale factors out of the dot product, so each code multiplies
+            // the query once and the row's sum takes the scale once.
+            VectorStorage::I8 => {
+                let at = self.scales + n as usize * 4;
+                let scale = f32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+                scale * row.iter().zip(query).map(|(&c, q)| f32::from(c as i8) * q).sum::<f32>()
+            }
         };
         1.0 - dot
     }

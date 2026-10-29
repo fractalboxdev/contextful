@@ -30,8 +30,9 @@ pub const VECTOR_BUILDER: &str = "contextful-hnsw";
 
 /// The on-disk graph format version the builder writes and the reader accepts; the layout
 /// is no committed format (`store.index.graph-format`). Version 3 records each graph's
-/// element type, so a version-2 sidecar, `Float32` alone, rebuilds (`store.index.rebuild`).
-pub const VECTOR_BUILDER_VERSION: u32 = 3;
+/// element type, so a version-2 sidecar, `Float32` alone, rebuilds (`store.index.rebuild`);
+/// version 4 adds the one-byte `i8` width and its per-vector scales.
+pub const VECTOR_BUILDER_VERSION: u32 = 4;
 
 /// Segment extensions after which a pass rebuilds a vector graph or full-text postings in
 /// full: 16, the `store-graph-extensions` bound of `store.index.graph-extensions`.
@@ -170,6 +171,9 @@ pub enum VectorStorage {
     F32,
     /// Two bytes per element, IEEE 754 half precision.
     F16,
+    /// One signed byte per element, scaled by one `Float32` per vector
+    /// (`store.index.i8-storage`).
+    I8,
 }
 
 impl VectorStorage {
@@ -178,6 +182,15 @@ impl VectorStorage {
         match self {
             VectorStorage::F32 => 4,
             VectorStorage::F16 => 2,
+            VectorStorage::I8 => 1,
+        }
+    }
+
+    /// Bytes each stored vector adds beside its elements: an `i8` vector's `Float32` scale.
+    pub fn scale_bytes(self) -> u64 {
+        match self {
+            VectorStorage::F32 | VectorStorage::F16 => 0,
+            VectorStorage::I8 => 4,
         }
     }
 
@@ -600,9 +613,11 @@ impl<'de> Deserialize<'de> for IndexEntry {
 }
 
 impl VectorEntry {
-    /// The bytes of stored vectors the graph holds, at its element type's width.
+    /// The bytes of stored vectors the graph holds, at its element type's width, with an
+    /// `i8` graph's per-vector scales.
     pub fn stored_vector_bytes(&self) -> u64 {
-        self.row_count.saturating_mul(u64::from(self.dim)).saturating_mul(self.storage.element_bytes())
+        let per_vector = u64::from(self.dim).saturating_mul(self.storage.element_bytes()).saturating_add(self.storage.scale_bytes());
+        self.row_count.saturating_mul(per_vector)
     }
 
     /// The resident bytes the read path's size cap compares: the probe marks, one per node,
