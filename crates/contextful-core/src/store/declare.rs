@@ -170,6 +170,10 @@ pub struct TableDecl {
     /// (`store.fold.declared-trigger`); zero refuses the block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fold_max_unfolded_runs: Option<std::num::NonZeroU32>,
+    /// The part bytes, summed over the unfolded runs' manifests, that fire the table's pass
+    /// (`store.fold.declared-bytes`); zero refuses the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fold_max_unfolded_bytes: Option<std::num::NonZeroU64>,
     /// The window a `monotonic` poll of this table re-reads behind its stored position,
     /// spelled as a span (`run.advance.allowed-lateness`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -571,6 +575,12 @@ impl TableDecl {
     /// `fold_max_unfolded_runs`, else 50 (`store.fold.declared-trigger`).
     pub fn fold_run_count(&self) -> usize {
         self.fold_max_unfolded_runs.map_or(super::fold::COMPACTION_RUN_COUNT, |n| n.get() as usize)
+    }
+
+    /// The unfolded part bytes that fire the table's pass, when it declares
+    /// `fold_max_unfolded_bytes` (`store.fold.declared-bytes`).
+    pub fn fold_byte_limit(&self) -> Option<u64> {
+        self.fold_max_unfolded_bytes.map(std::num::NonZeroU64::get)
     }
 
     /// The `retain_runs` window in seconds: `<n>d`, `<n>h`, `<n>m` or `<n>s`.

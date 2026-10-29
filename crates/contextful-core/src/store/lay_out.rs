@@ -389,6 +389,10 @@ pub struct RunManifest {
     /// A staged commit records none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub batch_digest: Option<String>,
+    /// The bytes the run's parts hold on disk at commit, which `fold_max_unfolded_bytes`
+    /// sums (`store.fold.declared-bytes`). A manifest recording none counts zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

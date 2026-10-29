@@ -4,8 +4,9 @@
 use crate::support::{at, decl, Fixture};
 use contextful_context::land::{Batch, LandSession, Position};
 use contextful_context::error::ContextError;
-use contextful_core::store::fold::{scheduled, FoldOutcome};
-use contextful_core::store::lay_out::NodeId;
+use contextful_core::store::declare::TableDecl;
+use contextful_core::store::fold::{due, scheduled, FoldOutcome};
+use contextful_core::store::lay_out::{NodeId, RunManifest};
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
 use serde_json::json;
@@ -215,4 +216,95 @@ fn a_land_merging_no_new_column_replaces_no_schema_file() {
     assert_eq!(schema_version(&f, "events"), held);
     f.land(&d, "run-2", json!([{ "id": 2, "note": "x" }]), "2030-01-01T00:02:00Z").unwrap();
     assert_ne!(schema_version(&f, "events"), held, "a new column replaces schema.json");
+}
+
+/// On a store declaring `[sync]`, a landing session runs no pass, leaving it to the fold job; any other store's
+/// session folds once the trigger fires.
+// spec: store.fold.session-synced@57b9b3c8
+#[test]
+fn a_session_on_a_synced_store_runs_no_pass() {
+    let d = decl("name = \"events\"\nfold_max_unfolded_runs = 2");
+    let synced = Fixture::synced();
+    let mut session = LandSession::open(&synced.store, d.clone(), NodeId::parse("ingest-a").unwrap()).unwrap();
+    let landings: Vec<_> = (0..5).map(|i| session.land(&single_row(i), injection(&format!("run-{i}")), tick(i), &Position::default(), &|| Ok(())).unwrap()).collect();
+    assert_eq!(landings.len(), 5);
+    for (i, landing) in landings.iter().enumerate() {
+        assert!(!landing.replay, "run {i}");
+        assert!(landing.fold.is_none(), "run {i} past the 2-run trigger ran {:?}", landing.fold);
+    }
+    assert_eq!(session.unfolded(), 5);
+    assert_eq!(synced.store.state(&d).unwrap().unfolded_runs().len(), 5);
+    assert!(!synced.table_dir("events").join("_pointer.json").exists());
+
+    let local = Fixture::new();
+    let mut session = LandSession::open(&local.store, d.clone(), NodeId::parse("ingest-a").unwrap()).unwrap();
+    assert!(session.land(&single_row(0), injection("run-0"), tick(0), &Position::default(), &|| Ok(())).unwrap().fold.is_none());
+    let fired = session.land(&single_row(1), injection("run-1"), tick(1), &Position::default(), &|| Ok(())).unwrap();
+    assert!(matches!(fired.fold, Some(FoldOutcome::Folded { runs: 2, .. })), "{:?}", fired.fold);
+    assert!(local.table_dir("events").join("_pointer.json").exists());
+}
+
+/// The bytes run `m`'s parts hold on disk.
+fn disk_bytes(f: &Fixture, m: &RunManifest) -> u64 {
+    let dir = f.table_dir(&m.table).join("data/runs").join(&m.run_id).join(&m.node_id);
+    assert!(!m.parts.is_empty(), "run `{}` names no part", m.run_id);
+    m.parts.iter().map(|p| std::fs::metadata(dir.join(&p.name)).unwrap().len()).sum()
+}
+
+/// A declaration whose byte limit sits between three and four single-row parts.
+fn byte_limited() -> (TableDecl, u64) {
+    let probe = Fixture::new();
+    let one = disk_bytes(&probe, &probe.land(&decl("name = \"events\""), "run-000", json!([{ "id": 0 }]), "2030-01-01T00:00:00Z").unwrap());
+    let limit = one * 3 + one / 2;
+    (decl(&format!("name = \"events\"\nfold_max_unfolded_bytes = {limit}")), limit)
+}
+
+/// A positive `fold_max_unfolded_bytes` fires the table's pass once its unfolded runs' recorded part bytes reach
+/// it; a landing session keeps the sum per commit.
+// spec: store.fold.declared-bytes@3ae6fa43
+#[test]
+fn a_session_folds_once_the_unfolded_part_bytes_reach_the_declared_limit() {
+    let (d, limit) = byte_limited();
+    let f = Fixture::new();
+    let mut session = LandSession::open(&f.store, d.clone(), NodeId::parse("ingest-a").unwrap()).unwrap();
+    let (mut sum, mut passes, mut quiet) = (0, 0, 0);
+    for i in 0..10 {
+        let landing = session.land(&single_row(i), injection(&format!("run-{i:03}")), tick(i), &Position::default(), &|| Ok(())).unwrap();
+        let m = landing.manifest.as_ref().unwrap();
+        let bytes = disk_bytes(&f, m);
+        assert_eq!(m.part_bytes, Some(bytes), "run {i} records its parts' bytes");
+        sum += bytes;
+        assert_eq!(landing.fold.is_some(), sum >= limit, "run {i}: {sum} of {limit} bytes, {:?}", landing.fold);
+        if let Some(outcome) = &landing.fold {
+            assert!(matches!(outcome, FoldOutcome::Folded { .. }), "{outcome:?}");
+            (sum, passes) = (0, passes + 1);
+            assert_eq!(session.unfolded(), 0);
+        } else {
+            quiet += 1;
+        }
+    }
+    assert!(passes >= 2 && quiet >= 4, "{passes} passes, {quiet} quiet lands");
+}
+
+/// A one-shot land's `due` sums the part bytes the unfolded runs' manifests record and fires once they reach
+/// the declared limit.
+// spec: store.fold.declared-bytes@3ae6fa43
+#[test]
+fn one_shot_lands_fire_due_once_the_unfolded_part_bytes_reach_the_declared_limit() {
+    let (d, limit) = byte_limited();
+    let f = Fixture::new();
+    let (mut sum, mut passes, mut quiet) = (0, 0, 0);
+    for i in 0..10 {
+        let m = f.land(&d, &format!("run-{i:03}"), json!([{ "id": i }]), &tick(i).to_string()).unwrap();
+        sum += disk_bytes(&f, &m);
+        let fired = due(&f.store.state(&d).unwrap(), &d, tick(i));
+        assert_eq!(fired, sum >= limit, "run {i}: {sum} of {limit} bytes");
+        if fired {
+            assert!(matches!(contextful_context::fold::fold(&f.store, &d, tick(i)).unwrap(), FoldOutcome::Folded { .. }));
+            (sum, passes) = (0, passes + 1);
+        } else {
+            quiet += 1;
+        }
+    }
+    assert!(passes >= 2 && quiet >= 4, "{passes} passes, {quiet} quiet lands");
 }
