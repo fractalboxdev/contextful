@@ -662,7 +662,7 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<Stri
             continue;
         }
         for r in s.includes_runs.iter().filter_map(|key| runs.get(key)) {
-            if remove_run(store, table, &runs_dir, &r.run_id, &r.node_id, cutoff)? {
+            if remove_run(store, table, &runs_dir, &r.run_id, &r.node_id)? {
                 removed.push(format!("data/runs/{}/{}", r.run_id, r.node_id));
             }
         }
@@ -674,7 +674,7 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<Stri
                 continue;
             }
             let (run_id, node_id) = (file_name(&dir), file_name(&node));
-            if remove_run(store, table, &runs_dir, &run_id, &node_id, cutoff)? {
+            if remove_run(store, table, &runs_dir, &run_id, &node_id)? {
                 removed.push(format!("data/runs/{run_id}/{node_id}"));
             }
         }
@@ -693,7 +693,7 @@ fn file_name(path: &std::path::Path) -> String {
 /// Remove `table`'s run directory `run_id/node_id`, keeping its `_group.json` while a member
 /// table's copy of the run stays unfolded in this store (`store.fold.group-marker`); whether
 /// anything was removed.
-fn remove_run(store: &Store, table: &str, runs_dir: &std::path::Path, run_id: &str, node_id: &str, cutoff: Instant) -> Result<bool> {
+fn remove_run(store: &Store, table: &str, runs_dir: &std::path::Path, run_id: &str, node_id: &str) -> Result<bool> {
     let dir = runs_dir.join(run_id);
     let node = dir.join(node_id);
     if !node.exists() {
@@ -701,7 +701,7 @@ fn remove_run(store: &Store, table: &str, runs_dir: &std::path::Path, run_id: &s
     }
     let marker = node.join(GROUP_MARKER);
     let mut removed = false;
-    if marker_needed(store, table, &marker, run_id, node_id, cutoff)? {
+    if marker_needed(store, table, &marker, run_id, node_id)? {
         for entry in fs::read_dir(&node).at(&node)? {
             let path = entry.at(&node)?.path();
             if path == marker {
@@ -720,22 +720,18 @@ fn remove_run(store: &Store, table: &str, runs_dir: &std::path::Path, run_id: &s
     Ok(removed)
 }
 
-/// Whether a member table other than `table` that `marker` names holds a copy of run
-/// `run_id/node_id` no snapshot of its own chain created at or before `cutoff` folds, so an
-/// `as_of` read inside the window still reads that copy beside the marker.
-fn marker_needed(store: &Store, table: &str, marker: &std::path::Path, run_id: &str, node_id: &str, cutoff: Instant) -> Result<bool> {
+/// Whether a member table other than `table` that `marker` names still holds its copy of run
+/// `run_id/node_id`. The member's own retention removes that copy once its own window passes the
+/// fold of it, so the marker outlives every `as_of` read of a member inside that member's window
+/// (`store.fold.group-marker`).
+fn marker_needed(store: &Store, table: &str, marker: &std::path::Path, run_id: &str, node_id: &str) -> Result<bool> {
     let Ok(bytes) = fs::read(marker) else { return Ok(false) };
     let members: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| {
         StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: group marker: {e}", marker.display()))
     })?;
-    let key = format!("{run_id}/{node_id}");
     for member in members.iter().filter(|m| *m != table) {
         let copy = store.table_dir(member)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id).join(node_id).join(MANIFEST_FILE);
-        if !copy.exists() {
-            continue;
-        }
-        let (chain, _) = store.chain(member)?;
-        if !chain.iter().any(|s| s.created_at <= cutoff && s.includes_runs.contains(&key)) {
+        if copy.exists() {
             return Ok(true);
         }
     }

@@ -268,6 +268,34 @@ fn a_commit_names_only_staged_parts() {
     assert_eq!(f.store.committed_runs("filings").unwrap()[0].cursor, Some(json!("p1")));
 }
 
+#[cfg(feature = "read")]
+/// A grouped run's `_group.json` answers to each member's own window: with the root keeping 1 d and a member 30 d,
+/// an `as_of` read of the member inside its window still reads the run's rows on day 2.
+// spec: store.fold.group-marker@cdafcb71
+#[test]
+fn a_group_marker_answers_to_each_members_own_window() {
+    use contextful_context::fold::fold;
+    use contextful_context::land::{commit_parts_group, publish_group};
+    use contextful_core::store::bound_time::Bound;
+    let f = Fixture::new();
+    let ctx = staging("run-group", "2030-01-01T00:01:00Z");
+    let root = decl("name = \"filings\"\nretain_runs = \"1d\"");
+    let child = decl("name = \"filings_events\"\nretain_runs = \"30d\"");
+    let a = stage(&f, &root, &batch(json!([{"id": "d1"}])), &ctx, 0, 0).unwrap();
+    let b = stage(&f, &child, &batch(json!([{"parent_id": "d1", "list_index": 0}])), &ctx, 0, 0).unwrap();
+    commit_parts_group(&f.store, &child, &[b.name], &ctx, &fed("p1"), "filings", &[], &|| Ok(()), &|_| Ok(())).unwrap();
+    commit_parts_group(&f.store, &root, &[a.name], &ctx, &fed("p1"), "filings", &[], &|| Ok(()), &|_| Ok(())).unwrap();
+    publish_group(&f.store, "filings", &["filings".into(), "filings_events".into()], &ctx).unwrap();
+    fold(&f.store, &root, at("2030-01-01T01:00:00Z")).unwrap();
+    fold(&f.store, &child, at("2030-01-01T01:00:00Z")).unwrap();
+    // Day 2: the root's window passed its fold, the member's has not.
+    fold(&f.store, &root, at("2030-01-03T00:00:00Z")).unwrap();
+    let marker = f.table_dir("filings").join("data/runs/run-group/ingest-a/_group.json");
+    assert!(marker.exists(), "the member still holds its copy of the run");
+    let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T00:30:00Z").unwrap()), ..Bounds::default() };
+    assert_eq!(f.query(&child, bound, "SELECT count(*) FROM t"), [[s("1")]], "the member reads the run inside its window");
+}
+
 #[test]
 fn a_relational_group_becomes_visible_only_after_its_marker() {
     use contextful_context::land::{commit_parts_group, publish_group};

@@ -3802,7 +3802,7 @@
       "operation": "fold",
       "subject": "group-marker",
       "kind": "behavior",
-      "statement": "Collection keeps a folded run's `_group.json` while a member table holding a copy of that run folds it in no snapshot created `retain_runs` ago, and removes it once every member does.",
+      "statement": "Collection keeps a folded run's `_group.json` while a member table other than the root still holds its copy of that run, which the member's own retention removes, and removes the marker once none does.",
       "why": "because a member run reads as committed only beside its group root's marker, an `as_of` read inside the window included",
       "file": "spec/10-store.md",
       "line": 340
@@ -5104,7 +5104,7 @@
       "operation": "pull",
       "subject": "skipped-record",
       "kind": "behavior",
-      "statement": "Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it; an empty record leaves no file.",
+      "statement": "Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
       "line": 675,
@@ -68212,6 +68212,13 @@
         "name": "collection_keeps_a_group_marker_while_a_member_run_is_unfolded",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/run_commit.rs",
+        "name": "a_group_marker_answers_to_each_members_own_window",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.fold.includes-runs": [
@@ -70040,6 +70047,13 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/lazy.rs",
         "name": "a_listing_leaves_out_skipped_runs_a_collect_took",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/lazy.rs",
+        "name": "a_scoped_restore_keeps_other_tables_skipped_entries",
         "verdict": "performed",
         "proved": false
       }

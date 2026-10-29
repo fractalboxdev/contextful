@@ -1656,7 +1656,7 @@ impl Syncer {
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
         }
-        self.record_skipped(&manifest, &skipped, &reaches)?;
+        self.record_skipped(&manifest, &skipped, &reaches, generation.is_some())?;
         let staged_head = self.store.root().join("control/head.json");
         if let Some(head) = manifest.control_heads.get(&self.project) {
             let bytes = serde_json::to_vec_pretty(head).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
@@ -1867,9 +1867,10 @@ impl Syncer {
     }
 
     /// Rewrite the store's skipped-runs record: this pull's `skipped` keys, and each earlier
-    /// entry still absent locally whose table the pull did not reach or the bucket still lists
-    /// (`store.pull.lazy-folded-runs`). An empty record leaves no file.
-    fn record_skipped(&self, manifest: &BucketManifest, skipped: &BTreeSet<String>, reaches: &dyn Fn(&str) -> bool) -> Result<()> {
+    /// entry still absent locally that `manifest`, the live bucket's, lists; a `restoring` pull
+    /// reads a generation's listing instead, so it also keeps every entry outside its scope
+    /// (`store.pull.skipped-record`). An empty record leaves no file.
+    fn record_skipped(&self, manifest: &BucketManifest, skipped: &BTreeSet<String>, reaches: &dyn Fn(&str) -> bool, restoring: bool) -> Result<()> {
         use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
         let path = self.store.root().join(SKIPPED_RUNS_FILE);
         let held: SkippedRuns = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
@@ -1878,8 +1879,7 @@ impl Syncer {
             let key = format!("{}/{rel}", self.project);
             // An entry stays while the bucket lists it, inside the pull's scope or outside it: a
             // manifest the bucket stopped listing was collected or tombstoned (`store.pull.skipped-record`).
-            let _ = reaches;
-            let kept = manifest.entries.contains_key(&key);
+            let kept = manifest.entries.contains_key(&key) || (restoring && !reaches(&key));
             if !self.store.root().join(&rel).exists() && kept {
                 keep.insert(rel);
             }

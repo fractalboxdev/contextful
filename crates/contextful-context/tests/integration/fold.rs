@@ -199,6 +199,9 @@ fn an_as_of_inside_a_span_retention_emptied_refuses() {
         other => panic!("expected StoreAsOfUnretained, got {other:?}"),
     }
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("3")]]);
+    // A bound in the second snapshot's span still reads its two rows.
+    let inside = Bounds { as_of: Some(Bound::parse("2030-01-02T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
+    assert_eq!(f.query(&d, inside, "SELECT count(*) FROM t"), [[s("2")]]);
 }
 
 #[test]
@@ -649,9 +652,9 @@ fn a_renamed_lock_does_not_remove_the_file_that_replaces_it() {
     assert_eq!(fs::read(&path).unwrap(), b"another holder");
 }
 
-/// Collection keeps a folded run's `_group.json` while a member table's copy of the run stays unfolded, and removes
-/// it once every member has folded that run.
-// spec: store.fold.group-marker@e37a70b2
+/// Collection keeps a folded run's `_group.json` while a member table still holds its copy of the run, which the
+/// member's own retention removes once its window passes its fold, and removes the marker after that.
+// spec: store.fold.group-marker@cdafcb71
 #[test]
 fn collection_keeps_a_group_marker_while_a_member_run_is_unfolded() {
     let f = Fixture::new();
@@ -670,6 +673,9 @@ fn collection_keeps_a_group_marker_while_a_member_run_is_unfolded() {
     // Inside the window an `as_of` read before the member's fold still reads its copy beside the marker.
     fold(&f.store, &filings, at("2030-01-11T00:00:00Z")).unwrap();
     assert!(marker.exists(), "the marker stays while the member's fold is younger than the window");
+    // The member's own retention removes its copy a window after its fold; the marker then leaves.
+    fold(&f.store, &pages, at("2030-01-18T00:00:00Z")).unwrap();
+    assert!(!f.table_dir("pages").join("data/runs/run-1").exists());
     fold(&f.store, &filings, at("2030-01-18T00:00:00Z")).unwrap();
-    assert!(!marker.exists(), "the marker leaves once every member folded the run a window ago");
+    assert!(!marker.exists(), "the marker leaves once no member holds a copy of the run");
 }
