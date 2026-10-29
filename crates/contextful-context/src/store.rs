@@ -710,7 +710,7 @@ impl Store {
     /// Without a source the read refuses (`store.pull.folded-runs-unreachable`), and a manifest
     /// the source leaves absent refuses as collected (`store.pull.folded-run-collected`), save
     /// under an unbounded `listing`, which leaves out each the source answers as collected.
-    fn fetch_skipped(&self, table: &str, run_id: Option<&str>, listing: bool) -> Result<()> {
+    fn fetch_skipped(&self, table: &str, run_id: Option<&str>, leave: Leave) -> Result<()> {
         let path = self.root.join(SKIPPED_RUNS_FILE);
         let skipped: SkippedRuns = match fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", path.display())))?,
@@ -731,15 +731,30 @@ impl Store {
             ))
             .into());
         };
+        // An unbounded listing leaves out a manifest a collection took; a bounded read leaves out one
+        // whose run a kept snapshot folds, and the resolution refuses a bound that needs it
+        // (`store.pull.folded-run-collected`, `store.bound-time.as-of-unretained`).
+        let folded: BTreeSet<String> = match leave {
+            Leave::Folded => self.chain(table)?.0.into_iter().flat_map(|s| s.includes_runs).collect(),
+            _ => BTreeSet::new(),
+        };
+        let leaves = |rel: &str| match leave {
+            Leave::Collected => true,
+            Leave::Folded => {
+                // `tables/<t>/data/runs/<run>/<node>/_manifest.json` names run `<run>/<node>`.
+                let segs: Vec<&str> = rel.split('/').collect();
+                segs.len() >= 3 && folded.contains(&format!("{}/{}", segs[segs.len() - 3], segs[segs.len() - 2]))
+            }
+            Leave::Nothing => false,
+        };
         let mut collected: BTreeSet<&str> = BTreeSet::new();
         let _hold = match source.hold(&absent) {
             Ok(hold) => Some(hold),
-            // An unbounded listing leaves out a manifest a collection took, and only such a one.
-            Err(StoreError::SyncPartCollected(_)) if listing => {
+            Err(StoreError::SyncPartCollected(_)) if leave != Leave::Nothing => {
                 for rel in absent.iter().filter(|rel| !self.root.join(rel.as_str()).exists()) {
                     match source.hold(std::slice::from_ref(rel)) {
                         Ok(_) => {}
-                        Err(StoreError::SyncPartCollected(_)) => {
+                        Err(StoreError::SyncPartCollected(_)) if leaves(rel) => {
                             collected.insert(rel.as_str());
                         }
                         Err(e) => return Err(e.into()),
@@ -760,7 +775,7 @@ impl Store {
     /// below it, so a reader following commit order holds back from there
     /// (`read.subscribe.commit-order`).
     pub fn committed_runs_held(&self, table: &str) -> Result<(Vec<RunManifest>, Option<i64>)> {
-        self.fetch_skipped(table, None, true)?;
+        self.fetch_skipped(table, None, Leave::Collected)?;
         self.local_runs_held(table)
     }
 
@@ -787,7 +802,7 @@ impl Store {
         if run_id.is_empty() || run_id.contains(['/', '\\']) || run_id == "." || run_id == ".." {
             return Err(ContextError::Invalid(format!("run id `{run_id}` names no run directory")));
         }
-        self.fetch_skipped(table, Some(run_id), false)?;
+        self.fetch_skipped(table, Some(run_id), Leave::Nothing)?;
         let run_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id);
         let (mut logs, mut held) = (CommitLogs::new(), None);
         let mut rows: Option<u64> = None;
@@ -946,7 +961,7 @@ impl Store {
         let state = self.state(decl)?;
         match as_of {
             Some(b) if state.chain.first().is_none_or(|s| !b.admits(s.created_at)) => {
-                self.fetch_skipped(&decl.name, None, false)?;
+                self.fetch_skipped(&decl.name, None, Leave::Folded)?;
                 let mut state = self.state(decl)?;
                 // Collected snapshots sit behind every retained one: from the first, the rest are.
                 let mut beyond = false;
@@ -964,6 +979,17 @@ impl Store {
 }
 
 pub const ABSENT_ETAG: &str = "absent";
+
+/// Which skipped run manifests a fetch leaves out when the part source answers them collected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Leave {
+    /// Every one: an unbounded listing.
+    Collected,
+    /// Those whose run a kept snapshot of the chain folds: a bounded read.
+    Folded,
+    /// None: a read of one run.
+    Nothing,
+}
 
 /// The lock a table's commits serialize on, beside `schema.json`.
 const COMMIT_LOCK_FILE: &str = "commit.lock";

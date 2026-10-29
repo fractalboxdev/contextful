@@ -23,7 +23,7 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
   *because filtering current files by ingest stamp returns different rows before and after a fold*
 - `row-age-cutoff` — A read of a table with {{store.declare.retain-rows}} excludes rows older than its wall-clock cutoff, `as_of` reads of retained snapshots included, and the result cache reuses no such statement.
   *because a historical snapshot does not restore a row after its declared age passes*
-- `as-of-unretained` — An `as_of` before the oldest snapshot retention kept, or selecting a snapshot {{store.fold.collected-snapshot}} counts, raises `StoreAsOfUnretained`, naming the oldest answerable instant.
+- `as-of-unretained` — An `as_of` before the oldest snapshot retention kept, or selecting a snapshot {{store.fold.collected-snapshot}} counts or whose successors fold a run absent here, raises `StoreAsOfUnretained`, naming the oldest answerable instant.
   *P4*
 - `valid-as-of` — `valid_as_of` filters the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair.
 - `valid-time-undeclared` — A `valid_as_of` read against a table declaring no pair raises `StoreValidTimeUndeclared`, naming the table.

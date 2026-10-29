@@ -168,10 +168,37 @@ fn a_synced_store_keeps_a_collected_snapshots_manifest() {
     // A restored copy of run-1 is folded by the kept manifest and reads once.
     copy_tree(saved_run.path(), &f.table_dir("events").join("data/runs/run-1"));
     assert_eq!(f.query(&unkeyed, Bounds::default(), "SELECT count(*) FROM t"), [[s("5")]]);
-    // Parts a pull brings home again make the snapshot readable.
+    // Parts a pull brings home again stop the snapshot counting as collected; the bound still refuses while the runs
+    // its successors fold stay gone.
     copy_tree(saved_parts.path(), &first_dir);
     assert!(!f.store.snapshot_collected("events", &first[0]).unwrap());
-    assert!(f.scan(&keyed, bound).is_ok());
+    match f.scan(&keyed, bound).unwrap_err().store() {
+        Some(StoreError::StoreAsOfUnretained(_)) => {}
+        other => panic!("expected StoreAsOfUnretained, got {other:?}"),
+    }
+}
+
+#[cfg(feature = "read")]
+/// On a synced store, an `as_of` bound inside a span whose folded run retention removed refuses rather than reading
+/// the older snapshot, whose carried parts survive, without that run.
+// spec: store.bound-time.as-of-unretained@3a23145e
+#[test]
+fn an_as_of_inside_a_span_retention_emptied_refuses() {
+    let f = Fixture::synced();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T01:15:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap();
+    f.land(&d, "run-3", json!([{"e": 3}]), "2030-01-09T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-09T00:00:00Z")).unwrap();
+    assert!(!f.table_dir("events").join("data/runs/run-2").exists(), "retention removed run-2");
+    let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T01:30:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
+    match f.scan(&d, bound).unwrap_err().store() {
+        Some(StoreError::StoreAsOfUnretained(_)) => {}
+        other => panic!("expected StoreAsOfUnretained, got {other:?}"),
+    }
+    assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("3")]]);
 }
 
 #[test]

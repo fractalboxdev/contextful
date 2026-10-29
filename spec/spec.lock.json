@@ -5104,7 +5104,7 @@
       "operation": "pull",
       "subject": "skipped-record",
       "kind": "behavior",
-      "statement": "Each pull rewrites `.skipped-runs.json` to the listed manifests still absent locally, keeping entries of tables outside its scope the bucket records no collect of; an empty record leaves no file.",
+      "statement": "Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it; an empty record leaves no file.",
       "why": "because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone",
       "file": "spec/10-store.md",
       "line": 675,
@@ -5128,7 +5128,7 @@
       "operation": "pull",
       "subject": "folded-run-collected",
       "kind": "behavior",
-      "statement": "A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, naming the manifest, save an unbounded listing of a table's runs, which leaves out each manifest the source answers as collected.",
+      "statement": "A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, save where the source answers it collected: an unbounded listing leaves it out, and a bounded read does when a kept snapshot folds its run.",
       "why": "A-store#folded-runs-on-demand",
       "file": "spec/10-store.md",
       "line": 679,
@@ -5456,7 +5456,7 @@
       "operation": "bound-time",
       "subject": "as-of-unretained",
       "kind": "refusal",
-      "statement": "An `as_of` before the oldest snapshot retention kept, or selecting a snapshot {{store.fold.collected-snapshot}} counts, raises `StoreAsOfUnretained`, naming the oldest answerable instant.",
+      "statement": "An `as_of` before the oldest snapshot retention kept, or selecting a snapshot {{store.fold.collected-snapshot}} counts or whose successors fold a run absent here, raises `StoreAsOfUnretained`, naming the oldest answerable instant.",
       "why": "P4",
       "file": "spec/12-time.md",
       "line": 26
@@ -6180,7 +6180,7 @@
       "operation": "lease",
       "subject": "not-held",
       "kind": "refusal",
-      "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
+      "statement": "Releasing a lease another node holds, or one a later acquisition of the same node fenced past, raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/15-endpoint.md",
       "line": 69
@@ -15829,7 +15829,7 @@
       "operation": "model",
       "subject": "hold-bucket-first",
       "kind": "behavior",
-      "statement": "On a store declaring `[sync]`, `build hold` commits the hold to the bucket before printing a receipt the bucket's copy names; a failed write, or a commit round meeting a collect of the build, undoes the local hold.",
+      "statement": "On a store declaring `[sync]`, `build hold` commits the hold to the bucket before printing a receipt the bucket's copy names; a failed write, or meeting a collect of the build, undoes the local hold, listing any written object.",
       "why": "because a hold one disk alone records protects nothing from a collect elsewhere",
       "file": "spec/31-pipeline.md",
       "line": 683,
@@ -67228,6 +67228,13 @@
     "store.bound-time.as-of-unretained": [
       {
         "kind": "test",
+        "path": "crates/contextful-context/tests/integration/fold.rs",
+        "name": "an_as_of_inside_a_span_retention_emptied_refuses",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/bound_time.rs",
         "name": "an_as_of_before_collected_history_is_unretained",
         "verdict": "performed",
@@ -69716,6 +69723,13 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/lazy.rs",
         "name": "a_listing_leaves_out_skipped_runs_a_collect_took",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/lazy.rs",
+        "name": "a_bounded_lazy_read_inside_the_window_reads_past_a_reclaimed_manifest",
         "verdict": "performed",
         "proved": false
       }

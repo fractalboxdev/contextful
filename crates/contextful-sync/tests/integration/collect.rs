@@ -561,12 +561,12 @@ fn only_a_bucket_collect_marks_a_snapshot_collected() {
     let reader = node("reader", b.clone(), "");
     reader.syncer.pull(&PullScope::default()).unwrap();
     assert!(!reader.syncer.store.snapshot_collected("filings", &first).unwrap());
-    assert!(contextful_context::scan::scan(&reader.syncer.store, &decl, bound).is_ok(), "another node reads the snapshot as of its time");
+    // The bound still refuses there: the run the next snapshot folds left the bucket by its owner's retention.
 
     // The retaining node's pull brings the parts home again.
     a.syncer.pull(&PullScope::default()).unwrap();
     assert!(!a.syncer.store.snapshot_collected("filings", &first).unwrap());
-    assert!(contextful_context::scan::scan(&a.syncer.store, &decl, bound).is_ok());
+
 
     a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
     assert!(manifest(b.as_ref()).entries.contains_key(&format!("{f1}_collected.json")));
@@ -786,7 +786,7 @@ fn a_second_collect_refuses_while_one_holds_the_lease() {
     assert!(held.is_some(), "the bucket's conditional writes span clients");
     let err = h.writer.syncer.collect_declared(at("2030-01-11T00:01:00Z"), false, std::slice::from_ref(&h.decl)).unwrap_err();
     assert!(err.to_string().starts_with("LeaseHeld"), "{err}");
-    h.a.syncer.release_collect().unwrap();
+    h.a.syncer.release_collect(held.as_ref().unwrap()).unwrap();
     let report = h.writer.syncer.collect_declared(at("2030-01-11T00:02:00Z"), false, std::slice::from_ref(&h.decl)).unwrap();
     assert!(report.superseded.dropped > 0, "{report:?}");
 }
@@ -813,8 +813,69 @@ fn a_collect_records_no_metadata_key() {
     }
 }
 
+/// A push's chain walk allows a clock skew between a run's commit and the snapshot folding it, so a run committed
+/// just after its fold's instant stays out once a collect reclaimed it.
+#[test]
+fn a_push_walk_allows_clock_skew_between_a_run_and_its_fold() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = node("ingest-a", b.clone(), "");
+    a.syncer.config.retain_generations = NonZeroU64::new(1);
+    let writer = node("ingest-b", b.clone(), "");
+    let decl = keyed("filings");
+    // run-2 commits 20 s after the instant of the snapshot folding it: the writer's clock runs ahead.
+    for (run, landed, folded) in [("run-1", "2030-01-01T01:00:00Z", "2030-01-01T01:30:00Z"), ("run-2", "2030-01-01T02:00:20Z", "2030-01-01T02:00:00Z"), ("run-3", "2030-01-10T00:00:00Z", "2030-01-10T01:00:00Z")] {
+        let own: i64 = run.trim_start_matches("run-").parse().unwrap();
+        writer.land(run, json!([{"id": 1, "v": own}, {"id": 100 + own}]), landed);
+        writer.syncer.push(at(landed)).unwrap();
+        a.syncer.pull(&PullScope::default()).unwrap();
+        fold_at(&a, &decl, folded);
+        a.syncer.push(at(folded)).unwrap();
+    }
+    a.syncer.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+    assert!(listed(&manifest(b.as_ref()), "research/tables/filings/data/runs/run-2/").is_empty());
+    // The records lapse and a push prunes them; the writer's copy of run-2 stays out.
+    a.syncer.push(at("2030-02-20T00:00:00Z")).unwrap();
+    assert_eq!(manifest(b.as_ref()).collected.keys().filter(|k| k.contains("/runs/run-2/")).count(), 0);
+    writer.syncer.push(at("2030-02-21T00:00:00Z")).unwrap();
+    assert!(listed(&manifest(b.as_ref()), "research/tables/filings/data/runs/run-2/").is_empty(), "run-2 stays out");
+}
+
+/// A hold whose bucket write meets a collect marking its build refuses and lists the object it wrote at its digest,
+/// so a fresh pull verifies every listed key.
+#[test]
+fn a_refused_hold_leaves_no_stale_digest() {
+    use std::sync::atomic::AtomicUsize;
+    let h = history(1);
+    let build = h.snapshots[0].clone();
+    let holds = h.writer.root().join("tables/filings/holds");
+    std::fs::create_dir_all(&holds).unwrap();
+    let expired = json!({"build_id": build, "principal": "ops", "placed_at": "2030-01-01T04:00:00Z", "expires_at": "2030-01-05T00:00:00Z"}).to_string();
+    std::fs::write(holds.join(format!("{build}.json")), &expired).unwrap();
+    h.writer.syncer.push(at("2030-01-10T03:00:00Z")).unwrap();
+    // The writer holds the build again; a collect marks it between the hold's check and its object write.
+    let renewed = json!({"build_id": build, "principal": "ops", "placed_at": "2030-01-11T00:00:00Z", "expires_at": "2030-02-20T00:00:00Z"}).to_string();
+    std::fs::write(holds.join(format!("{build}.json")), &renewed).unwrap();
+    let hold_key = format!("team/research/tables/filings/holds/{build}.json");
+    let gets = Arc::new(AtomicUsize::new(0));
+    let (seen, collector, decl) = (gets.clone(), rebucketed(&h.a, h.b.clone()), h.decl.clone());
+    let script = Script {
+        on_get: Some(Box::new(move |key| {
+            if key == hold_key && seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                collector.collect_declared(at("2030-01-11T00:00:00Z"), false, std::slice::from_ref(&decl)).unwrap();
+            }
+            None
+        })),
+        ..Script::default()
+    };
+    let holding = rebucketed(&h.writer, Arc::new(Scripted { inner: h.b.clone(), script }));
+    assert!(!holding.push_hold("filings", &build, at("2030-01-11T00:00:00Z")).unwrap(), "the hold refuses");
+    assert!(gets.load(Ordering::SeqCst) >= 1);
+    node("fresh", h.b.clone(), "").syncer.pull(&PullScope::default()).unwrap();
+}
+
 /// A hold whose commit round meets a collect's commit of its build refuses, and lists nothing.
-// spec: run.model.hold-bucket-first@ed65568d
+// spec: run.model.hold-bucket-first@a6eb40f1
 #[test]
 fn a_hold_racing_a_collect_commit_refuses() {
     use std::sync::atomic::AtomicUsize;

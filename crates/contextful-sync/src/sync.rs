@@ -1876,9 +1876,10 @@ impl Syncer {
         let mut keep: BTreeSet<String> = skipped.iter().filter_map(|k| self.local_rel(k)).map(str::to_string).collect();
         for rel in held.manifests {
             let key = format!("{}/{rel}", self.project);
-            // A pull outside the table's scope still drops a manifest a collect took
-            // (`store.pull.skipped-record`).
-            let kept = manifest.entries.contains_key(&key) || (!reaches(&key) && !manifest.collected.contains_key(&key));
+            // An entry stays while the bucket lists it, inside the pull's scope or outside it: a
+            // manifest the bucket stopped listing was collected or tombstoned (`store.pull.skipped-record`).
+            let _ = reaches;
+            let kept = manifest.entries.contains_key(&key);
             if !self.store.root().join(&rel).exists() && kept {
                 keep.insert(rel);
             }
@@ -2019,7 +2020,8 @@ impl Syncer {
                 return Err(StoreError::LeaseNotHeld(format!("no lease `{key}` exists")).into());
             };
             let current: BucketLease = serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
-            let (released, condition) = BucketLease::release(&current, &etag, &self.node)?;
+            let fence = self.held(table)?.map(|h| h.lease.fence);
+            let (released, condition) = BucketLease::release(&current, &etag, &self.node, fence)?;
             let bytes = serde_json::to_vec_pretty(&released).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 let _ = std::fs::remove_file(self.held_path(table));

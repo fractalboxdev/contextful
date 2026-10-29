@@ -14,7 +14,7 @@ use contextful_core::pipeline::model::HoldRecord;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{SnapshotManifest, COLLECTED_FILE, MANIFEST_FILE, POINTER_FILE, RUNS_DIR, SNAPSHOTS_DIR};
-use contextful_core::store::lease::{BucketLease, BucketPointer, RENEWAL_SECS};
+use contextful_core::store::lease::{BucketLease, BucketPointer, CLOCK_SKEW_SECS, RENEWAL_SECS};
 use contextful_core::store::object::{CasScope, Condition, Put};
 use contextful_core::store::sync::{generation_key, BucketManifest, Collected, Entry, PUSH_ROUND_CEILING, TOMBSTONE_TTL_SECS};
 use contextful_core::store::StoreError;
@@ -136,7 +136,7 @@ impl Syncer {
         // under the bucket's collect lease (`store.collect.serialized`).
         let Some(held) = self.acquire_collect(now)? else { return self.collect_under(now, false, decls, None) };
         let done = self.collect_under(now, false, decls, Some(&held));
-        let released = self.release_collect();
+        let released = self.release_collect(&held);
         let report = done?;
         released?;
         Ok(report)
@@ -167,15 +167,15 @@ impl Syncer {
         }
     }
 
-    /// Release the bucket's collect lease this node holds.
-    pub fn release_collect(&self) -> Result<()> {
+    /// Release the bucket's collect lease `held`, the acquisition this node made.
+    pub fn release_collect(&self, held: &Held) -> Result<()> {
         let key = self.key(&collect_lease_key(&self.project))?;
         loop {
             let Some((b, etag)) = self.bucket.get(&key)? else {
                 return Err(StoreError::LeaseNotHeld(format!("no lease `{key}` exists")).into());
             };
             let current: BucketLease = serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
-            let (released, condition) = BucketLease::release(&current, &etag, &self.node)?;
+            let (released, condition) = BucketLease::release(&current, &etag, &self.node, Some(held.lease.fence))?;
             let bytes = serde_json::to_vec_pretty(&released).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(());
@@ -450,10 +450,11 @@ impl Syncer {
             let runs_prefix = format!("{table_key}/{RUNS_DIR}/");
             // The walk stops at the first snapshot created before the oldest candidate run
             // committed: no snapshot older than a run folds it.
-            let oldest: Option<Instant> = candidates
+            // A candidate whose manifest does not read walks the whole chain.
+            let committed: Vec<Option<Instant>> = candidates
                 .iter()
                 .filter_map(|k| k.strip_prefix(&runs_prefix))
-                .filter_map(|rest| {
+                .map(|rest| {
                     let mut segs = rest.splitn(3, '/');
                     let (run, node) = (segs.next()?, segs.next()?);
                     let rel = format!("tables/{table}/{RUNS_DIR}/{run}/{node}/{MANIFEST_FILE}");
@@ -462,7 +463,8 @@ impl Syncer {
                     let clear = self.store.open_metadata_bytes(&path, &bytes).ok()?;
                     serde_json::from_slice::<contextful_core::store::lay_out::RunManifest>(&clear).ok().map(|m| m.committed_at)
                 })
-                .min();
+                .collect();
+            let oldest: Option<Instant> = if committed.iter().any(Option::is_none) { None } else { committed.into_iter().flatten().min() };
             let pointer_key = format!("{table_key}/{POINTER_FILE}");
             let Some((bytes, _)) = self.bucket.get(&self.key(&pointer_key)?)? else { continue };
             let clear = self.store.open_metadata_bytes(Path::new(&pointer_key), &bytes)?;
@@ -480,7 +482,8 @@ impl Syncer {
                         dirs.extend(c.includes_runs.iter().map(|run| format!("{runs_prefix}{run}/")));
                     }
                 }
-                if oldest.is_some_and(|o| s.created_at < o) {
+                // No snapshot created a clock skew before the oldest candidate committed folds it.
+                if oldest.is_some_and(|o| s.created_at.plus_secs(CLOCK_SKEW_SECS) < o) {
                     break;
                 }
                 at = s.parent.as_ref().map(ToString::to_string);
@@ -573,6 +576,14 @@ impl Syncer {
     /// (`run.model.hold-collected`).
     pub fn push_hold(&self, model: &str, build_id: &str, now: Instant) -> Result<bool> {
         let key = format!("{}/tables/{model}/holds/{build_id}.json", self.project);
+        let dir = format!("{}/tables/{model}/{SNAPSHOTS_DIR}/{build_id}/", self.project);
+        let collected = |m: &BucketManifest| {
+            m.entries.contains_key(&format!("{dir}{COLLECTED_FILE}")) || m.collected.range(dir.clone()..).take_while(|(k, _)| k.starts_with(&dir)).any(|(_, c)| c.stands(now))
+        };
+        // A build the bucket already records as collected refuses before any object is written.
+        if collected(&self.manifest()?.0) {
+            return Ok(false);
+        }
         let path = self.store.root().join(&key[self.project.len() + 1..]);
         let local = std::fs::read(&path).map_err(|e| SyncError::Context(ContextError::Io { path: path.clone(), source: e }))?;
         self.put_merged(&key, &local)?;
@@ -580,14 +591,16 @@ impl Syncer {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` left the bucket while the hold committed")).into());
         };
         let entry = Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() };
-        let dir = format!("{}/tables/{model}/{SNAPSHOTS_DIR}/{build_id}/", self.project);
         for _ in 0..PUSH_ROUND_CEILING {
             let (remote, etag, floor) = self.read_for_commit()?;
-            if remote.entries.contains_key(&format!("{dir}{COLLECTED_FILE}")) || remote.collected.range(dir.clone()..).take_while(|(k, _)| k.starts_with(&dir)).any(|(_, c)| c.stands(now)) {
-                return Ok(false);
-            }
+            let refused = collected(&remote);
             if remote.entries.get(&key) == Some(&entry) {
-                return Ok(true);
+                return Ok(!refused);
+            }
+            // A refusal after the write still lists the object at its digest, so no pull meets a
+            // listed key whose bytes moved (`run.model.hold-bucket-first`).
+            if refused && !remote.entries.contains_key(&key) {
+                return Ok(false);
             }
             let mut committed = remote.clone();
             committed.entries.insert(key.clone(), entry.clone());
@@ -595,7 +608,7 @@ impl Syncer {
             committed.committed_at = Some(now);
             committed.committed_by = Some(self.node.clone());
             if self.put_commit(&committed, etag)? {
-                return Ok(true);
+                return Ok(!refused);
             }
         }
         Err(StoreError::SyncManifestRebaseExhausted(format!("the hold `{key}` lost {PUSH_ROUND_CEILING} races; run the hold again")).into())

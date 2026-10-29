@@ -80,9 +80,13 @@ impl BucketLease {
         Ok((BucketLease { expires_at: Some(now.plus_secs(TTL_SECS)), ..current.clone() }, Condition::IfMatch(etag.to_string())))
     }
 
-    /// Release: the holder clears and the fence stays. Releasing another node's lease
-    /// refuses and leaves the object untouched (`store.lease.not-held`).
-    pub fn release(current: &BucketLease, etag: &str, me: &str) -> Result<(BucketLease, Condition), StoreError> {
+    /// Release: the holder clears and the fence stays. Releasing another node's lease, or an
+    /// acquisition other than `fence` where one is named, refuses and leaves the object untouched
+    /// (`store.lease.not-held`).
+    pub fn release(current: &BucketLease, etag: &str, me: &str, fence: Option<u64>) -> Result<(BucketLease, Condition), StoreError> {
+        if let Some(f) = fence.filter(|f| *f != current.fence) {
+            return Err(StoreError::LeaseNotHeld(format!("the lease moved to fence {} past this acquisition's {f}", current.fence)));
+        }
         if current.holder.as_deref() != Some(me) {
             return Err(StoreError::LeaseNotHeld(format!(
                 "the lease is held by `{}`, not `{me}`",

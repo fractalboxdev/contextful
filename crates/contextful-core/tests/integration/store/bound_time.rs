@@ -85,7 +85,7 @@ fn as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs() {
 
 /// An `as_of` before the oldest snapshot retention kept raises `StoreAsOfUnretained`, naming the oldest
 /// answerable instant.
-// spec: store.bound-time.as-of-unretained@8638ebf2
+// spec: store.bound-time.as-of-unretained@3a23145e
 #[test]
 fn an_as_of_before_collected_history_is_unretained() {
     let mut st = state();
@@ -103,9 +103,24 @@ fn an_as_of_before_collected_history_is_unretained() {
     st.resolve(Some(Bound::parse("2030-01-01T00:30:00Z").unwrap())).unwrap();
 }
 
+/// An `as_of` resolving to a snapshot whose successors fold a run absent from the store raises `StoreAsOfUnretained`,
+/// naming the oldest such successor's instant, rather than answering without the run.
+#[test]
+fn an_as_of_missing_a_run_a_later_snapshot_folds_is_unretained() {
+    let mut st = state();
+    // run-3, which s1 folds, is gone; a bound inside s0's span would read s0 without it.
+    st.runs.retain(|r| r.run_id != "run-3");
+    match st.resolve(Some(Bound::parse("2030-01-01T03:30:00Z").unwrap())) {
+        Err(StoreError::StoreAsOfUnretained(m)) => assert!(m.contains("2030-01-01T04:00:00.000000000Z"), "{m}"),
+        other => panic!("expected StoreAsOfUnretained, got {other:?}"),
+    }
+    st.resolve(Some(Bound::parse("2030-01-01T04:30:00Z").unwrap())).unwrap();
+    st.resolve(None).unwrap();
+}
+
 /// An `as_of` resolving to a snapshot a collection reduced to its `_manifest.json` raises `StoreAsOfUnretained`,
 /// while an unbounded read still folds the runs that snapshot names.
-// spec: store.bound-time.as-of-unretained@8638ebf2
+// spec: store.bound-time.as-of-unretained@3a23145e
 #[test]
 fn an_as_of_resolving_to_a_collected_snapshot_is_unretained() {
     let mut st = state();

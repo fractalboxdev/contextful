@@ -149,7 +149,7 @@ fn without_a_part_source_skipped_runs_refuse_rather_than_drop_rows() {
 }
 
 /// A skipped manifest the part source leaves absent refuses as a collected part.
-// spec: store.pull.folded-run-collected@7a1472fe
+// spec: store.pull.folded-run-collected@64b3b1b8
 #[test]
 fn a_skipped_manifest_the_source_cannot_bring_refuses_as_collected() {
     let (f, _) = folded_store();
@@ -177,7 +177,7 @@ impl PartSource for Collected {
 
 /// An unbounded listing leaves out a skipped manifest the source answers as collected and lists every other run;
 /// an `as_of` read needing it still refuses as collected.
-// spec: store.pull.folded-run-collected@7a1472fe
+// spec: store.pull.folded-run-collected@64b3b1b8
 #[test]
 fn an_unbounded_listing_leaves_out_a_collected_manifest() {
     let (f, d) = folded_store();
@@ -188,8 +188,9 @@ fn an_unbounded_listing_leaves_out_a_collected_manifest() {
     let listed = keys(&store.committed_runs("filings").unwrap());
     assert!(!listed.is_empty());
     assert_eq!(listed, ["run-2/ingest-a", "run-3/ingest-a"]);
+    // The bounded read leaves out the manifest, whose run a kept snapshot folds, and refuses the bound needing it.
     let err = contextful_context::scan::scan(&store, &d, as_of("2030-01-01T01:00:00Z")).unwrap_err().to_string();
-    assert!(err.starts_with("SyncPartCollected"), "{err}");
+    assert!(err.starts_with("StoreAsOfUnretained"), "{err}");
 }
 
 /// The request ledger's fold reads each run's commit instant through the fetched manifests,

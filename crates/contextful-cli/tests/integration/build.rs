@@ -386,7 +386,7 @@ fn build_hold_refuses_a_build_the_bucket_collected() {
 /// On a store declaring `[sync]` a hold reaches the bucket before it is reported, so a collect keeps the held build
 /// and its renewal on day 25 succeeds; once the bucket's hold lapses and a collect records the parts, a renewal
 /// refuses.
-// spec: run.model.hold-bucket-first@ed65568d
+// spec: run.model.hold-bucket-first@a6eb40f1
 #[test]
 fn a_bucket_first_hold_keeps_its_build_through_a_collect() {
     let dir = project();
