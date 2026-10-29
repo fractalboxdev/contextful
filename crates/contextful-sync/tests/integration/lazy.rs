@@ -675,7 +675,7 @@ fn a_lazy_pull_skips_no_manifest_its_own_node_wrote() {
 }
 
 /// An eager pull after a lazy one brings every skipped manifest home and leaves no record.
-// spec: store.pull.skipped-record@ed0644af
+// spec: store.pull.skipped-record@35596d8b
 #[test]
 fn an_eager_pull_clears_the_skipped_runs_record() {
     let dir = tempfile::tempdir().unwrap();
@@ -693,7 +693,7 @@ fn an_eager_pull_clears_the_skipped_runs_record() {
 /// Once a collect takes a folded run a lazy pull skipped, an unbounded listing leaves it out, an `as_of` read
 /// needing it refuses, and a pull scoped to another table drops it from the record.
 // spec: store.pull.folded-run-collected@64b3b1b8
-// spec: store.pull.skipped-record@ed0644af
+// spec: store.pull.skipped-record@35596d8b
 #[test]
 fn a_listing_leaves_out_skipped_runs_a_collect_took() {
     use contextful_core::store::bound_time::{Bound, Bounds};
@@ -730,7 +730,7 @@ fn a_listing_leaves_out_skipped_runs_a_collect_took() {
 
 /// A generation restore scoped to one table keeps the skipped entries of every other table: the generation's listing
 /// is not the live bucket's.
-// spec: store.pull.skipped-record@ed0644af
+// spec: store.pull.skipped-record@35596d8b
 #[test]
 fn a_scoped_restore_keeps_other_tables_skipped_entries() {
     use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};

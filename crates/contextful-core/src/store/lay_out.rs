@@ -39,8 +39,8 @@ pub const REQUESTS_DIR: &str = "requests";
 /// (`store.pull.lazy-folded-runs`). The leading `.` keeps it node-local: a push uploads no dot file.
 pub const SKIPPED_RUNS_FILE: &str = ".skipped-runs.json";
 
-/// The contents of [`SKIPPED_RUNS_FILE`]: each skipped `_manifest.json`, relative to the
-/// store root, sorted.
+/// The contents of [`SKIPPED_RUNS_FILE`]: each skipped `_manifest.json`, a run's or a
+/// collected snapshot's, relative to the store root, sorted.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkippedRuns {
     pub manifests: Vec<String>,
@@ -51,6 +51,12 @@ impl SkippedRuns {
     pub fn of_table<'a>(&'a self, table: &str) -> impl Iterator<Item = &'a String> {
         let prefix = format!("{TABLES_DIR}/{table}/{RUNS_DIR}/");
         self.manifests.iter().filter(move |m| m.strip_prefix(&prefix).is_some_and(|rest| rest.split('/').count() == 3))
+    }
+
+    /// Whether `rel` names a collected snapshot's `_manifest.json` a pull skipped
+    /// (`store.pull.husks-skipped`).
+    pub fn skips_snapshot(&self, rel: &str) -> bool {
+        rel.contains(&format!("/{SNAPSHOTS_DIR}/")) && self.manifests.iter().any(|m| m == rel)
     }
 }
 

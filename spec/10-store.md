@@ -685,13 +685,17 @@ A lazy store pulls metadata and fetches each data part and folded run manifest w
   *A-store#folded-runs-on-demand*
 - `lazy-folded-runs` — Under {{store.pull.lazy-parts}}, pull skips each other node's run `_manifest.json` that the pointer's snapshot chain folds, keeping its `_group.json`, and lists the skipped keys in the store's `.skipped-runs.json`.
   *A-store#folded-runs-on-demand*
-- `skipped-record` — Each pull rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.
+- `husks-skipped` — Under {{store.pull.lazy-parts}}, pull skips each `_manifest.json` beside a listed `_collected.json` where the pointer's snapshot, once home, holds a valid folded-runs index and an ancestry reaching the local pointer, listing it in `.skipped-runs.json`.
+  *A-store#index-walk*
+- `husks-fetched` — A full chain walk, or one meeting no valid index, fetches the table's skipped collected snapshot manifests through the part source at the first it reaches; local retention and a walk past a valid index end there.
+  *A-store#index-walk*
+- `skipped-record` — Each pull clearing its refusals rewrites `.skipped-runs.json` to the manifests the bucket lists and the store lacks, inside its scope or outside it, a generation restore also keeping each entry outside its scope; an empty record leaves no file.
   *because a manifest the bucket stopped listing was collected, and an eager pull applies its tombstone*
 - `folded-runs-fetched` — Listing a table's committed runs, or an `as_of` read resolving before the pointer's snapshot, fetches each skipped manifest through the part source within {{read.cache.miss-wait}}'s deadline; an unbounded read fetches none.
   *A-store#folded-runs-on-demand*
 - `folded-run-collected` — A skipped manifest the part source cannot bring home refuses the read as {{store.pull.part-collected}} does, save where the source answers it collected: an unbounded listing leaves it out, and a bounded read does when a kept snapshot folds its run.
   *A-store#folded-runs-on-demand*
-- `folded-runs-unreachable` — A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} fetches, naming the table and a manifest.
+- `folded-runs-unreachable` — A store listing skipped manifests and opened without a part source raises `SyncFoldedRunsUnfetched` wherever {{store.pull.folded-runs-fetched}} or {{store.pull.husks-fetched}} fetches, naming the table and a manifest.
   *A-store#folded-runs-on-demand*
 - `folded-runs-source` — Every command opening a store whose `[sync]` declares `lazy_parts` registers the bucket's part source once per process, whether or not the command pulls.
   *because a command reading runs without pulling otherwise meets {{store.pull.folded-runs-unreachable}}*

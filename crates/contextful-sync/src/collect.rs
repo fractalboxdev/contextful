@@ -13,7 +13,7 @@ use contextful_context::ContextError;
 use contextful_core::pipeline::model::HoldRecord;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::lay_out::{SnapshotManifest, COLLECTED_FILE, MANIFEST_FILE, POINTER_FILE, RUNS_DIR, SNAPSHOTS_DIR};
+use contextful_core::store::lay_out::{FoldedRow, SnapshotId, SnapshotManifest, COLLECTED_FILE, MANIFEST_FILE, POINTER_FILE, RUNS_DIR, SNAPSHOTS_DIR};
 use contextful_core::store::lease::{BucketLease, BucketPointer, CLOCK_SKEW_SECS, RENEWAL_SECS};
 use contextful_core::store::object::{CasScope, Condition, Put};
 use contextful_core::store::sync::{generation_key, BucketManifest, Collected, Entry, PUSH_ROUND_CEILING, TOMBSTONE_TTL_SECS};
@@ -114,6 +114,9 @@ struct Chain {
     folded_out: BTreeSet<String>,
     /// The build ids an unexpired hold in the bucket names, read under the collect lease.
     held: BTreeSet<String>,
+    /// Where the walk stopped at a reclaimed parent under a valid index: the directory of
+    /// each collected snapshot past that parent and the parent's own (`store.collect.index-walk`).
+    husks: BTreeSet<String>,
 }
 
 impl Syncer {
@@ -393,8 +396,8 @@ impl Syncer {
             }
             let referenced = referenced(&table_key, &retained);
             out.retained.extend(referenced.iter().cloned());
-            for s in collected {
-                let dir = format!("{table_key}/{SNAPSHOTS_DIR}/{}/", s.snapshot_id);
+            let dirs = collected.iter().map(|s| format!("{table_key}/{SNAPSHOTS_DIR}/{}/", s.snapshot_id)).chain(chain.husks.iter().cloned());
+            for dir in dirs {
                 for k in m.entries.range(dir.clone()..).map(|(k, _)| k).take_while(|k| k.starts_with(&dir)) {
                     let name = &k[dir.len()..];
                     if name == MANIFEST_FILE || name == COLLECTED_FILE || referenced.iter().any(|r| k == r || k.starts_with(&format!("{r}/"))) {
@@ -469,6 +472,32 @@ impl Syncer {
             let Some((bytes, _)) = self.bucket.get(&self.key(&pointer_key)?)? else { continue };
             let clear = self.store.open_metadata_bytes(Path::new(&pointer_key), &bytes)?;
             let pointer: BucketPointer = serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{pointer_key}`: {e}"))))?;
+            // Under the pointer's valid index each candidate's row names the snapshot folding its
+            // run, and that snapshot's manifest its parent: no walk (`store.collect.index-walk`).
+            let head = match &pointer.snapshot_id {
+                Some(id) => self.bucket_snapshot(remote, &table_key, id)?,
+                None => None,
+            };
+            if let Some(rows) = head.as_ref().map(|h| self.bucket_index(remote, &table_key, h)).transpose()?.flatten() {
+                let mut reclaimed: BTreeMap<SnapshotId, bool> = BTreeMap::new();
+                for k in candidates.iter().filter(|k| k.starts_with(&runs_prefix)) {
+                    let mut segs = k[runs_prefix.len()..].splitn(3, '/');
+                    let (Some(run), Some(node)) = (segs.next(), segs.next()) else { continue };
+                    let Some(row) = rows.get(&format!("{run}/{node}")) else { continue };
+                    if !reclaimed.contains_key(&row.snapshot_id) {
+                        let folding = match head.as_ref().filter(|h| h.snapshot_id == row.snapshot_id) {
+                            Some(h) => Some(h.clone()),
+                            None => self.bucket_snapshot(remote, &table_key, &row.snapshot_id.to_string())?,
+                        };
+                        let husk = folding.and_then(|c| c.parent).is_some_and(|p| remote.entries.contains_key(&format!("{table_key}/{SNAPSHOTS_DIR}/{p}/{COLLECTED_FILE}")));
+                        reclaimed.insert(row.snapshot_id.clone(), husk);
+                    }
+                    if reclaimed[&row.snapshot_id] {
+                        out.insert((*k).clone());
+                    }
+                }
+                continue;
+            }
             let mut dirs: Vec<String> = Vec::new();
             let (mut child, mut seen): (Option<SnapshotManifest>, BTreeSet<String>) = (None, BTreeSet::new());
             let mut at = pointer.snapshot_id;
@@ -502,18 +531,75 @@ impl Syncer {
         let Some((bytes, _)) = self.bucket.get(&self.key(&pointer_key)?)? else { return Ok(None) };
         let clear = self.store.open_metadata_bytes(Path::new(&pointer_key), &bytes)?;
         let pointer: BucketPointer = serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{pointer_key}`: {e}"))))?;
-        let mut snapshots = Vec::new();
+        let mut snapshots: Vec<SnapshotManifest> = Vec::new();
         let mut seen = BTreeSet::new();
         let mut at = pointer.snapshot_id;
+        // A table holding a hold record walks whole: a hold can keep a snapshot past any parent.
+        let holds = format!("{table_key}/holds/");
+        let walks = m.entries.range(holds.clone()..).next().is_some_and(|(k, _)| k.starts_with(&holds));
+        let mut index: Option<BTreeMap<String, FoldedRow>> = None;
+        let (mut folded_out, mut husks) = (BTreeSet::new(), BTreeSet::new());
+        let husk = |id: &str| m.entries.contains_key(&format!("{table_key}/{SNAPSHOTS_DIR}/{id}/{COLLECTED_FILE}"));
         while let Some(id) = at.take() {
             if !seen.insert(id.clone()) {
                 break;
             }
             let Some(s) = self.bucket_snapshot(m, &table_key, &id)? else { break };
+            if snapshots.is_empty() && !walks {
+                index = self.bucket_index(m, &table_key, &s)?;
+            }
             at = s.parent.as_ref().map(ToString::to_string);
+            // A child created at or before the cutoff, by its clock and by its id, whose parent a
+            // collect already reclaimed: every snapshot past it is reclaimed, and the index names
+            // the runs they fold (`store.collect.index-walk`).
+            let cut = u128::try_from(cutoff.unix_nanos()).unwrap_or(0);
+            let stops = index.is_some() && s.created_at <= cutoff && s.snapshot_id.nanos() <= cut && at.as_deref().is_some_and(husk);
+            if let (true, Some(rows)) = (stops, &index) {
+                // The oldest folding snapshot reads as the root, whose runs no collect reclaims.
+                let root = rows.values().map(|r| &r.snapshot_id).min();
+                folded_out.extend(s.includes_runs.iter().cloned());
+                folded_out.extend(rows.values().filter(|r| r.snapshot_id < s.snapshot_id && Some(&r.snapshot_id) != root).map(|r| r.run_key.clone()));
+                let prefix = format!("{table_key}/{SNAPSHOTS_DIR}/");
+                // Every collected snapshot older than the stop, folding runs or not, from one scan of the listing.
+                let older = |dir: &str| SnapshotId::try_from(dir[prefix.len()..dir.len() - 1].to_string()).is_ok_and(|id| id < s.snapshot_id);
+                husks = m.entries
+                    .range(prefix.clone()..)
+                    .map(|(k, _)| k)
+                    .take_while(|k| k.starts_with(&prefix))
+                    .filter_map(|k| k.strip_suffix(COLLECTED_FILE).filter(|dir| dir[prefix.len()..].matches('/').count() == 1))
+                    .filter(|dir| older(dir))
+                    .map(str::to_string)
+                    .collect();
+                snapshots.push(s);
+                break;
+            }
             snapshots.push(s);
         }
-        Ok(Some(Chain { table: table.to_string(), cutoff, snapshots, folded_out: BTreeSet::new(), held: BTreeSet::new() }))
+        Ok(Some(Chain { table: table.to_string(), cutoff, snapshots, folded_out, held: BTreeSet::new(), husks }))
+    }
+
+    /// The rows of the folded-runs index snapshot `head` carries, its segments read at the
+    /// digests the bucket manifest `m` lists: the local copy where it matches, else the
+    /// bucket's. `None` where the index does not read valid, and the caller walks
+    /// (`store.collect.index-walk`).
+    fn bucket_index(&self, m: &BucketManifest, table_key: &str, head: &SnapshotManifest) -> Result<Option<BTreeMap<String, FoldedRow>>> {
+        if head.folded_runs.is_none() {
+            return Ok(None);
+        }
+        let scratch = crate::sync::sync_dir(self.store.root(), &self.project).join("index.staging");
+        let bytes_of = |location: &str| -> Option<Vec<u8>> {
+            let key = format!("{table_key}/{location}");
+            let listed = m.entries.get(&key)?;
+            let local = self.store.root().join(&key[self.project.len() + 1..]);
+            if let Ok(bytes) = std::fs::read(&local) {
+                if sha256_hex(&bytes) == listed.sha256 {
+                    return Some(bytes);
+                }
+            }
+            let (bytes, _) = self.bucket.get(&self.key(&key).ok()?).ok()??;
+            (sha256_hex(&bytes) == listed.sha256).then_some(bytes)
+        };
+        Ok(contextful_context::fold::folded_index_from(&self.store, head, &bytes_of, &scratch))
     }
 
     /// Snapshot `id`'s manifest under `table_key`, when the bucket manifest lists it.

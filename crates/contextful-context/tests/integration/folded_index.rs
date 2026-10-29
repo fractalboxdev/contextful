@@ -217,3 +217,42 @@ fn a_malformed_index_field_walks() {
         assert_same_as_walk(&f, &d);
     }
 }
+
+/// A collected snapshot manifest the record names as skipped ends a walk below a valid index, as a collected parent
+/// does; a walk meeting no valid index fetches it, and a store without a part source refuses naming it. The chain's
+/// folded keys from the head are the index's.
+// spec: store.pull.husks-fetched@6ea68a8e
+#[test]
+fn a_skipped_husk_ends_a_walk_below_a_valid_index_and_a_walk_without_one_fetches_it() {
+    use contextful_core::store::lay_out::{SkippedRuns, SKIPPED_RUNS_FILE};
+    let f = Fixture::synced();
+    let d = table();
+    for i in 0..6 {
+        fold_run(&f, &d, i);
+    }
+    let (chain, _) = f.store.chain(TABLE).unwrap();
+    let state = f.store.state(&d).unwrap();
+    let keys: std::collections::BTreeSet<String> = state.folded(0).into_iter().map(str::to_string).collect();
+    assert!(!keys.is_empty());
+    assert_eq!(f.store.folded_keys_from(TABLE, chain[0].snapshot_id.clone()).unwrap(), keys);
+    assert_eq!(f.store.current_snapshot(TABLE).unwrap().map(|s| s.snapshot_id), Some(chain[0].snapshot_id.clone()));
+
+    // The oldest snapshot's manifest leaves, recorded as a husk a lazy pull skipped.
+    let oldest = chain.last().unwrap();
+    let path = f.store.snapshot_dir(TABLE, &oldest.snapshot_id).unwrap().join("_manifest.json");
+    std::fs::remove_file(&path).unwrap();
+    let rel = path.strip_prefix(f.store.root()).unwrap().to_string_lossy().into_owned();
+    std::fs::write(f.store.root().join(SKIPPED_RUNS_FILE), serde_json::to_vec(&SkippedRuns { manifests: vec![rel.clone()] }).unwrap()).unwrap();
+    let bound = Some(Bound::parse(&oldest.created_at.to_rfc3339_nanos()).unwrap());
+    assert!(f.store.state_at(&d, bound).is_ok(), "a walk below the head's index ends at the husk");
+
+    // With no index anywhere, the walk needs the husk, and this store reads through no part source.
+    for s in chain.iter().take(chain.len() - 1) {
+        let p = f.store.snapshot_dir(TABLE, &s.snapshot_id).unwrap().join("_manifest.json");
+        let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        m.as_object_mut().unwrap().remove("folded_runs");
+        std::fs::write(&p, serde_json::to_vec_pretty(&m).unwrap()).unwrap();
+    }
+    let e = f.store.state(&d).unwrap_err().to_string();
+    assert!(e.starts_with("SyncFoldedRunsUnfetched") && e.contains(&rel), "{e}");
+}

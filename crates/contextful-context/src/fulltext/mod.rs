@@ -393,8 +393,8 @@ impl FulltextSidecar {
 /// The snapshot directory and full-text manifest entries of `table`'s current snapshot, or
 /// why there is none.
 pub fn current_entries(store: &crate::Store, table: &str) -> std::result::Result<(PathBuf, String, Vec<IndexEntry>), Fallback> {
-    let (chain, _) = store.chain(table).map_err(|_| Fallback::Unreadable)?;
-    let snapshot = chain.first().ok_or(Fallback::NoSnapshot)?;
+    let snapshot = store.current_snapshot(table).map_err(|_| Fallback::Unreadable)?.ok_or(Fallback::NoSnapshot)?;
+    let snapshot = &snapshot;
     let dir = store.snapshot_dir(table, &snapshot.snapshot_id).map_err(|_| Fallback::Unreadable)?;
     let entries: Vec<IndexEntry> = snapshot.indexes.iter().filter(|e| e.kind_name() == Some("fulltext")).cloned().collect();
     if entries.is_empty() {

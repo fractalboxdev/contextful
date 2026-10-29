@@ -155,6 +155,19 @@ pub(crate) fn sort_order(decl: &TableDecl) -> Vec<String> {
 /// Whether a pass over `decl`'s table carries untouched parts by reference
 /// (`store.fold.carry-by-reference`): an append table whose rows no derived supersession
 /// rewrites. A `replace` table and a derive output table stage their whole row set.
+/// The rows of snapshot manifest `m`'s folded-runs index when it reads valid
+/// (`store.lay-out.folded-index-valid`), its segments' bytes answered by `bytes_of` from their
+/// locations relative to the table directory and decoded under `scratch`: the index as a
+/// bucket holds it.
+pub fn folded_index_from(
+    store: &Store,
+    m: &SnapshotManifest,
+    bytes_of: &dyn Fn(&str) -> Option<Vec<u8>>,
+    scratch: &std::path::Path,
+) -> Option<BTreeMap<String, contextful_core::store::lay_out::FoldedRow>> {
+    folded::read_from(store, m, bytes_of, scratch)
+}
+
 pub fn carries_by_reference(decl: &TableDecl) -> bool {
     decl.write_mode() == WriteMode::Append && !is_derive_key(decl.primary_key())
 }
@@ -535,7 +548,9 @@ fn collect_unreachable(
 ) -> Result<Vec<String>> {
     let Some(current) = chain.first() else { return Ok(Vec::new()) };
     let mut removed = Vec::new();
-    let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+    // A collected snapshot whose manifest a lazy pull skipped stays on the chain the bucket holds.
+    let mut reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+    reachable.extend(store.skipped_snapshots(table)?);
     let snapshots = store.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR);
     for dir in crate::store::sorted_dirs(&snapshots)? {
         let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -633,7 +648,8 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<Stri
     let held = &crate::build::held(store, table, now)?;
     let window = decl.retain_runs_secs().map_err(|e| ContextError::Invalid(e.to_string()))?;
     let cutoff = now.minus_secs(window);
-    let (chain, _) = store.chain(table)?;
+    // A collected snapshot a lazy pull skipped holds nothing here, so retention leaves it in the bucket.
+    let (chain, _) = store.chain_on_disk(table)?;
     let expired = |pair: &[SnapshotManifest]| pair[0].created_at <= cutoff && !held.contains(&pair[1].snapshot_id.to_string());
     // What the snapshots left after this collection name in other directories stays, so a
     // part or segment outlives every snapshot that carries it (`store.fold.reference-retention`).

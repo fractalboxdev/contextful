@@ -25,6 +25,8 @@ Unlisting and deleting the bucket objects no reader needs, and the generation ma
   *A-store#bucket-collect*
 - `group-window` — Collect keeps a folded run's `_group.json` while a member table holding a copy of the run has not folded it out under {{store.collect.folded-runs}}, under that member's `retain_runs`.
   *because a member run reads as committed only beside its group root's marker, an `as_of` read inside the window included*
+- `index-walk` — Under the pointer's valid bucket index, collect's walk stops at a child within the cutoff, by clock and id, whose parent is collected; older folded runs come from the index, older collected snapshots from the listing.
+  *A-store#index-walk*
 - `chain-only` — Collect reclaims only snapshots the bucket pointer reaches through `parent` links; another snapshot's `includes_runs` collects no run.
   *because a snapshot that lost its pointer commit folded nothing a bucket reader sees*
 - `declared-window` — Collect takes each table's `retain_runs` from the collecting store's declarations, a declared model defaulting as its builds' retention does, and reclaims no snapshot or run of a table it declares none for, naming it under `undeclared`.

@@ -414,7 +414,7 @@ impl Face {
             // A replica answers by every sidecar the read needs, or refuses naming the pull
             // that supplies it (`store.replicate.missing-index`).
             if !claims && self.store.replica_of().is_some() {
-                if let Some(snapshot) = self.store.chain(table)?.0.first() {
+                if let Some(snapshot) = &self.store.current_snapshot(table)? {
                     let needed: Vec<&str> = snapshot
                         .indexes
                         .iter()
