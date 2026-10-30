@@ -155,6 +155,36 @@ pub enum PipelineCmd {
         #[arg(long)]
         available_as_of: Option<String>,
     },
+    /// Run one provider step: one table pull, or one chunk of a table's seed plan, and print its
+    /// commit pointer. A replay of a completed step prints that pointer and runs nothing.
+    Step {
+        id: String,
+        /// The table the step pulls, by declared or destination name; absent, the pipeline's one table.
+        #[arg(long)]
+        table: Option<String>,
+        /// Run the chunk of this ordinal in the table's seed plan in place of its live pull.
+        #[arg(long)]
+        chunk: Option<u32>,
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+        /// The step's id: its first attempt runs as `pipeline run --run-id <id>` names the
+        /// unit's run, and attempt k of a replay under `<id>.replay-<k>`.
+        #[arg(long)]
+        run_id: String,
+        /// The site id of this step; replaces the manifest's `site_id` or `site_id_env`.
+        #[arg(long)]
+        site_id: Option<String>,
+        /// The environment variable holding this step's site id; replaces the manifest's declaration.
+        #[arg(long)]
+        site_id_env: Option<String>,
+        /// The instruction set a component source compiles for.
+        #[arg(long, value_enum, env = "CONTEXTFUL_COMPONENT_TARGET", default_value_t = ComponentTarget::Native)]
+        component_target: ComponentTarget,
+        #[command(flatten)]
+        admit: Box<AdmitArgs>,
+    },
     /// Check every declared pipeline and model without network I/O; a local component artifact loads and runs discovery.
     Validate {
         #[arg(long, default_value = "contextful.toml")]
@@ -933,309 +963,499 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
         }
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run, available_as_of } => {
-            let l = project.locate(declaration)?;
-            crate::sync::pull_before_run(&l)?;
-            let declaration = l.declaration.clone();
-            let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
-            let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
-            let files = match applied {
-                Some(version) => vec![crate::effective::public_manifest(crate::cadence::snapshot_manifest(&l.project, &text, version)?)?],
-                None => manifests(&declaration)?,
-            };
-            crate::secrets::check_records(&declaration, &files)?;
-            let declared: Vec<Declared> = collect(&files)?;
-            let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| match applied {
-                Some(v) => format!("applied version v{v} holds no pipeline `{id}`"),
-                None => format!("no pipeline `{id}` is declared"),
-            })?;
-            let spec = d.spec;
-            let checked = check(&spec, &declaration, tasks)?;
-            if let Checked::Receive(_) = checked {
-                bail!("pipeline `{}` reads a `receive` source, whose rows a sender delivers through `pipeline receive`", spec.id);
-            }
-            let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();
-            let author = admit.author(project.project.as_deref(), &text, &destinations.iter().map(String::as_str).collect::<Vec<_>>())?;
-            check_compaction(&spec, &fold_coverage(&manifests(&declaration)?)?)?;
-            let w = wire_at(&l.project, &project.now)?;
-            let vars: BTreeMap<String, String> = std::env::vars().collect();
-            let assembly = contextful_outbound::secrets::assemble_all(&vars, w.clock.clone())?;
-            let resolver = Arc::new(assembly.resolver);
-            let credentials = component::Credentials { resolver: resolver.clone(), writers: assembly.writers, clock: w.clock.clone() };
-            match &checked {
-                Checked::Http(config, _) => resolver.preflight(config.headers.values())?,
-                Checked::Report(declaration) => resolver.preflight(declaration.headers.values())?,
-                Checked::Component(decl) => component::preflight(decl, crate::connector::admit(decl, &l.project.dir)?.auth.as_ref(), &resolver)?,
-                #[cfg(feature = "drive")]
-                Checked::Drive(config) => resolver.preflight(config.templates())?,
-                Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) | Checked::Receive(_) => {}
-                #[cfg(feature = "s3-sync")]
-                Checked::Object(config) => resolver.preflight(config.credentials())?,
-            }
-            let bound = available_as_of.as_deref().map(contextful_core::store::bound_time::Bound::parse).transpose()?;
-            let available = match &checked {
-                Checked::Derive(pair) => available_select(&spec, &pair.0, &files, bound)?,
-                Checked::Host(host) => available_select(&spec, &host.config, &files, bound)?,
-                _ if bound.is_some() => bail!("pipeline `{}` reads source `{}`; an availability bound selects a derive pipeline's parents", spec.id, spec.source.name),
-                _ => None,
-            };
-            if dry_run {
-                return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver, available);
-            }
-            let applied_audit = applied.map(|_| crate::project::read_audit(&l.project, None, None, None)).transpose()?;
-            let prior_runs: std::collections::BTreeSet<String> = if applied.is_some() {
-                w.engine.catalog.runs(Some(&spec.id))?.into_iter().map(|row| row.run_id).collect()
-            } else { Default::default() };
+            fire(Fire { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run, available_as_of, step: None }, tasks)
+        }
+        PipelineCmd::Step { id, table, chunk, project, declaration, run_id, site_id, site_id_env, component_target, admit } => {
+            let step = Some(StepUnit { table, chunk });
+            fire(Fire { id, project, declaration, run_id: Some(run_id), site_id, site_id_env, component_target, admit, applied: None, dry_run: false, available_as_of: None, step }, tasks)
+        }
+    }
+}
 
-            // A declaration's relative paths resolve against the project directory
-            // (`store.init.declaration-base`), whichever subdirectory the command runs from.
-            let base = l.project.dir.clone();
-            let store = Store::open_declared(&l.project.dir, &l.project.name, &declaration)?;
-            // A component resolves, admits and compiles once per fire, before any run row.
-            let loaded = match &checked {
-                Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, &l.project.name, Some(&resolver), component_target, store.requires_connector_pin())?),
-                _ => None,
-            };
-            // One drive fire mints one token and walks the tree once for every table it lands.
-            #[cfg(feature = "drive")]
-            let drive = match &checked {
-                Checked::Drive(config) => {
-                    // PDF bodies decode in this binary's worker, behind the process boundary.
-                    let worker = contextful_connectors::boundary::Boundary::new(std::env::current_exe()?, &["decode", "pdf"]);
-                    // Each body read whole lands under the store's `blobs/` (`store.lay-out.landed-blob`).
-                    let bodies = StoreBodies(Store::open(&l.project.dir, &l.project.name)?);
-                    Some(contextful_connectors::drive::Drive::new(config.clone(), resolver.clone(), Arc::new(worker), Arc::new(bodies))?)
-                }
-                _ => None,
-            };
-            let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-            let decls: Vec<TableDecl> = spec
+/// The unit `pipeline step` names: a table, and optionally a chunk of its seed plan.
+struct StepUnit {
+    table: Option<String>,
+    chunk: Option<u32>,
+}
+
+/// One provider step resolved against its pipeline (`run.orchestrate.provider-step`): the
+/// destination table, the chunk, and the id the provider replays the step under.
+struct Step {
+    table: String,
+    chunk: Option<u32>,
+    id: String,
+}
+
+/// Where a provider step stands: committed under an attempt, or due under its next attempt's base.
+enum Attempt {
+    Done(String),
+    Next(String),
+}
+
+impl Step {
+    fn of(spec: &PipelineSpec, unit: StepUnit, id: String) -> Result<Step> {
+        let table = match &unit.table {
+            Some(want) => spec
                 .tables
                 .iter()
-                .map(|t| spec.destination_decl(t))
-                .collect();
-            let normalize = Some(contextful_core::pipeline::normalize::Normalize::parse(spec.normalize.as_ref())?);
-            let mut dest = StoreDestination { store, decls, node, author, normalize, relational_parts: Default::default(), schema_diffs: Vec::new() };
-            for reaped in w.engine.reap_orphans()? {
-                eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
-            }
-            let base_run = run_id.unwrap_or_else(|| format!("run-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]));
-            let artifact = match &loaded {
-                Some(c) => c.content_hash(),
-                None => sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes()),
+                .map(|t| (t.name(), spec.table_name(t.name())))
+                .find(|(name, destination)| name == want || destination == want)
+                .map(|(_, destination)| destination)
+                .with_context(|| format!("pipeline `{}` declares no table `{want}`", spec.id))?,
+            None => match spec.tables.as_slice() {
+                [t] => spec.table_name(t.name()),
+                tables => bail!("pipeline `{}` declares {} tables; `--table` names the step's table", spec.id, tables.len()),
+            },
+        };
+        if unit.chunk.is_some() && spec.seed_block()?.is_none() {
+            bail!("table `{table}` of pipeline `{}` holds no chunk plan; `--chunk` runs a chunk of a declared `[pipeline.seed]`", spec.id);
+        }
+        Ok(Step { table, chunk: unit.chunk, id })
+    }
+
+    /// Attempt `k`'s base: the step id, then `<id>.replay-<k>`.
+    fn base(&self, k: u32) -> String {
+        if k == 1 { self.id.clone() } else { format!("{}.replay-{k}", self.id) }
+    }
+
+    /// The run `pipeline run --run-id <base>` names for this step's table or chunk.
+    fn run_name(&self, spec: &PipelineSpec, base: &str) -> String {
+        let run = if spec.tables.len() == 1 { base.to_string() } else { format!("{base}.{}", self.table) };
+        match self.chunk {
+            Some(n) => format!("{run}.seed-{n}"),
+            None => run,
+        }
+    }
+
+    /// The commit pointer the step prints: its unit and the run whose commit holds it.
+    fn pointer(&self, run: &str) -> String {
+        match self.chunk {
+            Some(n) => format!("{} chunk {n}: commit {run}", self.table),
+            None => format!("{}: commit {run}", self.table),
+        }
+    }
+
+    /// The pointer of the attempt that committed the step, read from its run row or the table's
+    /// committed manifests, else the base of its next attempt. A done chunk whose committing
+    /// attempt never closed points at the step's last attempt (`run.orchestrate.resume`). An
+    /// attempt still in flight on an unexpired owner lease refuses (`run.orchestrate.step-lease`).
+    fn attempt(&self, spec: &PipelineSpec, catalog: &dyn contextful_core::coordinate::Catalog, store: &Store, chunk_done: bool) -> Result<Attempt> {
+        let committed: Vec<String> = match store.try_schema(&self.table)? {
+            Some(_) => store.committed_runs(&self.table)?.into_iter().map(|m| m.run_id).collect(),
+            None => Vec::new(),
+        };
+        let now = catalog.now()?;
+        let (mut k, mut last): (u32, Option<String>) = (1, None);
+        loop {
+            let base = self.base(k);
+            let run = self.run_name(spec, &base);
+            let Some(row) = catalog.run(&run)? else {
+                return Ok(match last {
+                    Some(last) if chunk_done => Attempt::Done(self.pointer(&last)),
+                    _ => Attempt::Next(base),
+                });
             };
-            // A host task derives each unit once, then lands its content tables and its
-            // marker table last, stopping at the first failing table (`run.emit.marker-last`).
-            let mut staged: BTreeMap<String, Vec<Row>> = BTreeMap::new();
-            let mut derive_skipped = 0;
-            let mut order: Vec<&contextful_core::pipeline::declare::TableEntry> = spec.tables.iter().collect();
-            if let Checked::Host(host) = &checked {
-                let derive = HostDerive {
-                    pipeline_id: spec.id.clone(),
-                    config: host.config.clone(),
-                    task: host.task.clone(),
-                    tables: host.tables.clone(),
-                    retention_columns: spec.tables.iter().filter_map(|t| {
-                        t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))
-                    }).collect(),
-                    reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
-                    available: available.clone(),
-                    client: None,
-                };
-                let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
-                derive_skipped = skipped;
-                order = landing.iter().filter_map(|(table, _)| spec.tables.iter().find(|t| spec.table_name(t.name()) == *table)).collect();
-                staged = landing.into_iter().collect();
+            if row.status == RunStatus::Success || committed.iter().any(|m| commit_of(m, &run)) {
+                return Ok(Attempt::Done(self.pointer(&run)));
             }
-            let stop_on_failure = matches!(checked, Checked::Host(_)) || spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort;
-            let seed = spec.seed_block()?;
-            let mut failed: Vec<String> = Vec::new();
-            let mut tallies: Vec<(String, IngestTally)> = Vec::new();
-            let mut attempted: Vec<String> = Vec::new();
-            for t in order {
-                let table = spec.table_name(t.name());
-                // The destination name is path-safe, so a run id built from it is too.
-                let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
-                // A declared seed loads before the table's live pull, and a seed another worker
-                // holds defers that pull (`run.seed.one-land-path`).
-                if let Some(seed) = &seed {
-                    let metered = crate::seed::Metered { binding: seed_binding(&spec, &l.declaration)?, resolver: resolver.clone(), clock: w.clock.clone() };
-                    match crate::seed::drive(&w.engine, &spec, seed, t, &run_id, &site_id, &metered, &mut dest, &mut attempted) {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            println!("{table}: the seed's chunk runs elsewhere; the live pull waits for its commit");
-                            continue;
-                        }
-                        Err(e) => {
-                            // A failed chunk halts the fire under either `on_table_error`
-                            // (`run.declare.chunked-load`).
-                            eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed seeding in run `{run_id}`: {e:#}")));
-                            tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
-                            failed.push(run_id);
-                            break;
-                        }
+            if !chunk_done && row.status.is_in_flight() && row.owner.as_ref().is_some_and(|o| !o.expired(now)) {
+                bail!("step `{}` runs under attempt `{run}`, whose owner lease has not lapsed", self.id);
+            }
+            last = Some(run);
+            k += 1;
+        }
+    }
+}
+
+/// Whether manifest run id `marker` is a commit of run `run`: its own or a checkpoint's (`run.own.checkpoint-commit`).
+fn commit_of(marker: &str, run: &str) -> bool {
+    marker == run || marker.strip_prefix(run).and_then(|rest| rest.strip_prefix('.')).is_some_and(|n| n.len() == 6 && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// One fire of `pipeline run`, or one provider step of `pipeline step` when `step` names its unit.
+struct Fire {
+    id: String,
+    project: ProjectArgs,
+    declaration: Option<PathBuf>,
+    run_id: Option<String>,
+    site_id: Option<String>,
+    site_id_env: Option<String>,
+    component_target: ComponentTarget,
+    admit: Box<AdmitArgs>,
+    applied: Option<u64>,
+    dry_run: bool,
+    available_as_of: Option<String>,
+    step: Option<StepUnit>,
+}
+
+fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
+    let Fire { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run, available_as_of, step } = f;
+    let l = project.locate(declaration)?;
+    crate::sync::pull_before_run(&l)?;
+    let declaration = l.declaration.clone();
+    let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
+    let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
+    let files = match applied {
+        Some(version) => vec![crate::effective::public_manifest(crate::cadence::snapshot_manifest(&l.project, &text, version)?)?],
+        None => manifests(&declaration)?,
+    };
+    crate::secrets::check_records(&declaration, &files)?;
+    let declared: Vec<Declared> = collect(&files)?;
+    let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| match applied {
+        Some(v) => format!("applied version v{v} holds no pipeline `{id}`"),
+        None => format!("no pipeline `{id}` is declared"),
+    })?;
+    let spec = d.spec;
+    let checked = check(&spec, &declaration, tasks)?;
+    if let Checked::Receive(_) = checked {
+        bail!("pipeline `{}` reads a `receive` source, whose rows a sender delivers through `pipeline receive`", spec.id);
+    }
+    let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();
+    let author = admit.author(project.project.as_deref(), &text, &destinations.iter().map(String::as_str).collect::<Vec<_>>())?;
+    check_compaction(&spec, &fold_coverage(&manifests(&declaration)?)?)?;
+    let w = wire_at(&l.project, &project.now)?;
+    let vars: BTreeMap<String, String> = std::env::vars().collect();
+    let assembly = contextful_outbound::secrets::assemble_all(&vars, w.clock.clone())?;
+    let resolver = Arc::new(assembly.resolver);
+    let credentials = component::Credentials { resolver: resolver.clone(), writers: assembly.writers, clock: w.clock.clone() };
+    match &checked {
+        Checked::Http(config, _) => resolver.preflight(config.headers.values())?,
+        Checked::Report(declaration) => resolver.preflight(declaration.headers.values())?,
+        Checked::Component(decl) => component::preflight(decl, crate::connector::admit(decl, &l.project.dir)?.auth.as_ref(), &resolver)?,
+        #[cfg(feature = "drive")]
+        Checked::Drive(config) => resolver.preflight(config.templates())?,
+        Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) | Checked::Receive(_) => {}
+        #[cfg(feature = "s3-sync")]
+        Checked::Object(config) => resolver.preflight(config.credentials())?,
+    }
+    let bound = available_as_of.as_deref().map(contextful_core::store::bound_time::Bound::parse).transpose()?;
+    let available = match &checked {
+        Checked::Derive(pair) => available_select(&spec, &pair.0, &files, bound)?,
+        Checked::Host(host) => available_select(&spec, &host.config, &files, bound)?,
+        _ if bound.is_some() => bail!("pipeline `{}` reads source `{}`; an availability bound selects a derive pipeline's parents", spec.id, spec.source.name),
+        _ => None,
+    };
+    if dry_run {
+        return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver, available);
+    }
+    let applied_audit = applied.map(|_| crate::project::read_audit(&l.project, None, None, None)).transpose()?;
+    let prior_runs: std::collections::BTreeSet<String> = if applied.is_some() {
+        w.engine.catalog.runs(Some(&spec.id))?.into_iter().map(|row| row.run_id).collect()
+    } else { Default::default() };
+
+    // A declaration's relative paths resolve against the project directory
+    // (`store.init.declaration-base`), whichever subdirectory the command runs from.
+    let base = l.project.dir.clone();
+    let store = Store::open_declared(&l.project.dir, &l.project.name, &declaration)?;
+    // A provider step that already committed prints its pointer before any request
+    // (`run.orchestrate.resume`); one that did not runs under its next attempt.
+    let step = match step {
+        Some(unit) => {
+            let step = Step::of(&spec, unit, run_id.clone().unwrap_or_default())?;
+            let chunk_done = match step.chunk {
+                Some(n) => w.engine.seeding().state(&spec.id, &step.table)?.chunks.iter().any(|c| c.ordinal == n && c.status == contextful_core::run::backfill::ChunkStatus::Done),
+                None => false,
+            };
+            match step.attempt(&spec, w.engine.catalog.as_ref(), &store, chunk_done)? {
+                Attempt::Done(pointer) => {
+                    println!("{pointer}");
+                    return Ok(());
+                }
+                Attempt::Next(base) => Some((step, base)),
+            }
+        }
+        None => None,
+    };
+    // A component resolves, admits and compiles once per fire, before any run row.
+    let loaded = match &checked {
+        Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, &l.project.name, Some(&resolver), component_target, store.requires_connector_pin())?),
+        _ => None,
+    };
+    // One drive fire mints one token and walks the tree once for every table it lands.
+    #[cfg(feature = "drive")]
+    let drive = match &checked {
+        Checked::Drive(config) => {
+            // PDF bodies decode in this binary's worker, behind the process boundary.
+            let worker = contextful_connectors::boundary::Boundary::new(std::env::current_exe()?, &["decode", "pdf"]);
+            // Each body read whole lands under the store's `blobs/` (`store.lay-out.landed-blob`).
+            let bodies = StoreBodies(Store::open(&l.project.dir, &l.project.name)?);
+            Some(contextful_connectors::drive::Drive::new(config.clone(), resolver.clone(), Arc::new(worker), Arc::new(bodies))?)
+        }
+        _ => None,
+    };
+    let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
+    let decls: Vec<TableDecl> = spec
+        .tables
+        .iter()
+        .map(|t| spec.destination_decl(t))
+        .collect();
+    let normalize = Some(contextful_core::pipeline::normalize::Normalize::parse(spec.normalize.as_ref())?);
+    let mut dest = StoreDestination { store, decls, node, author, normalize, relational_parts: Default::default(), schema_diffs: Vec::new() };
+    for reaped in w.engine.reap_orphans()? {
+        eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
+    }
+    let base_run = step.as_ref().map(|(_, base)| base.clone()).or(run_id).unwrap_or_else(|| format!("run-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]));
+    let artifact = match &loaded {
+        Some(c) => c.content_hash(),
+        None => sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes()),
+    };
+    // A host task derives each unit once, then lands its content tables and its
+    // marker table last, stopping at the first failing table (`run.emit.marker-last`).
+    let mut staged: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+    let mut derive_skipped = 0;
+    let mut order: Vec<&contextful_core::pipeline::declare::TableEntry> = spec.tables.iter().collect();
+    if let Checked::Host(host) = &checked {
+        let derive = HostDerive {
+            pipeline_id: spec.id.clone(),
+            config: host.config.clone(),
+            task: host.task.clone(),
+            tables: host.tables.clone(),
+            retention_columns: spec.tables.iter().filter_map(|t| {
+                t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))
+            }).collect(),
+            reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
+            available: available.clone(),
+            client: None,
+        };
+        let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+        derive_skipped = skipped;
+        order = landing.iter().filter_map(|(table, _)| spec.tables.iter().find(|t| spec.table_name(t.name()) == *table)).collect();
+        staged = landing.into_iter().collect();
+    }
+    let stop_on_failure = matches!(checked, Checked::Host(_)) || spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort;
+    let seed = spec.seed_block()?;
+    let mut failed: Vec<String> = Vec::new();
+    let mut tallies: Vec<(String, IngestTally)> = Vec::new();
+    let mut attempted: Vec<String> = Vec::new();
+    let mut pointer: Option<String> = None;
+    for t in order {
+        let table = spec.table_name(t.name());
+        // A provider step runs its one table (`run.orchestrate.provider-step`).
+        if step.as_ref().is_some_and(|(s, _)| s.table != table) {
+            continue;
+        }
+        // The destination name is path-safe, so a run id built from it is too.
+        let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
+        // A declared seed loads before the table's live pull, and a seed another worker
+        // holds defers that pull (`run.seed.one-land-path`).
+        if let Some(seed) = &seed {
+            let metered = crate::seed::Metered { binding: seed_binding(&spec, &l.declaration)?, resolver: resolver.clone(), clock: w.clock.clone() };
+            // A chunk step runs that chunk alone, named as the fire names its run.
+            if let Some((s, n)) = step.as_ref().and_then(|(s, _)| s.chunk.map(|n| (s, n))) {
+                let run = format!("{run_id}.seed-{n}");
+                match crate::seed::step_chunk(&w.engine, &spec, seed, t, &run, n, &site_id, &metered, &mut dest, &mut attempted) {
+                    Ok(row) if row.status == RunStatus::Success => {
+                        tallies.push((table.clone(), IngestTally::of(&row)));
+                        pointer = Some(s.pointer(&run));
                     }
-                }
-                attempted.push(run_id.clone());
-                // A table that cannot open is a failed table like one whose run fails, so
-                // `continue` lands the others.
-                let mut limiters: Vec<Arc<contextful_outbound::Limiter>> = Vec::new();
-                let trace = crate::telemetry::RunTrace::open();
-                let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
-                    let connector = loaded.as_ref().map_or_else(|| built_in(&spec), component::Loaded::connector_spec);
-                    let plan = plan(&spec, t.name(), connector)?;
-                    dest.store.validate_source_plan(&plan, dest.normalize)?;
-                    let connector: ConnectorPin = plan.connector_pin(&artifact);
-                    // A pending owner's replay runs the component build its pin names, resolved
-                    // from the admission store; a build that store lacks admits the current one,
-                    // which the pinned owner then refuses (`run.own.admission-pin`).
-                    let (connector, recorded) = match (&checked, &loaded) {
-                        (Checked::Component(decl), Some(c)) => {
-                            let admitted = c.artifacts(decl, &base)?;
-                            match w.engine.admit_connector(&spec.id, &table, &connector, &admitted) {
-                                Ok((pin, wasm)) if pin != connector => {
-                                    let recorded = c.recorded(decl, &base, &wasm, component_target, dest.store.requires_connector_pin())?;
-                                    (pin, Some(recorded))
-                                }
-                                _ => (connector, None),
-                            }
-                        }
-                        _ => (connector, None),
-                    };
-                    let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
-                    let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
-                    let source: Box<dyn Source> = match &checked {
-                        Checked::Http(config, binding) => {
-                            let limiter = binding.clone().map(|b| contextful_outbound::Limiter::new(b, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
-                            limiters.extend(limiter.clone());
-                            let mediation = Mediation { limiter, run_id: Some(run_id.clone()), ..Mediation::default() };
-                            let source = HttpSource::mediated(config.clone(), t.name(), resolver.clone(), mediation)?;
-                            Box::new(if let Some(field) = spec.incremental.as_deref() { source.watermarked_for(field) } else { source })
-                        }
-                        #[cfg(feature = "drive")]
-                        Checked::Drive(_) => match &drive {
-                            Some(d) => Box::new(d.source(t.name())?),
-                            None => bail!("pipeline `{}`: the drive source did not open", spec.id),
-                        },
-                        #[cfg(feature = "s3-sync")]
-                        Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
-                        Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
-                        Checked::Image(config) => Box::new(ImageSource::new(config.clone(), &base)),
-                        Checked::Report(declaration) => {
-                            let mediation = Mediation { run_id: Some(run_id.clone()), ..Mediation::default() };
-                            let vendor = DeclaredVendor::mediated((**declaration).clone(), resolver.clone(), &mediation)?;
-                            let today = w.clock.now().to_rfc3339();
-                            Box::new(ReportSource::new(declaration.report.clone(), vendor, &today[..10])?)
-                        }
-                        Checked::Derive(pair) => {
-                            let limiter = pair.2.clone().map(|binding| contextful_outbound::Limiter::new(binding, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
-                            limiters.extend(limiter.clone());
-                            let hook = if pair.0.task == contextful_core::run::derive::config::Task::LinkPreview {
-                                Some(Arc::new(DeriveLedger::new(dest.store.clone(), table.clone(), dest.node.clone(), run_id.clone(), w.clock.clone())) as Arc<dyn PreSendHook>)
-                            } else {
-                                None
-                            };
-                            let mediation = Mediation { limiter, hook, run_id: Some(run_id.clone()), ..Mediation::default() };
-                            Box::new(DeriveSource {
-                                pipeline_id: spec.id.clone(),
-                                config: pair.0.clone(),
-                                binding: pair.1.clone(),
-                                output_table: table.clone(),
-                                output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
-                                reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
-                                resolver: resolver.clone(),
-                                mediation,
-                                store_root: Some(dest.store.root().to_path_buf()),
-                                cwd: base.clone(),
-                                unsettled: None,
-                                available: available.clone(),
-                            })
-                        }
-                        Checked::Component(decl) => match recorded.as_ref().or(loaded.as_ref()) {
-                            Some(c) => c.source(decl, t.name(), &credentials, &run_id)?,
-                            None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
-                        },
-                        Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
-                        Checked::Receive(_) => bail!("pipeline `{}`: a `receive` source lands only delivered batches", spec.id),
-                    };
-                    // The closing row carries the names this fire hydrated and their adapters
-                    // (`connector.record.provider-attribution`).
-                    let mut source = Attributed { inner: source, resolver: resolver.clone() };
-                    Ok(trace.engine(&w.engine).run_with(&run, &mut source, &shape, &mut dest)?)
-                })();
-                // The run's reports surrender every unspent permit (`connector.meter.report-delivery`).
-                for limiter in &limiters {
-                    limiter.finish();
-                    for entry in limiter.audit() {
-                        eprintln!("{table}: {entry}");
+                    Ok(row) => {
+                        eprintln!(
+                            "{}",
+                            RunError::PipelineTableFailed(format!(
+                                "chunk {n} of table `{table}` failed as {} in run `{run}`: {}",
+                                row.error_kind.map(|k| k.name()).unwrap_or("unknown"),
+                                row.error_message.unwrap_or_default()
+                            ))
+                        );
+                        failed.push(run);
                     }
-                }
-                if let Ok(row) = &outcome {
-                    trace.close(row);
-                }
-                let row = match outcome {
-                    Ok(row) => row,
                     Err(e) => {
-                        eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{run_id}`: {e:#}")));
-                        tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
-                        failed.push(run_id);
-                        if stop_on_failure {
-                            break;
-                        }
-                        continue;
+                        eprintln!("{}", RunError::PipelineTableFailed(format!("chunk {n} of table `{table}` failed in run `{run}`: {e:#}")));
+                        failed.push(run);
                     }
-                };
-                tallies.push((table.clone(), IngestTally::of(&row)));
-                if row.status == RunStatus::Success {
-                    let mut skipped = if row.skipped > 0 { format!(" · {} skipped", row.skipped) } else { String::new() };
-                    if !row.declined.is_empty() {
-                        let by: Vec<String> = row.declined.iter().map(|(ext, n)| if ext.is_empty() { format!("{n} without extension") } else { format!("{n} .{ext}") }).collect();
-                        skipped.push_str(&format!(" ({})", by.join(", ")));
-                    }
-                    println!("{table}: {} success · {} rows in {} batches{skipped}", row.run_id, row.rows, row.batches);
+                }
+                break;
+            }
+            // A table step pulls live only once its seed committed.
+            if step.is_some() && !w.engine.seeding().state(&spec.id, &table)?.committed() {
+                bail!("table `{table}` of pipeline `{}` holds an uncommitted seed; a `--chunk` step loads each of its chunks before the live pull", spec.id);
+            }
+            match crate::seed::drive(&w.engine, &spec, seed, t, &run_id, &site_id, &metered, &mut dest, &mut attempted) {
+                Ok(true) => {}
+                Ok(false) => {
+                    println!("{table}: the seed's chunk runs elsewhere; the live pull waits for its commit");
                     continue;
                 }
-                let e = RunError::PipelineTableFailed(format!(
-                    "table `{table}` failed as {} in run `{}`: {}",
-                    row.error_kind.map(|k| k.name()).unwrap_or("unknown"),
-                    row.run_id,
-                    row.error_message.unwrap_or_default()
-                ));
-                eprintln!("{e}");
-                failed.push(row.run_id);
-                if stop_on_failure {
+                Err(e) => {
+                    // A failed chunk halts the fire under either `on_table_error`
+                    // (`run.declare.chunked-load`).
+                    eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed seeding in run `{run_id}`: {e:#}")));
+                    tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
+                    failed.push(run_id);
                     break;
                 }
             }
-            let total = tallies.iter().fold(IngestTally::default(), |sum, (_, t)| sum.plus(t));
-            let recorded = (|| -> Result<()> {
-                if let (Some(version), Some(audit)) = (applied, applied_audit) {
-                    let mut rows = Vec::new();
-                    for id in attempted.iter().filter(|id| !prior_runs.contains(*id)) {
-                        if let Some(row) = w.engine.catalog.run(id)? { rows.push(row.run_id); }
+        }
+        attempted.push(run_id.clone());
+        // A table that cannot open is a failed table like one whose run fails, so
+        // `continue` lands the others.
+        let mut limiters: Vec<Arc<contextful_outbound::Limiter>> = Vec::new();
+        let trace = crate::telemetry::RunTrace::open();
+        let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
+            let connector = loaded.as_ref().map_or_else(|| built_in(&spec), component::Loaded::connector_spec);
+            let plan = plan(&spec, t.name(), connector)?;
+            dest.store.validate_source_plan(&plan, dest.normalize)?;
+            let connector: ConnectorPin = plan.connector_pin(&artifact);
+            // A pending owner's replay runs the component build its pin names, resolved
+            // from the admission store; a build that store lacks admits the current one,
+            // which the pinned owner then refuses (`run.own.admission-pin`).
+            let (connector, recorded) = match (&checked, &loaded) {
+                (Checked::Component(decl), Some(c)) => {
+                    let admitted = c.artifacts(decl, &base)?;
+                    match w.engine.admit_connector(&spec.id, &table, &connector, &admitted) {
+                        Ok((pin, wasm)) if pin != connector => {
+                            let recorded = c.recorded(decl, &base, &wasm, component_target, dest.store.requires_connector_pin())?;
+                            (pin, Some(recorded))
+                        }
+                        _ => (connector, None),
                     }
-                    crate::source_runs::record(&audit, version, &spec, &base_run, &rows, !failed.is_empty())?;
                 }
-                Ok(())
-            })();
-            println!("tally: {total}");
-            for (table, t) in &tallies {
-                println!("tally {table}: {t}");
-            }
-            // Every outcome past run open publishes (`run.record.failure-publishes`).
-            let opened = attempted.iter().any(|id| w.engine.catalog.run(id).ok().flatten().is_some());
-            // A run that closed without committing drops its mark before the push (`store.drain.mark`).
-            let pushed = if opened { crate::sync::unmark_uncommitted(&l, &attempted).and_then(|()| crate::sync::push_after_run(&l, w.clock.now())) } else { Ok(()) };
-            if !failed.is_empty() {
-                if let Err(error) = recorded { eprintln!("{error:#}"); }
-                if let Err(e) = pushed {
-                    eprintln!("{e:#}");
+                _ => (connector, None),
+            };
+            let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
+            let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
+            let source: Box<dyn Source> = match &checked {
+                Checked::Http(config, binding) => {
+                    let limiter = binding.clone().map(|b| contextful_outbound::Limiter::new(b, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
+                    limiters.extend(limiter.clone());
+                    let mediation = Mediation { limiter, run_id: Some(run_id.clone()), ..Mediation::default() };
+                    let source = HttpSource::mediated(config.clone(), t.name(), resolver.clone(), mediation)?;
+                    Box::new(if let Some(field) = spec.incremental.as_deref() { source.watermarked_for(field) } else { source })
                 }
-                bail!("pipeline `{}`: {} table(s) failed: {}", spec.id, failed.len(), failed.join(", "));
+                #[cfg(feature = "drive")]
+                Checked::Drive(_) => match &drive {
+                    Some(d) => Box::new(d.source(t.name())?),
+                    None => bail!("pipeline `{}`: the drive source did not open", spec.id),
+                },
+                #[cfg(feature = "s3-sync")]
+                Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
+                Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
+                Checked::Image(config) => Box::new(ImageSource::new(config.clone(), &base)),
+                Checked::Report(declaration) => {
+                    let mediation = Mediation { run_id: Some(run_id.clone()), ..Mediation::default() };
+                    let vendor = DeclaredVendor::mediated((**declaration).clone(), resolver.clone(), &mediation)?;
+                    let today = w.clock.now().to_rfc3339();
+                    Box::new(ReportSource::new(declaration.report.clone(), vendor, &today[..10])?)
+                }
+                Checked::Derive(pair) => {
+                    let limiter = pair.2.clone().map(|binding| contextful_outbound::Limiter::new(binding, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
+                    limiters.extend(limiter.clone());
+                    let hook = if pair.0.task == contextful_core::run::derive::config::Task::LinkPreview {
+                        Some(Arc::new(DeriveLedger::new(dest.store.clone(), table.clone(), dest.node.clone(), run_id.clone(), w.clock.clone())) as Arc<dyn PreSendHook>)
+                    } else {
+                        None
+                    };
+                    let mediation = Mediation { limiter, hook, run_id: Some(run_id.clone()), ..Mediation::default() };
+                    Box::new(DeriveSource {
+                        pipeline_id: spec.id.clone(),
+                        config: pair.0.clone(),
+                        binding: pair.1.clone(),
+                        output_table: table.clone(),
+                        output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
+                        reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
+                        resolver: resolver.clone(),
+                        mediation,
+                        store_root: Some(dest.store.root().to_path_buf()),
+                        cwd: base.clone(),
+                        unsettled: None,
+                        available: available.clone(),
+                    })
+                }
+                Checked::Component(decl) => match recorded.as_ref().or(loaded.as_ref()) {
+                    Some(c) => c.source(decl, t.name(), &credentials, &run_id)?,
+                    None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
+                },
+                Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
+                Checked::Receive(_) => bail!("pipeline `{}`: a `receive` source lands only delivered batches", spec.id),
+            };
+            // The closing row carries the names this fire hydrated and their adapters
+            // (`connector.record.provider-attribution`).
+            let mut source = Attributed { inner: source, resolver: resolver.clone() };
+            Ok(trace.engine(&w.engine).run_with(&run, &mut source, &shape, &mut dest)?)
+        })();
+        // The run's reports surrender every unspent permit (`connector.meter.report-delivery`).
+        for limiter in &limiters {
+            limiter.finish();
+            for entry in limiter.audit() {
+                eprintln!("{table}: {entry}");
             }
-            recorded?;
-            pushed
+        }
+        if let Ok(row) = &outcome {
+            trace.close(row);
+        }
+        let row = match outcome {
+            Ok(row) => row,
+            Err(e) => {
+                eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{run_id}`: {e:#}")));
+                tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
+                failed.push(run_id);
+                if stop_on_failure {
+                    break;
+                }
+                continue;
+            }
+        };
+        tallies.push((table.clone(), IngestTally::of(&row)));
+        if row.status == RunStatus::Success {
+            if let Some((s, _)) = &step {
+                pointer = Some(s.pointer(&row.run_id));
+                continue;
+            }
+            let mut skipped = if row.skipped > 0 { format!(" · {} skipped", row.skipped) } else { String::new() };
+            if !row.declined.is_empty() {
+                let by: Vec<String> = row.declined.iter().map(|(ext, n)| if ext.is_empty() { format!("{n} without extension") } else { format!("{n} .{ext}") }).collect();
+                skipped.push_str(&format!(" ({})", by.join(", ")));
+            }
+            println!("{table}: {} success · {} rows in {} batches{skipped}", row.run_id, row.rows, row.batches);
+            continue;
+        }
+        let e = RunError::PipelineTableFailed(format!(
+            "table `{table}` failed as {} in run `{}`: {}",
+            row.error_kind.map(|k| k.name()).unwrap_or("unknown"),
+            row.run_id,
+            row.error_message.unwrap_or_default()
+        ));
+        eprintln!("{e}");
+        failed.push(row.run_id);
+        if stop_on_failure {
+            break;
         }
     }
+    let total = tallies.iter().fold(IngestTally::default(), |sum, (_, t)| sum.plus(t));
+    let recorded = (|| -> Result<()> {
+        if let (Some(version), Some(audit)) = (applied, applied_audit) {
+            let mut rows = Vec::new();
+            for id in attempted.iter().filter(|id| !prior_runs.contains(*id)) {
+                if let Some(row) = w.engine.catalog.run(id)? { rows.push(row.run_id); }
+            }
+            crate::source_runs::record(&audit, version, &spec, &base_run, &rows, !failed.is_empty())?;
+        }
+        Ok(())
+    })();
+    // A provider step prints its commit pointer alone (`run.orchestrate.provider-step`).
+    if step.is_none() {
+        println!("tally: {total}");
+        for (table, t) in &tallies {
+            println!("tally {table}: {t}");
+        }
+    }
+    // Every outcome past run open publishes (`run.record.failure-publishes`).
+    let opened = attempted.iter().any(|id| w.engine.catalog.run(id).ok().flatten().is_some());
+    // A run that closed without committing drops its mark before the push (`store.drain.mark`).
+    let pushed = if opened { crate::sync::unmark_uncommitted(&l, &attempted).and_then(|()| crate::sync::push_after_run(&l, w.clock.now())) } else { Ok(()) };
+    if !failed.is_empty() {
+        if let Err(error) = recorded { eprintln!("{error:#}"); }
+        if let Err(e) = pushed {
+            eprintln!("{e:#}");
+        }
+        bail!("pipeline `{}`: {} table(s) failed: {}", spec.id, failed.len(), failed.join(", "));
+    }
+    recorded?;
+    pushed?;
+    if let Some(pointer) = pointer {
+        println!("{pointer}");
+    }
+    Ok(())
 }
 
 /// One fire's ingest counts, for a table or summed over the fire (`run.land.ingest-tally`).

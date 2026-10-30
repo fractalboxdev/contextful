@@ -644,13 +644,16 @@ Each deployment supplies a durable orchestrator implementing the execution inter
   *because a provider retry around an engine schedule multiplies attempts against a shared quota*
 - `delegate-inside` — Every orchestrator runs a delegate under {{surface.delegate.binding}} inside the engine's journaled step within a provider step. No adapter dispatches a delegate as a separate provider step.
   *because a delegate reached outside the engine's step escapes the entry key, the fence and the item budget*
+- `step-command` — `contextful pipeline step <id> --run-id <step>` runs a table pull or, with `--chunk <n>`, chunk n of the table's seed plan, and prints its commit pointer; attempts name runs as `pipeline run` does under `<step>`, replays under `<step>.replay-<k>`.
+  *because a replay named as the engine runner names its unit lands that runner's bytes*
+- `step-lease` — A provider step opens its attempt's owner lease and releases it on return, so no lease spans two steps; a replay while an earlier attempt's {{run.record.owner-lease}} runs refuses naming that attempt.
+  *because no engine process runs between two steps to renew a lease*
 
 #### Scenarios
 
 - `run.orchestrate.resume`: WHEN a backfill chunk's provider step crashes after half its pages and the provider replays the step, THEN the engine resumes from its recorded pages and the chunk's parts match the uninterrupted run's bytes.
 - `run.orchestrate.one-retry-layer`: WHEN a provider step's pull meets a throttle, THEN the engine's schedule retries inside the step and the provider records one step attempt.
-
-unsettled: Who renews the execution's owner lease between two provider steps, when no engine process runs? owner: run-path affects: run.orchestrate
+- `run.orchestrate.step-lease`: WHEN a chunk step's process dies and the provider replays it before the dead attempt's owner lease lapses, THEN the replay refuses naming that attempt, and a replay after the lapse resumes it.
 
 unsettled: Where does a target profile record a provider's step ceiling, so a backfill whose chunk plan passes it refuses at planning? owner: topology affects: run.orchestrate
 

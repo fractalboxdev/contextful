@@ -95,6 +95,8 @@ mod seed;
 #[cfg(feature = "data-plane")]
 mod serve;
 #[cfg(feature = "data-plane")]
+mod step;
+#[cfg(feature = "data-plane")]
 mod sync;
 mod token;
 #[cfg(feature = "data-plane")]

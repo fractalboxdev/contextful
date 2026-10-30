@@ -13142,6 +13142,31 @@
       "line": 645
     },
     {
+      "id": "run.orchestrate.step-command",
+      "contract": "run",
+      "operation": "orchestrate",
+      "subject": "step-command",
+      "kind": "behavior",
+      "statement": "`contextful pipeline step <id> --run-id <step>` runs a table pull or, with `--chunk <n>`, chunk n of the table's seed plan, and prints its commit pointer; attempts name runs as `pipeline run` does under `<step>`, replays under `<step>.replay-<k>`.",
+      "why": "because a replay named as the engine runner names its unit lands that runner's bytes",
+      "file": "spec/30-run.md",
+      "line": 647
+    },
+    {
+      "id": "run.orchestrate.step-lease",
+      "contract": "run",
+      "operation": "orchestrate",
+      "subject": "step-lease",
+      "kind": "behavior",
+      "statement": "A provider step opens its attempt's owner lease and releases it on return, so no lease spans two steps; a replay while an earlier attempt's {{run.record.owner-lease}} runs refuses naming that attempt.",
+      "why": "because no engine process runs between two steps to renew a lease",
+      "file": "spec/30-run.md",
+      "line": 649,
+      "scenarios": [
+        "WHEN a chunk step's process dies and the provider replays it before the dead attempt's owner lease lapses, THEN the replay refuses naming that attempt, and a replay after the lapse resumes it."
+      ]
+    },
+    {
       "id": "run.declare.pipeline-spec",
       "contract": "run",
       "operation": "declare",
@@ -37249,6 +37274,10 @@
     [
       "run.orchestrate.delegate-inside",
       "surface.delegate.binding"
+    ],
+    [
+      "run.orchestrate.step-lease",
+      "run.record.owner-lease"
     ],
     [
       "run.declare.order-by-default",
@@ -67007,6 +67036,51 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/pipeline/normalize.rs",
         "name": "one_normalized_group_holds_nested_rows_and_shreds_only_when_materialized",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.one-retry-layer": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/step.rs",
+        "name": "a_throttled_pull_retries_inside_its_step_under_one_attempt",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.provider-step": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/step.rs",
+        "name": "a_table_step_prints_its_commit_pointer_and_its_replay_re_enters_nothing",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.resume": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/step.rs",
+        "name": "a_chunk_step_killed_after_half_its_pages_resumes_and_lands_the_runners_bytes",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.step-command": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/step.rs",
+        "name": "a_table_step_prints_its_commit_pointer_and_its_replay_re_enters_nothing",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.step-lease": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/step.rs",
+        "name": "a_step_holds_its_owner_lease_only_while_it_runs",
         "verdict": "performed",
         "proved": false
       }
