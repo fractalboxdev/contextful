@@ -37,6 +37,34 @@ pub const GRAPH_FILE: &str = "graph.bin";
 /// Base-layer search width floor. A probe of k candidates searches at least this wide.
 pub const EF_SEARCH_FLOOR: usize = 128;
 
+/// Matching rows under which a filtered probe ranks them by exact distance instead of
+/// traversing the graph (`read.retrieve.filtered-exact-threshold`).
+pub const FILTERED_EXACT_ROWS: u64 = 4096;
+
+/// How a filtered probe ranks its candidates (`read.retrieve.filtered-traversal`,
+/// `read.retrieve.filtered-exact-threshold`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilteredPlan {
+    /// The graph walk, admitting matching nodes and expanding refused ones.
+    Traversal,
+    /// Exact distance over the matching nodes alone.
+    Exact,
+}
+
+impl FilteredPlan {
+    /// The plan for a filter matching `matching` identifiers: exact under
+    /// [`FILTERED_EXACT_ROWS`], traversal otherwise. An exact probe reads every node's
+    /// identifier once, and a traversal's walk lengthens as the filter narrows, so the
+    /// crossover tracks the matching count rather than its share of the graph.
+    pub fn for_matching(matching: u64) -> FilteredPlan {
+        if matching < FILTERED_EXACT_ROWS {
+            FilteredPlan::Exact
+        } else {
+            FilteredPlan::Traversal
+        }
+    }
+}
+
 /// How a project's sidecar files sit on disk.
 #[derive(Clone, Copy)]
 pub enum Sealing<'a> {
@@ -389,23 +417,59 @@ impl VectorSidecar {
     /// [`VectorSidecar::probe`] returning only nodes `bound` admits; each segment's
     /// traversal walks through the others (`read.horizon.rank-statistics`).
     pub fn probe_within(&self, query: &[f32], k: usize, bound: Option<Bound>) -> std::result::Result<Vec<Candidate>, Fallback> {
+        let Some(q) = self.unit_query(query)? else { return Ok(Vec::new()) };
+        Ok(self.gather(k, |segment, bytes| match bound {
+            None => segment.layout.search(bytes, &q, k, k.max(EF_SEARCH_FLOOR)),
+            Some(b) => segment.layout.search_admitting(bytes, &q, k, k.max(EF_SEARCH_FLOOR), |at| admits(b, at)),
+        }))
+    }
+
+    /// The `k` candidates nearest `query` whose identifiers `matching` holds and `bound`
+    /// admits, with the plan that ranked them: traversal walking through refused nodes, or
+    /// exact distance where `matching` holds under [`FILTERED_EXACT_ROWS`] identifiers. An
+    /// empty `matching` returns no candidate (`read.retrieve.filter-matches-nothing`).
+    pub fn probe_filtered(
+        &self,
+        query: &[f32],
+        k: usize,
+        bound: Option<Bound>,
+        matching: &HashSet<String>,
+    ) -> std::result::Result<(Vec<Candidate>, FilteredPlan), Fallback> {
+        let plan = FilteredPlan::for_matching(matching.len() as u64);
+        let Some(q) = self.unit_query(query)? else { return Ok((Vec::new(), plan)) };
+        if matching.is_empty() {
+            return Ok((Vec::new(), plan));
+        }
+        let found = self.gather(k, |segment, bytes| {
+            let layout = &segment.layout;
+            let admitted = |n: u32| {
+                bound.is_none_or(|b| admits(b, layout.available(bytes, n))) && layout.id(bytes, n).is_some_and(|id| matching.contains(id))
+            };
+            match plan {
+                FilteredPlan::Traversal => layout.search_nodes(bytes, &q, k, k.max(EF_SEARCH_FLOOR), admitted),
+                FilteredPlan::Exact => layout.exact_nodes(bytes, &q, k, admitted),
+            }
+        });
+        Ok((found, plan))
+    }
+
+    /// `query` scaled to unit length, `None` for a zero or non-finite query, which probes
+    /// nothing; a query of another dimension takes the exact scan.
+    fn unit_query(&self, query: &[f32]) -> std::result::Result<Option<Vec<f32>>, Fallback> {
         if query.len() != self.entry.dim as usize {
             return Err(Fallback::DimensionMismatch);
         }
         let norm = query.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if !norm.is_finite() || norm == 0.0 {
-            return Ok(Vec::new());
-        }
-        let q: Vec<f32> = query.iter().map(|x| x / norm).collect();
+        Ok((norm.is_finite() && norm != 0.0).then(|| query.iter().map(|x| x / norm).collect()))
+    }
+
+    /// The `k` nearest of every segment's `search` result, nearest first.
+    fn gather(&self, k: usize, search: impl Fn(&GraphSegment, &[u8]) -> Vec<(u32, f32)>) -> Vec<Candidate> {
         let mut found: Vec<Candidate> = Vec::new();
         for segment in &self.segments {
             let bytes = segment.backing.bytes();
-            let nearest = match bound {
-                None => segment.layout.search(bytes, &q, k, k.max(EF_SEARCH_FLOOR)),
-                Some(b) => segment.layout.search_admitting(bytes, &q, k, k.max(EF_SEARCH_FLOOR), |at| admits(b, at)),
-            };
             found.extend(
-                nearest
+                search(segment, bytes)
                     .into_iter()
                     .filter_map(|(n, similarity)| Some(Candidate { id: segment.layout.id(bytes, n)?.to_string(), similarity })),
             );
@@ -414,7 +478,7 @@ impl VectorSidecar {
             found.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
             found.truncate(k);
         }
-        Ok(found)
+        found
     }
 }
 

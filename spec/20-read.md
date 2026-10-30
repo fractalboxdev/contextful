@@ -313,8 +313,13 @@ Vector and full-text sidecars add candidates that rejoin through the caller's re
   *P5*
 - `fulltext-probe` — Full-text probes rank the entire snapshot by BM25 with one should-clause per content token. Tokens split by the sidecar tokenizer match resulting terms at consecutive positions. ASCII word tokens match plurals under {{read.retrieve.script-split-matching}}.
   *because a term outside the recency window is found only by a probe that reads every row's postings*
-- `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
-- `adaptive-over-fetch` — The probe runs at most 4 rounds in total, doubling its size while readable rows fall below the requested limit. The retrieval block reports any remaining shortfall.
+- `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and a full-text probe 4 times that where the request carries restriction context.
+- `filtered-traversal` — Under a caller filter or restriction context, a vector probe admits only identifiers the reader's relation yields under the filter; traversal expands refused nodes' neighbours and returns the probe size in admitted rows where that many exist.
+  *A-read#filtered-vector-traversal*
+- `filtered-exact-threshold` — A pre-scan of the arm's relation under the filter counts the matching identifiers; under 4096 rows, the filtered probe ranks them by exact distance instead of traversal.
+  *A-read#filtered-vector-traversal*
+- `filter-matches-nothing` — A filtered probe whose pre-scan matches no identifier adds no candidate and raises no error.
+- `adaptive-over-fetch` — A full-text probe, and a vector probe carrying neither filter nor restriction context, runs at most 4 rounds in total, doubling its size while readable rows fall below the requested limit. The retrieval block reports any remaining shortfall.
   *A-read#restricted-sidecar-probe*
 - `sidecar-size-cap` — A vector sidecar exceeding 64 MiB resident memory stays unloaded; retrieval uses an exact scan. Resident memory includes each graph node's 4 B probe mark and, for sealed sidecars, the graph file.
   *A-store#sidecar-memory-mapped*
@@ -331,8 +336,6 @@ Vector and full-text sidecars add candidates that rejoin through the caller's re
 unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as the row key of a table declaring no content-hash column? owner: read-path affects: read.retrieve
 
 unsettled: Does restriction get the statistics treatment {{read.horizon.rank-statistics}} gives the horizon, so BM25 document frequency on {{read.retrieve.fulltext-probe}} excludes restricted rows? owner: authority affects: read.retrieve
-
-unsettled: Does predicate-aware graph traversal replace {{read.retrieve.adaptive-over-fetch}} under selective restrictions? owner: read-path affects: read.retrieve
 
 ## rank
 

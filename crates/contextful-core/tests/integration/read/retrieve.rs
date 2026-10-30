@@ -146,8 +146,8 @@ fn a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg() {
     assert_eq!(reciprocal_rank, 1.0);
 }
 
-/// One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
-// spec: read.retrieve.sidecar-oversampling@ad98fed4
+/// One probe requests 4 times the limit or 64 rows, whichever is larger, and a full-text probe 4 times that where the request carries restriction context.
+// spec: read.retrieve.sidecar-oversampling@01b64487
 #[test]
 fn a_probe_oversamples_the_limit_and_widens_under_restriction() {
     assert_eq!((SIDECAR_PROBE_FACTOR, SIDECAR_PROBE_FLOOR, SIDECAR_RESTRICTED_FACTOR), (4, 64, 4));

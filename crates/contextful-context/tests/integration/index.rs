@@ -7,7 +7,7 @@ use crate::support::query;
 use contextful_context::fold::{escape, fold};
 use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
-use contextful_context::vector::{Sealing, VectorSidecar, GRAPH_FILE};
+use contextful_context::vector::{FilteredPlan, Sealing, VectorSidecar, FILTERED_EXACT_ROWS, GRAPH_FILE};
 use contextful_context::fulltext::{FulltextSidecar, POSTINGS_FILE};
 use contextful_core::store::index::{FulltextEntry, IndexEntry, IndexKind, Tokenizer, VectorEntry};
 use contextful_core::store::lay_out::SnapshotManifest;
@@ -928,6 +928,157 @@ fn vector_recall_at_10_holds_on_f16_storage() {
 fn vector_recall_at_10_holds_on_i8_storage() {
     let recall = recall_at_10("storage = \"i8\"\n");
     assert!(recall >= 0.90, "i8 recall@10 {recall}");
+}
+
+/// The rows of `n` a filter holding `percent` of them matches: row `i` where `37 i mod 100`
+/// falls under `percent`, so every percent spreads evenly over the graph.
+fn matching(n: usize, percent: usize) -> std::collections::HashSet<String> {
+    (0..n).filter(|i| i * 37 % 100 < percent).map(|i| format!("p{i}")).collect()
+}
+
+/// The ids of the 10 rows `admitted` holds nearest `q`, by exact cosine over `vectors`.
+fn exact_filtered_top_10(vectors: &[Vec<f32>], q: &[f32], admitted: &std::collections::HashSet<String>) -> std::collections::HashSet<String> {
+    let cosine = |a: &[f32], b: &[f32]| {
+        let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+        dot / (a.iter().map(|x| x * x).sum::<f32>().sqrt() * b.iter().map(|x| x * x).sum::<f32>().sqrt())
+    };
+    let mut exact: Vec<(f32, usize)> =
+        vectors.iter().enumerate().filter(|(i, _)| admitted.contains(&format!("p{i}"))).map(|(i, v)| (cosine(q, v), i)).collect();
+    exact.sort_by(|a, b| b.0.total_cmp(&a.0));
+    exact[..10].iter().map(|(_, i)| format!("p{i}")).collect()
+}
+
+/// `n` seeded vectors of `dim` folded into a sidecar whose vector block carries `extra`, and
+/// `RECALL_QUERIES` seeded queries.
+fn filtered_fixture(n: usize, dim: usize, extra: &str) -> (Fixture, VectorSidecar, Vec<Vec<f32>>, Vec<Vec<f32>>) {
+    let mut drawn = seeded(n + RECALL_QUERIES, dim, RECALL_SEED);
+    let queries = drawn.split_off(n);
+    let (f, m, dir) = fold_vectors(&drawn, extra);
+    let sidecar = VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
+    (f, sidecar, drawn, queries)
+}
+
+/// The recall fixture: 2,000 seeded vectors of dim 32.
+fn recall_fixture() -> (Fixture, VectorSidecar, Vec<Vec<f32>>, Vec<Vec<f32>>) {
+    filtered_fixture(RECALL_N, RECALL_DIM, "")
+}
+
+/// Recall@10 of filtered probes over `percent` of `vectors` against exact filtered search,
+/// and the one plan that ranked every probe; each probe returns 10 matching rows.
+fn filtered_recall_at_10(sidecar: &VectorSidecar, vectors: &[Vec<f32>], queries: &[Vec<f32>], percent: usize) -> (f64, FilteredPlan) {
+    let admitted = matching(vectors.len(), percent);
+    assert!(admitted.len() >= 10, "{percent}% holds {} rows", admitted.len());
+    let (mut hits, mut plans) = (0usize, Vec::new());
+    for q in queries {
+        let truth = exact_filtered_top_10(vectors, q, &admitted);
+        let (found, plan) = sidecar.probe_filtered(q, 10, None, &admitted).unwrap();
+        assert_eq!(found.len(), 10, "{percent}%");
+        assert!(found.iter().all(|c| admitted.contains(&c.id)), "{percent}%: {found:?}");
+        hits += found.iter().filter(|c| truth.contains(&c.id)).count();
+        plans.push(plan);
+    }
+    plans.dedup();
+    assert_eq!(plans.len(), 1, "{percent}%: {plans:?}");
+    (hits as f64 / (queries.len() * 10) as f64, plans[0])
+}
+
+/// A pre-scan of the arm's relation under the filter counts the matching identifiers; under 4096 rows, the filtered
+/// probe ranks them by exact distance instead of traversal.
+// spec: read.retrieve.filtered-exact-threshold@a3fc1d69
+#[test]
+fn a_filter_matching_under_4096_rows_ranks_them_exactly() {
+    assert_eq!(FILTERED_EXACT_ROWS, 4096);
+    assert_eq!(FilteredPlan::for_matching(0), FilteredPlan::Exact);
+    assert_eq!(FilteredPlan::for_matching(4095), FilteredPlan::Exact);
+    assert_eq!(FilteredPlan::for_matching(4096), FilteredPlan::Traversal);
+    // A filter holding 1% of the fixture's 2,000 rows returns 10 of its 20 rows.
+    let (_f, sidecar, vectors, queries) = recall_fixture();
+    let (recall, plan) = filtered_recall_at_10(&sidecar, &vectors, &queries, 1);
+    assert_eq!(plan, FilteredPlan::Exact);
+    assert!(recall >= 0.95, "1% filtered recall@10 {recall}");
+}
+
+/// Under a caller filter or restriction context, a vector probe admits only identifiers the reader's relation yields
+/// under the filter; traversal expands refused nodes' neighbours and returns the probe size in admitted rows where that
+/// many exist.
+// spec: read.retrieve.filtered-traversal@fcd17510
+#[test]
+fn a_filtered_traversal_keeps_recall_at_one_and_fifty_percent() {
+    use contextful_context::vector::graph::{build, Layout, Params};
+    use contextful_core::store::index::VectorStorage;
+    // The recall fixture at 50%: 1,000 matching rows.
+    let (_f, sidecar, vectors, queries) = recall_fixture();
+    let (recall, _) = filtered_recall_at_10(&sidecar, &vectors, &queries, 50);
+    assert!(recall >= 0.95, "50% filtered recall@10 {recall}");
+
+    // 10,000 rows at 50%: 5,000 matching rows, past the exact threshold, so the sidecar traverses.
+    let (_w, wide, wide_vectors, wide_queries) = filtered_fixture(10_000, 8, "m = 8\nef_construction = 64\n");
+    let (recall, plan) = filtered_recall_at_10(&wide, &wide_vectors, &wide_queries, 50);
+    assert_eq!(plan, FilteredPlan::Traversal);
+    assert!(recall >= 0.95, "50% traversal recall@10 {recall}");
+
+    // The walk alone, over the recall fixture's graph, keeps recall at 1%: refused nodes bridge to the 20 admitted.
+    let unit: Vec<f32> = vectors
+        .iter()
+        .flat_map(|v| {
+            let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+            v.iter().map(move |x| x / norm)
+        })
+        .collect();
+    let ids: Vec<String> = (0..RECALL_N).map(|i| format!("p{i}")).collect();
+    let params = Params { storage: VectorStorage::F32, m: 16, ef_construction: 200, seed: RECALL_SEED };
+    let bytes = build(&unit, RECALL_DIM, &ids, &vec![i64::MIN; RECALL_N], params);
+    let layout = Layout::parse(&bytes).unwrap();
+    let admitted = matching(RECALL_N, 1);
+    let mut hits = 0usize;
+    for q in &queries {
+        let norm = q.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let unit_q: Vec<f32> = q.iter().map(|x| x / norm).collect();
+        let found = layout.search_nodes(&bytes, &unit_q, 10, 128, |n| layout.id(&bytes, n).is_some_and(|id| admitted.contains(id)));
+        assert_eq!(found.len(), 10);
+        let truth = exact_filtered_top_10(&vectors, q, &admitted);
+        hits += found.iter().filter(|(n, _)| truth.contains(layout.id(&bytes, *n).unwrap())).count();
+    }
+    let recall = hits as f64 / (RECALL_QUERIES * 10) as f64;
+    assert!(recall >= 0.95, "1% traversal recall@10 {recall}");
+}
+
+/// A filtered probe whose pre-scan matches no identifier adds no candidate and raises no error.
+// spec: read.retrieve.filter-matches-nothing@e904b264
+#[test]
+fn a_filter_matching_nothing_returns_no_candidate() {
+    let (_f, sidecar, _, queries) = recall_fixture();
+    assert!(!queries.is_empty());
+    let none = std::collections::HashSet::new();
+    let absent: std::collections::HashSet<String> = ["no-such-row".to_string()].into();
+    for q in &queries {
+        assert_eq!(sidecar.probe_filtered(q, 10, None, &none).unwrap().0, []);
+        assert_eq!(sidecar.probe_filtered(q, 10, None, &absent).unwrap().0, []);
+    }
+}
+
+/// The SHA-256 of every unfiltered top-10 over the recall fixture: each candidate's id and
+/// similarity bits, query by query, as the probe returned them before filtered traversal.
+const UNFILTERED_DIGEST: &str = "b62af6f35b0ce08f89f07eb533b281fc92d4e239d09e6844de1657a6f8a6ad5d";
+
+/// An unfiltered probe answers as it did before filtered probes existed: the same ids, in
+/// the same order, at the same similarity bits, over the shared fixture.
+#[test]
+fn an_unfiltered_probe_is_unchanged_by_filtered_traversal() {
+    use sha2::{Digest, Sha256};
+    let (_f, sidecar, _, queries) = recall_fixture();
+    let mut digest = Sha256::new();
+    let mut returned = 0;
+    for q in &queries {
+        for c in sidecar.probe(q, 10).unwrap() {
+            digest.update(c.id.as_bytes());
+            digest.update(c.similarity.to_bits().to_le_bytes());
+            returned += 1;
+        }
+    }
+    assert_eq!(returned, RECALL_QUERIES * 10);
+    let hex: String = digest.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(hex, UNFILTERED_DIGEST);
 }
 
 pub const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";

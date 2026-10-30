@@ -381,26 +381,93 @@ fn crowded_reads(crowd: usize) -> Reads {
     r
 }
 
-/// The probe runs at most 4 rounds in total, doubling its size while readable rows fall below the requested limit. The
-/// retrieval block reports any remaining shortfall.
-// spec: read.retrieve.adaptive-over-fetch@aa7ac22c
+/// Under a caller filter or restriction context, a vector probe admits only identifiers the reader's relation yields
+/// under the filter; traversal expands refused nodes' neighbours and returns the probe size in admitted rows where that
+/// many exist.
+// spec: read.retrieve.filtered-traversal@fcd17510
 #[test]
-fn an_under_filled_probe_doubles_until_the_reader_sees_its_rows() {
-    let question = |table: &str| RetrieveRequest { query_embedding: Some(vec![0.0, 0.0, 1.0]), limit: Some(5), ..ask(table, "") };
-    // 600 rows the reader cannot see sit nearer than its own: the first 256-row probe and
-    // the 512-row second miss `p0000`, the 1024-row third reaches it.
-    let r = crowded_reads(600);
-    let s = r.session(&["lab/*"], None, None);
-    let ranked = r.face.retrieve(&s, &question("lab/indexed"), Bounds::default()).unwrap();
-    assert!(ids(&ranked, "passage_id").contains(&"p0000".to_string()), "{:?}", ids(&ranked, "passage_id"));
-    assert!(ranked.blocks["contextful.retrieval"].get("underfilled").is_none(), "{:?}", ranked.blocks);
-    // Past 2048 nearer hidden rows the fourth round still sees none of the reader's: the
-    // read answers and names the under-fill.
+fn a_restricted_vector_probe_reaches_the_readers_row_past_any_crowd() {
+    let question = RetrieveRequest { query_embedding: Some(vec![0.0, 0.0, 1.0]), limit: Some(5), ..ask("lab/indexed", "") };
+    // 2,200 rows the reader cannot see sit nearer than its own `p0000`; the probe admits only
+    // the reader's rows, so one probe reaches it and nothing under-fills.
     let r = crowded_reads(2200);
     let s = r.session(&["lab/*"], None, None);
-    let ranked = r.face.retrieve(&s, &question("lab/indexed"), Bounds::default()).unwrap();
-    assert!(!ids(&ranked, "passage_id").contains(&"p0000".to_string()));
-    assert_eq!(ranked.blocks["contextful.retrieval"]["underfilled"], json!(true), "{:?}", ranked.blocks);
+    let ranked = r.face.retrieve(&s, &question, Bounds::default()).unwrap();
+    let found = ids(&ranked, "passage_id");
+    assert_eq!(found.len(), 5, "{found:?}");
+    assert_eq!(found[0], "p0000", "{found:?}");
+    assert!(ranked.blocks["contextful.retrieval"].get("underfilled").is_none(), "{:?}", ranked.blocks);
+}
+
+/// 2,000 rows of `lab/indexed` at seeded points, `analysis_id` `a-hot` on the 20 rows, 1%, whose
+/// index `i` has `37 i mod 100` of 0, and `a-cold` on the rest.
+fn analysis_reads() -> (Reads, Vec<(String, [f64; 3])>) {
+    use contextful_context::fold::fold;
+    use contextful_core::store::reconcile::{ColumnType, FloatItem};
+    let manifest = format!("{MANIFEST}{SIDECAR}");
+    let mut r = Reads::with_manifest(&manifest);
+    let mut state = 0x5eed_0043u64;
+    let mut draw = move || {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((state >> 33) as f64 / (1u64 << 31) as f64) * 2.0 - 1.0
+    };
+    let points: Vec<(String, [f64; 3])> = (0..2000).map(|i| (format!("p{i:04}"), [draw(), draw(), draw()])).collect();
+    let rows: Vec<serde_json::Map<String, Value>> = points
+        .iter()
+        .enumerate()
+        .map(|(i, (id, v))| {
+            let analysis = if i * 37 % 100 == 0 { "a-hot" } else { "a-cold" };
+            json!({"passage_id": id, "title": format!("passage {i}"), "analysis_id": analysis, "embedding": v}).as_object().unwrap().clone()
+        })
+        .collect();
+    let types: HashMap<String, ColumnType> = [("embedding".to_string(), ColumnType::FixedSizeList(FloatItem::Float32, 3))].into_iter().collect();
+    let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == "lab/indexed").unwrap();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    land(&r.store, &decl, &Batch { rows, types }, &ctx).unwrap();
+    fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let hot = points.into_iter().enumerate().filter(|(i, _)| i * 37 % 100 == 0).map(|(_, p)| p).collect();
+    (r, hot)
+}
+
+/// Under a caller filter or restriction context, a vector probe admits only identifiers the reader's relation yields
+/// under the filter; traversal expands refused nodes' neighbours and returns the probe size in admitted rows where that
+/// many exist.
+// spec: read.retrieve.filtered-traversal@fcd17510
+#[test]
+fn a_probe_filtered_to_one_analysis_holding_one_percent_returns_its_ten_nearest() {
+    let (r, hot) = analysis_reads();
+    assert_eq!(hot.len(), 20);
+    let s = r.session(&["lab/*"], None, None);
+    let query = [0.3f64, -0.2, 0.9];
+    let request = RetrieveRequest {
+        query_embedding: Some(query.iter().map(|x| *x as f32).collect()),
+        filter: Some(json!({"analysis_id": "a-hot"})),
+        limit: Some(10),
+        ..ask("lab/indexed", "")
+    };
+    let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    let found = ids(&ranked, "analysis_id");
+    assert_eq!(found.len(), 10, "{found:?}");
+    assert!(found.iter().all(|a| a == "a-hot"), "{found:?}");
+    // Recall@10 against exact filtered search over the 20 matching rows.
+    let cosine = |v: &[f64; 3]| {
+        let dot: f64 = v.iter().zip(&query).map(|(a, b)| a * b).sum();
+        dot / (v.iter().map(|x| x * x).sum::<f64>().sqrt() * query.iter().map(|x| x * x).sum::<f64>().sqrt())
+    };
+    let mut exact: Vec<&(String, [f64; 3])> = hot.iter().collect();
+    exact.sort_by(|a, b| cosine(&b.1).total_cmp(&cosine(&a.1)));
+    let truth: std::collections::HashSet<&str> = exact[..10].iter().map(|(id, _)| id.as_str()).collect();
+    let returned = ids(&ranked, "passage_id");
+    let hits = returned.iter().filter(|id| truth.contains(id.as_str())).count();
+    assert!(hits as f64 / 10.0 >= 0.95, "{returned:?} against {truth:?}");
+    // A filter value no row holds answers empty, raising nothing.
+    let none = RetrieveRequest { filter: Some(json!({"analysis_id": "a-none"})), ..request };
+    assert!(ids(&r.face.retrieve(&s, &none, Bounds::default()).unwrap(), "passage_id").is_empty());
 }
 
 fn battery(table: &str) -> RetrieveRequest {
