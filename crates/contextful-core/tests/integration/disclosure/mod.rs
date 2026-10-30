@@ -1,5 +1,6 @@
 //! The `disclosure` contract, one module per operation.
 
+mod cohort;
 mod declare;
 mod erase;
 mod join;

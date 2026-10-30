@@ -3,6 +3,7 @@
 
 use anyhow::{bail, Result};
 use clap::Subcommand;
+use contextful_core::disclosure::cohort::admit_governance;
 use contextful_core::disclosure::error::DisclosureError;
 use contextful_core::disclosure::suppress::SuppressPolicy;
 use contextful_core::pipeline::model::collect_models;
@@ -105,6 +106,9 @@ pub fn run(cmd: DisclosureCmd) -> Result<()> {
                 if let Err(error) = SuppressPolicy::new(policy.min_group_size, policy.max_contributor_share) {
                     refusals.push(format!("{}: {error}", spec.id));
                 }
+                if let Err(error) = admit_governance(&policy, spec.unique_key.as_deref().unwrap_or(&[])) {
+                    refusals.push(format!("{}: {error}", spec.id));
+                }
             }
             if !refusals.is_empty() {
                 bail!("{}", refusals.join("\n"));
@@ -166,6 +170,7 @@ mod release {
             return Err(DisclosureError::PolicyAbsent(format!("model `{id}` declares no `[model.disclosure]` to release under")).into());
         };
         let spend = spend_of(&policy)?;
+        contextful_core::disclosure::cohort::admit_governance(&policy, spec.grain())?;
         let files = crate::pipeline::manifests(&l.declaration)?;
         let cap = project_disclosure(&files)?.cap_micros();
         let text = if l.declaration.exists() { std::fs::read_to_string(&l.declaration)? } else { String::new() };

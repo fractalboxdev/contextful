@@ -25886,6 +25886,17 @@
       "line": 119
     },
     {
+      "id": "disclosure.bound-cohort.governance-declaration",
+      "contract": "disclosure",
+      "operation": "bound-cohort",
+      "subject": "governance-declaration",
+      "kind": "behavior",
+      "statement": "`[model.disclosure]` declares `governance`, `per-person` or `cohort`, naming whether each published figure describes one person or a cohort; an absent `governance` is `per-person`, and another value raises {{run.declare.spec-invalid}}.",
+      "why": "because an undeclared model takes the stricter regime: a per-person model refuses exact figures, so omitting `governance` never widens what a release publishes",
+      "file": "spec/61-disclosure.md",
+      "line": 128
+    },
+    {
       "id": "disclosure.bound-cohort.cohort-widening",
       "contract": "disclosure",
       "operation": "bound-cohort",
@@ -25894,7 +25905,7 @@
       "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 126
+      "line": 130
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -25905,7 +25916,7 @@
       "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 128
+      "line": 132
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -25913,10 +25924,10 @@
       "operation": "bound-cohort",
       "subject": "singleton-cohort",
       "kind": "refusal",
-      "statement": "A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
+      "statement": "A `cohort` model whose permitted grouping columns or non-contributor grain columns name its contributor key or a forbidden column raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 130
+      "line": 134
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -25927,7 +25938,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 132
+      "line": 136
     },
     {
       "id": "disclosure.record.segment",
@@ -37920,6 +37931,10 @@
     [
       "disclosure.template.read-envelope",
       "run.publish.disclosure-digest"
+    ],
+    [
+      "disclosure.bound-cohort.governance-declaration",
+      "run.declare.spec-invalid"
     ],
     [
       "disclosure.record.header-unsupported",
@@ -57567,6 +57582,47 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/audit.rs",
         "name": "verify_passes_an_intact_chain_and_names_the_rewritten_index",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.bound-cohort.exact-figures": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/disclosure.rs",
+        "name": "check_reports_singleton_cohorts_and_exact_per_person_figures_by_model",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/disclosure/cohort.rs",
+        "name": "exact_figures_on_a_per_person_model_raise_exact_per_person",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.bound-cohort.governance-declaration": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/disclosure/cohort.rs",
+        "name": "a_model_declares_per_person_or_cohort_governance_and_defaults_to_per_person",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.bound-cohort.singleton-cohort": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/disclosure.rs",
+        "name": "check_reports_singleton_cohorts_and_exact_per_person_figures_by_model",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/disclosure/cohort.rs",
+        "name": "a_cohort_key_naming_one_person_raises_singleton_cohort_at_declaration",
         "verdict": "performed",
         "proved": false
       }

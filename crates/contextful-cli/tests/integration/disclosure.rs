@@ -326,3 +326,58 @@ fn a_build_job_naming_a_governed_model_raises_release_required() {
     assert_eq!(fired.len(), 1, "{rows:?}");
     assert_eq!((&fired[0]["status"], &fired[0]["error_kind"]), (&serde_json::json!("failed"), &serde_json::json!("Permanent")), "{rows:?}");
 }
+
+/// `RELEASED` with `keys` added to its `[model.disclosure]` block.
+fn governed(keys: &str) -> String {
+    RELEASED.replace("per_run_spend = 1000\n", &format!("per_run_spend = 1000\n{keys}\n"))
+}
+
+/// The diagnostic reports a singleton cohort and exact per-person figures by model name,
+/// and admits exact figures under cohort governance.
+// spec: disclosure.bound-cohort.singleton-cohort@4a844bb2
+// spec: disclosure.bound-cohort.exact-figures@0c5b5fc3
+#[test]
+fn check_reports_singleton_cohorts_and_exact_per_person_figures_by_model() {
+    let model = |id: &str, keys: &str| {
+        format!("[[model]]\nid = \"{id}\"\nsql = \"SELECT industry, tenant_id, SUM(revenue) AS revenue FROM revenue GROUP BY industry, tenant_id\"\nunique_key = [\"industry\", \"tenant_id\"]\n[model.disclosure]\ncontributor_key = \"tenant_id\"\nmin_group_size = 3\n{keys}\n")
+    };
+    let out = check(&format!(
+        "{}{}{}",
+        model("singleton", "grouping_allowlist = [\"industry\", \"tenant_id\"]\ngovernance = \"cohort\""),
+        model("exact", "grouping_allowlist = [\"industry\"]\nfigures = \"exact\""),
+        model("cohort_exact", "grouping_allowlist = [\"industry\"]\nfigures = \"exact\"\ngovernance = \"cohort\""),
+    ));
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("singleton: DisclosureSingletonCohort"), "{stderr}");
+    assert!(stderr.contains("exact: DisclosureExactPerPerson"), "{stderr}");
+    assert!(!stderr.contains("cohort_exact"), "{stderr}");
+}
+
+/// A cohort release whose key names the contributor key refuses before any unit is charged
+/// or any row is published.
+#[test]
+fn release_refuses_a_singleton_cohort_before_charging_a_unit() {
+    let manifest = governed("governance = \"cohort\"").replace("grouping_allowlist = [\"industry\"]", "grouping_allowlist = [\"industry\", \"tenant_id\"]");
+    let dir = benchmark(&format!("{manifest}{CAP}"));
+    let out = release(dir.path(), &[]);
+    assert!(String::from_utf8_lossy(&out.stderr).starts_with("DisclosureSingletonCohort:"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(published(dir.path()).is_none(), "nothing was published");
+    assert!(!dir.path().join(".contextful/disclosure/benchmark/budget.sqlite").exists(), "no unit was charged");
+}
+
+/// One policy declaring exact figures refuses under the default `per-person` governance and
+/// publishes under `cohort`.
+#[test]
+fn a_per_person_and_a_cohort_release_of_exact_figures_differ() {
+    let dir = benchmark(&format!("{}{CAP}", governed("figures = \"exact\"")));
+    let out = release(dir.path(), &[]);
+    assert!(String::from_utf8_lossy(&out.stderr).starts_with("DisclosureExactPerPerson:"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(published(dir.path()).is_none(), "nothing was published");
+
+    let dir = benchmark(&format!("{}{CAP}", governed("figures = \"exact\"\ngovernance = \"cohort\"")));
+    let out = release(dir.path(), &[]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let text = published(dir.path()).expect("the cohort release publishes").to_string();
+    assert!(text.contains("energy") && !text.contains("t4"), "{text}");
+}

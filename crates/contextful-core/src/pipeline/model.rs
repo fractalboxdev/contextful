@@ -179,7 +179,11 @@ pub struct DisclosureDecl {
     #[serde(default)]
     pub emit_sentinel: bool,
     #[serde(default)]
-    pub figures: Option<String>,
+    pub figures: Option<Figures>,
+    /// Whether each published figure describes one person or a cohort
+    /// (`disclosure.bound-cohort.governance-declaration`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance: Option<Governance>,
     #[serde(default)]
     pub forbidden_columns: Vec<String>,
     #[serde(default)]
@@ -188,6 +192,39 @@ pub struct DisclosureDecl {
     /// (`disclosure.release.spend-declaration`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub per_run_spend: Option<f64>,
+}
+
+impl DisclosureDecl {
+    /// The declared governance; an absent `governance` is `per-person`.
+    pub fn governance(&self) -> Governance {
+        self.governance.unwrap_or_default()
+    }
+
+    /// The declared figures; an absent `figures` is `noised`.
+    pub fn figures(&self) -> Figures {
+        self.figures.unwrap_or_default()
+    }
+}
+
+/// What one published figure of a governed model describes
+/// (`disclosure.bound-cohort.governance-declaration`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Governance {
+    /// One person; the stricter regime, and the default.
+    #[default]
+    PerPerson,
+    /// A cohort of many contributors.
+    Cohort,
+}
+
+/// Whether a governed model's figures are noised or exact (`disclosure.bound-cohort.exact-figures`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Figures {
+    #[default]
+    Noised,
+    Exact,
 }
 
 /// A project manifest's top-level `[disclosure]` block (`disclosure.release.lifetime-cap`).

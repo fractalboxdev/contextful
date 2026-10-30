@@ -94,9 +94,13 @@ The release suppresses a group whose distinct contributors fall under the declar
 minimum ({{disclosure.suppress.min-group-size}}). Every suppressed group together leaves one
 sentinel row with no key or figure ({{disclosure.suppress.sentinel-row}}).
 
-A cohort key resolving to one person fails at declaration
-({{disclosure.bound-cohort.singleton-cohort}}). A named query template holds exactly one
-statement ({{disclosure.template.single-statement}}). The offline diagnostic checks every
+A model declares whether its figures describe one person or a cohort, and a model
+declaring neither is per-person ({{disclosure.bound-cohort.governance-declaration}}). A
+cohort key resolving to one person fails at declaration
+({{disclosure.bound-cohort.singleton-cohort}}).
+
+A named query template holds exactly one statement
+({{disclosure.template.single-statement}}). The offline diagnostic checks every
 published model's policy from local files ({{disclosure.set-mode.check-verb}}).
 
 ## Accountability: the audit chain

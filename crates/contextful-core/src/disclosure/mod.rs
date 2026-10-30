@@ -6,6 +6,7 @@
 //! the exact noise it draws, which groups of a derived result publish, and the one signal a
 //! withheld group leaves, and the cross-owner hashed join under a per-pair pepper.
 
+pub mod cohort;
 pub mod declare;
 pub mod error;
 pub mod erase;
