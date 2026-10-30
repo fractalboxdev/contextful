@@ -1077,9 +1077,9 @@ impl TableReader for Landing {
     }
 }
 
-/// A host task reads each joined table once after selection and before processing its first unit. Each unit carries
+/// A host task reads each joined table once, before the anti-join and before processing its first unit. Each unit carries
 /// every row whose join-column value equals that unit's key. Rows landed after that read are absent.
-// spec: run.select.unit-parents@905c5cc0
+// spec: run.select.unit-parents@3bbf256a
 #[test]
 fn a_host_unit_carries_its_joined_rows_read_once_before_it_derives() {
     use contextful_connectors::derive::HostDerive;
@@ -1114,6 +1114,47 @@ fn a_host_unit_carries_its_joined_rows_read_once_before_it_derives() {
     assert_eq!(seen, [("d1".to_string(), 2, 0), ("d2".to_string(), 0, 1)], "the row landing after the read is absent");
     let joined = &landing.iter().find(|(t, _)| t == "joined").unwrap().1;
     assert_eq!(joined.len(), 2, "{landing:?}");
+}
+
+/// A host task that joins tables also hashes each unit's joined rows into its key, so a changed joined row re-derives
+/// that unit alone on the next tick.
+// spec: run.select.join-key@b132944e
+#[test]
+fn a_changed_joined_row_re_derives_its_unit_alone_on_the_next_tick() {
+    use contextful_connectors::derive::HostDerive;
+    use contextful_core::run::derive::task::Tasks;
+    let task = Arc::new(Joined(Default::default()));
+    let mut tasks = Tasks::default();
+    tasks.register("join", task.clone()).unwrap();
+    let config = DeriveConfig::parse_with("docs", &json!({"task": "join", "source_table": "documents", "parent_id_column": "doc_id"}), &tasks).unwrap();
+    let rows = |v: Value| -> Vec<Row> { v.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect() };
+    let documents = rows(json!([{"doc_id": "d1", "body": "a"}, {"doc_id": "d2", "body": "b"}]));
+    let tags = rows(json!([{"doc_id": "d2", "tag": "red"}]));
+    let tick = |notes: Value, markers: Vec<Row>| {
+        task.0.lock().unwrap().clear();
+        let derive = HostDerive {
+            pipeline_id: "docs".into(),
+            config: config.clone(),
+            task: task.clone(),
+            tables: Default::default(),
+            retention_columns: Default::default(),
+            reader: Box::new(Rows(vec![("documents".into(), documents.clone()), ("notes".into(), rows(notes)), ("tags".into(), tags.clone()), ("units".into(), markers)])),
+            available: None,
+            client: None,
+        };
+        let (landing, _) = derive.stage(&Never).unwrap();
+        let mut derived: Vec<String> = task.0.lock().unwrap().iter().map(|(key, _, _)| key.clone()).collect();
+        derived.sort();
+        (derived, landing.into_iter().find(|(t, _)| t == "units").unwrap().1)
+    };
+    let notes = json!([{"doc_id": "d1", "note": "x"}, {"doc_id": "d2", "note": "y"}]);
+    let (first, markers) = tick(notes.clone(), Vec::new());
+    assert_eq!(first, ["d1", "d2"], "every unit derives on the first tick");
+    assert_eq!(markers.len(), 2);
+    let (unchanged, _) = tick(notes, markers.clone());
+    assert!(unchanged.is_empty(), "unchanged joined rows re-derive nothing: {unchanged:?}");
+    let (changed, _) = tick(json!([{"doc_id": "d1", "note": "edited"}, {"doc_id": "d2", "note": "y"}]), markers);
+    assert_eq!(changed, ["d1"], "the unit whose joined row changed re-derives alone");
 }
 
 /// `since`, an RFC 3339 instant, keeps a host task's parent rows whose `_ingested_at` falls at or after it, before the

@@ -277,16 +277,84 @@ pub fn host_key(
     row: &Row,
     columns: &[String],
 ) -> String {
+    host_key_joined(task, version, parent_id, row, columns, &[], &BTreeMap::new())
+}
+
+/// The key a host unit of a task joining `joins` derives under: [`host_key`]'s document
+/// and, per joined table, the unit's `joined` rows over the join's read columns, sorted,
+/// so a joined row landing, changing or leaving changes the key (`run.select.join-key`).
+/// A task joining no table derives under [`host_key`].
+pub fn host_key_joined(
+    task: &str,
+    version: &str,
+    parent_id: &str,
+    row: &Row,
+    columns: &[String],
+    joins: &[Join],
+    joined: &BTreeMap<String, Vec<Row>>,
+) -> String {
     let declared: Map<String, Value> = columns
         .iter()
         .map(|c| (c.clone(), row.get(c).cloned().unwrap_or(Value::Null)))
         .collect();
-    let doc = json!({
+    let mut doc = json!({
         "task": task,
         "version": version,
         "parent": { "id": parent_id, "columns": declared, "key": row.get(DERIVATION_KEY) },
     });
+    if !joins.is_empty() {
+        let tables: Map<String, Value> = joins
+            .iter()
+            .map(|join| {
+                let mut rows: Vec<String> = joined
+                    .get(&join.table)
+                    .into_iter()
+                    .flatten()
+                    .map(|r| {
+                        let cells: Vec<&Value> = join.read_columns().into_iter().map(|c| r.get(c).unwrap_or(&Value::Null)).collect();
+                        serde_json::to_string(&cells).expect("a JSON value serializes")
+                    })
+                    .collect();
+                rows.sort_unstable();
+                (join.table.clone(), json!(rows))
+            })
+            .collect();
+        doc["joined"] = Value::Object(tables);
+    }
     sha256_hex(&serde_json::to_vec(&doc).expect("a JSON value serializes"))
+}
+
+/// Every row of each table a host task joins, held by its join-column value. The engine
+/// reads it once, before the anti-join, so each unit's key covers its joined rows
+/// (`run.select.unit-parents`, `run.select.join-key`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct JoinedRows {
+    tables: BTreeMap<String, BTreeMap<String, Vec<Row>>>,
+}
+
+impl JoinedRows {
+    /// Hold `rows` of `join`'s table by join-column value; a row whose join column is null
+    /// or blank joins no unit.
+    pub fn insert(&mut self, join: &Join, rows: Vec<Row>) {
+        let by_key = self.tables.entry(join.table.clone()).or_default();
+        for r in rows {
+            if let Some(key) = text(r.get(&join.key_column)) {
+                by_key.entry(key).or_default().push(r);
+            }
+        }
+    }
+
+    /// Per table `joins` names, the rows whose join column holds `key`, an empty list where
+    /// none does.
+    pub fn of(&self, joins: &[Join], key: &str) -> BTreeMap<String, Vec<Row>> {
+        joins
+            .iter()
+            .map(|join| {
+                let rows = self.tables.get(&join.table).and_then(|t| t.get(key)).cloned().unwrap_or_default();
+                (join.table.clone(), rows)
+            })
+            .collect()
+    }
 }
 
 fn text(v: Option<&Value>) -> Option<String> {
@@ -337,8 +405,21 @@ pub fn select_host(
     config: &DeriveConfig,
     task: &dyn DeriveTask,
 ) -> HostSelection {
+    select_host_joined(parents, markers, config, task, &JoinedRows::default())
+}
+
+/// [`select_host`] for a task joining tables: each unit carries its rows of `joined` and
+/// derives under the key [`host_key_joined`] hashes over them (`run.select.join-key`).
+pub fn select_host_joined(
+    parents: &[Row],
+    markers: &[Row],
+    config: &DeriveConfig,
+    task: &dyn DeriveTask,
+    joined: &JoinedRows,
+) -> HostSelection {
     let units = by_unit(markers);
     let columns = task.columns();
+    let joins = task.joins();
     let budget = usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX);
     let mut sel = HostSelection::default();
     let mut seen = BTreeSet::new();
@@ -363,7 +444,8 @@ pub fn select_host(
             continue;
         }
         sel.counts.eligible += 1;
-        let derivation_key = host_key(config.task.name(), task.version(), &key, r, &columns);
+        let unit_joined = joined.of(&joins, &key);
+        let derivation_key = host_key_joined(config.task.name(), task.version(), &key, r, &columns, &joins, &unit_joined);
         let prior = match units.get(&key) {
             None => 0,
             Some(rows) => match standing(rows, &derivation_key, config.max_attempts) {
@@ -378,7 +460,7 @@ pub fn select_host(
         sel.outstanding.push(HostUnit {
             key,
             row: r.clone(),
-            joined: BTreeMap::new(),
+            joined: unit_joined,
             prior_attempts: prior,
             derivation_key,
         });
@@ -399,15 +481,10 @@ pub fn select_host(
 /// where none does; a row whose join column is null or blank joins no unit
 /// (`run.select.unit-parents`).
 pub fn join_units(units: &mut [HostUnit], join: &Join, rows: Vec<Row>) {
-    let mut by_key: BTreeMap<String, Vec<Row>> = BTreeMap::new();
-    for r in rows {
-        if let Some(key) = text(r.get(&join.key_column)) {
-            by_key.entry(key).or_default().push(r);
-        }
-    }
+    let mut joined = JoinedRows::default();
+    joined.insert(join, rows);
     for unit in units {
-        let rows = by_key.get(&unit.key).cloned().unwrap_or_default();
-        unit.joined.insert(join.table.clone(), rows);
+        unit.joined.extend(joined.of(std::slice::from_ref(join), &unit.key));
     }
 }
 

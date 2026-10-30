@@ -70,14 +70,16 @@ The derive source selects eligible parent rows each tick and limits each run's w
   *P4*
 - `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
   *A-authority#prepared-record*
-- `unmetered-grant` — A derive pipeline declaring a shared-quota grant for any task other than `link_preview` raises `DeriveUnmeteredGrant`.
+- `unmetered-grant` — A derive pipeline declaring a shared-quota grant for a task other than `link_preview` or a host task declaring `pure` false raises `DeriveUnmeteredGrant`.
   *A-connector#host-access-quota*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector#host-access-quota*
 - `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under its current {{run.emit.derivation-key}} in the pipeline's own output table, or, for a host task, its marker table.
   *A-run#derive-work-set*
-- `unit-parents` — A host task reads each joined table once after selection and before processing its first unit. Each unit carries every row whose join-column value equals that unit's key. Rows landed after that read are absent.
+- `unit-parents` — A host task reads each joined table once, before the anti-join and before processing its first unit. Each unit carries every row whose join-column value equals that unit's key. Rows landed after that read are absent.
   *A-run#derivation-key-decides, A-run#selection-stays-bounded*
+- `join-key` — A host task that joins tables also hashes each unit's joined rows into its {{run.emit.task-version}} key, each table's rows sorted over its read columns, so a joined row landing, changing or leaving re-derives that unit alone.
+  *A-run#derivation-key-decides*
 - `join-keyed` — A task reads joined tables declaring `primary_key` through {{store.declare.dedup-view}}. Each unit joins one surviving row per key, excluding superseded versions.
   *because a raw file read hands a re-landed row in both versions, and the admitted read hands one*
 - `join-absent` — A joined table the store holds no schema for fails the tick with a `Config` failure, settling no unit, so the next tick selects every unit again.
@@ -90,9 +92,13 @@ The derive source selects eligible parent rows each tick and limits each run's w
   *A-run#chained-derive-pipelines*
 - `parent-outcome` — A derived child starts only once its parent produces a completed run outcome, a failed one included, and then reads only the parent's committed rows; a launch, wait or signal failure, or a worker dispatch error, stops the unit first.
   *A-run#chained-derive-pipelines*
-- `derive-cycle` — A build whose derive source-table dependencies return to a pipeline raises `DeriveCycle`, names every pipeline on the cycle and arms none.
+- `join-order` — A host task joining another derive pipeline's output table runs after that pipeline on its tick, as {{run.select.derive-order}} orders a source table's reader; among several such parents on one chain, it runs after the last.
   *A-run#chained-derive-pipelines*
-- `derive-after-conflict` — A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.
+- `parents-diverge` — A derive pipeline whose source-table and joined parents lie on no one dependent run raises `DeriveParentsDiverge`, naming them, and arms none.
+  *because a dependent run orders one chain from its head, so parents on two chains share no tick*
+- `derive-cycle` — A build whose derive source-table or join dependencies return to a pipeline raises `DeriveCycle`, names every pipeline on the cycle and arms none.
+  *A-run#chained-derive-pipelines*
+- `derive-after-conflict` — A derive child whose `after` names a pipeline other than the derive parent it runs after raises `DeriveAfterConflict` and arms none.
   *A-run#chained-derive-pipelines*
 - `parent-scan` — The derive source scans parent tables of at most 1000000 rows in memory. For larger tables, the source streams through the read engine in batches, holding one batch in memory.
   *A-run#derive-work-set*
@@ -101,14 +107,12 @@ The derive source selects eligible parent rows each tick and limits each run's w
 - `available-select` — A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.
   *because content derived from a later source record otherwise answers an earlier horizon*
 
-unsettled: Does a joined row's content enter the unit's {{run.emit.derivation-key}}, so a joined row landing after its unit settles derives it again (issue 95)? owner: derive affects: run.select
-unsettled: Does a host task joining another derive pipeline's output table run after that pipeline, as {{run.select.derive-order}} orders a driving table's reader (issue 95)? owner: derive affects: run.select
-
-
 #### Scenarios
 
 - `run.select.derive-order`: WHEN configuration declares a scheduled child before its parent and the child reads the parent's output, THEN the parent's tick lands its new row before the child reads it.
 - `run.select.parent-outcome`: WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick.
+- `run.select.join-key`: WHEN a keyed note one unit joins is re-landed with new text, THEN the next tick derives that unit under a new key and leaves the other units' markers standing.
+- `run.select.join-order`: WHEN a scheduled host task declared first joins the words another derive pipeline lands, THEN one cycle hands it the words that pipeline landed in the same tick.
 
 ## bind
 
@@ -127,6 +131,8 @@ Engine bindings select registered tasks, configure engine interfaces and constra
 - `pure-task` — A host task is pure unless it declares `pure` false. The engine hands a pure task no client, and its request for one refuses as {{run.select.metered-client}}, failing the tick; the engine intercepts no socket the task's own code opens.
   *because compiled task code shares the engine's process, so the client the engine hands it is the one reach the engine withholds*
 - `reach-client` — A host task declaring `pure` false receives the run's metered client for every unit; a run binding none refuses its request as {{run.select.metered-client}}.
+  *A-connector#host-access-quota*
+- `reach-grant` — Under a `grant`, the metered client of a host task declaring `pure` false reserves one permit from the grant's shared quota before each request and model call, so every pipeline naming that quota draws from one limit.
   *A-connector#host-access-quota*
 - `model-endpoint` — A host task declaring `pure` false names its {{connector.infer.model-endpoint}} with `endpoint` and `model`. The run's metered client reaches that endpoint's host alone, and each request it sends enters the run's request ledger under the marker table's run id.
   *because a compiled task shares the engine's process, so the client the engine hands it is the one route the engine meters*

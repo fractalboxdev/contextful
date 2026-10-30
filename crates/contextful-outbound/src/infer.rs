@@ -103,6 +103,13 @@ impl Endpoint {
         self.client = self.client.with_hook(hook);
         self
     }
+
+    /// The endpoint reserving one permit against `meter` ahead of each completion, so its
+    /// calls draw from the shared quota the meter's limiter binds (`run.bind.reach-grant`).
+    pub fn metered(mut self, meter: crate::limiter::Meter) -> Endpoint {
+        self.client = self.client.metered(meter);
+        self
+    }
 }
 
 impl Inference for Endpoint {

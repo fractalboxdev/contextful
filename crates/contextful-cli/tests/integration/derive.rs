@@ -611,7 +611,7 @@ fn an_exec_env_secret_reference_refuses_before_any_step_spawns() {
 }
 
 /// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each
-/// joined table read once after selection and before the first unit derives, so a row landing later is absent.
+/// joined table read once before the anti-join and the first unit, so a row landing later is absent.
 #[test]
 fn a_host_unit_joins_the_rows_of_two_tables_sharing_its_key() {
     let host = host_binary();
@@ -839,4 +839,120 @@ fn a_pure_host_task_reaches_no_model() {
     assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     assert!(String::from_utf8_lossy(&out.stderr).contains("PipelineUnknownConfigKey"), "{}", String::from_utf8_lossy(&out.stderr));
     assert!(model.requests().is_empty());
+}
+
+/// A changed joined row re-derives its unit alone: the unit whose keyed note is edited lands a second marker, and
+/// the other unit's marker stands.
+// spec: run.select.join-key@b132944e
+#[test]
+fn a_changed_joined_row_re_derives_its_unit_alone() {
+    let host = host_binary();
+    let dir = keyed_notes_project();
+    let p = dir.path();
+    let env = [("DOC_JOIN_NOTES", "src_notes")];
+    land_at(p, "documents", "docs-2", "2030-01-01T00:05:00Z", "{\"doc_id\":\"d2\",\"body\":\"beta\"}\n");
+    land_at(p, "src_notes", "notes-1", "2030-01-01T00:10:00Z", "{\"note_id\":\"n1\",\"doc_id\":\"d1\",\"note\":\"first\"}\n{\"note_id\":\"n2\",\"doc_id\":\"d2\",\"note\":\"second\"}\n");
+    land_at(p, "tags", "tags-1", "2030-01-01T00:10:00Z", "{\"tag_id\":\"t1\",\"doc_id\":\"d1\",\"tag\":\"blue\"}\n");
+    ok(&fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &env));
+    let markers = "SELECT unit_ref, derivation_key, _run_id FROM split_units ORDER BY unit_ref";
+    let first = select(p, markers);
+    assert_eq!(first.len(), 2, "{first:?}");
+    ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &env));
+    assert_eq!(select(p, markers), first, "unchanged joined rows re-derive nothing");
+    land_at(p, "src_notes", "notes-2", "2030-01-01T02:10:00Z", "{\"note_id\":\"n1\",\"doc_id\":\"d1\",\"note\":\"edited\"}\n");
+    ok(&fire(&host, p, "split-3", "2030-01-01T03:00:00Z", &env));
+    let after = select(p, markers);
+    assert_eq!(after.len(), 2, "{after:?}");
+    assert_ne!(after[0][1], first[0][1], "the edited note re-derives its unit under a new key");
+    assert_eq!(after[0][2], "split-3.split_units");
+    assert_eq!(after[1], first[1], "the other unit's marker stands");
+    assert_eq!(select(p, "SELECT unit_ref, notes FROM split_digests WHERE kind = 'passage' ORDER BY unit_ref"), [["d1", "edited"], ["d2", "second"]]);
+}
+
+/// A `doc-join` pipeline `digest`, declared first, whose `notes` join reads the `split_words` table the `word-split`
+/// pipeline `split` lands; both are scheduled.
+fn joined_chain_manifest(split_source: &str) -> String {
+    let digest = "site_id = \"site\"\n[[pipeline]]\nid = \"digest\"\nschedule = \"every 1h\"\ntables = [\n  \
+        { name = \"digests\", primary_key = [\"unit_ref\", \"derivation_key\"] },\n  \
+        { name = \"units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n]\n\
+        [pipeline.source]\nname = \"derive\"\n\
+        config = { task = \"doc-join\", source_table = \"documents\", parent_id_column = \"doc_id\" }\n";
+    let split = host_manifest("word-split").replace("id = \"split\"\n", "id = \"split\"\nschedule = \"every 1h\"\n").replace(
+        "source_table = \"documents\", parent_id_column = \"doc_id\"",
+        &format!("source_table = \"{split_source}\", parent_id_column = \"doc_id\""),
+    );
+    format!("{digest}\n{split}")
+}
+
+const JOIN_WORDS: [(&str, &str); 3] = [("DOC_JOIN_NOTES", "split_words"), ("DOC_JOIN_NOTES_ON", "unit_ref"), ("DOC_JOIN_NOTE", "word")];
+
+/// A host task joining another derive pipeline's output table runs after that pipeline on its tick, so one cycle
+/// hands the joining task the words its producer lands.
+// spec: run.select.join-order@2dea6f85
+#[test]
+fn a_task_joining_a_derive_output_runs_after_its_producer_in_one_tick() {
+    let host = host_binary();
+    let dir = host_project(&joined_chain_manifest("documents"));
+    let p = dir.path();
+    land_at(p, "tags", "tags-1", "2030-01-01T00:10:00Z", "{\"tag_id\":\"t1\",\"doc_id\":\"d1\",\"tag\":\"blue\"}\n");
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &JOIN_WORDS));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &JOIN_WORDS);
+    ok(&cycle);
+    assert_eq!(
+        select(p, "SELECT unit_ref, notes, tags FROM digest_digests WHERE kind = 'passage' ORDER BY unit_ref"),
+        [["d1", "alpha,beta", "blue"], ["d2", "gamma", ""], ["d3", "", ""]]
+    );
+}
+
+/// A join closing a cycle through derive dependencies refuses when the pipelines are declared, naming each member.
+// spec: run.select.derive-cycle@d95634a7
+#[test]
+fn a_join_closing_a_derive_cycle_refuses_at_import() {
+    let host = host_binary();
+    let dir = host_project(&joined_chain_manifest("digest_digests"));
+    let p = dir.path();
+    let out = run_bin(&host, p, &["pipeline", "import", "--project", "research"], &JOIN_WORDS);
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && error.contains("DeriveCycle") && error.contains("digest") && error.contains("split"), "{error}");
+    assert!(!p.join(".contextful/control/research/manifest@v1.toml").exists(), "a cyclic snapshot was claimed");
+}
+
+/// Two `judge` pipelines granted one shared quota: each model call reserves a permit from it, so a limiter granting
+/// three permits in all admits three of four calls, and the denied unit fails.
+// spec: run.bind.reach-grant@ad6e21cb
+#[test]
+fn two_host_tasks_sharing_a_quota_stay_under_its_limit() {
+    let model = ModelServer::start();
+    let granted = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = granted.clone();
+    let limiter = super::pipeline::Vendor::start(move |target| match target {
+        "/quota/acquire" if seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 3 => (200, "{\"decision\":\"granted\",\"permits\":1,\"ttl_secs\":60}".into()),
+        "/quota/acquire" => (200, "{\"decision\":\"denied\",\"retry_after_secs\":30}".into()),
+        _ => (204, String::new()),
+    });
+    let endpoint = format!("http://127.0.0.1:{}/v1", model.port);
+    let granted_judge = |id: &str| {
+        judge_manifest(&endpoint)
+            .replace("id = \"judge\"", &format!("id = \"{id}\""))
+            .replace("model = \"judge-1\" }", "model = \"judge-1\", grant = { quota = \"models\", class = \"score\" } }")
+    };
+    let manifest = format!(
+        "[limiters.models]\nendpoint = \"{}\"\ntoken = \"secret://limiter-token\"\npermits = 1\n{}\n{}",
+        limiter.url("/quota"),
+        granted_judge("judge"),
+        granted_judge("grader")
+    );
+    let host = host_binary();
+    let dir = host_project_with_rows(&manifest, "{\"doc_id\":\"d1\",\"body\":\"alpha\"}\n{\"doc_id\":\"d2\",\"body\":\"beta\"}\n");
+    let p = dir.path();
+    let env = [("CONTEXTFUL_INFERENCE_KEY", "k-test"), ("LIMITER_TOKEN", "lim-1"), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")];
+    for (id, run) in [("judge", "judge-1"), ("grader", "grader-1")] {
+        let out = run_bin(&host, p, &["pipeline", "run", id, "--project", "research", "--run-id", run, "--site-id", "site", "--now", "2030-01-01T01:00:00Z"], &env);
+        assert!(out.status.success(), "{id}: {}", String::from_utf8_lossy(&out.stderr));
+    }
+    assert_eq!(model.requests().len(), 3, "the shared quota admits three calls across both pipelines");
+    assert_eq!(limiter.targets().iter().filter(|t| t.as_str() == "/quota/acquire").count(), 4);
+    let statuses = |table: &str| select(p, &format!("SELECT unit_status FROM {table} ORDER BY unit_ref"));
+    assert_eq!(statuses("judge_units"), [["ok"], ["ok"]]);
+    assert_eq!(statuses("grader_units"), [["ok"], ["failed"]], "the denied permit fails its unit");
 }

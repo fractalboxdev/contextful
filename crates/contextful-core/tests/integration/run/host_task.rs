@@ -8,7 +8,7 @@ use contextful_core::run::derive::config::{DeriveConfig, ModelEndpoint};
 use contextful_core::run::derive::emit::{UnitStatus, superseded, superseded_within_version};
 use contextful_core::run::derive::task::{
     Answer, DeriveTask, Derived, HostUnit, Join, MeteredClient, ModelCall, Reach, Request, TASK_VERSION, Tasks, check_host_tables,
-    host_key, host_rows, join_units, landing_order, select_host,
+    host_key, host_key_joined, host_rows, join_units, landing_order, select_host, select_host_joined, JoinedRows,
 };
 use contextful_core::run::ports::Row;
 use contextful_core::store::declare::TableDecl;
@@ -470,7 +470,7 @@ fn a_retaining_table_supersedes_within_a_version_alone() {
     );
 }
 
-/// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each joined table read once after selection and before the first unit derives, so a row landing later is absent.
+/// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each joined table read once before the anti-join and the first unit, so a row landing later is absent.
 #[test]
 fn a_unit_carries_every_joined_row_sharing_its_key() {
     let mut units = vec![unit("d1", "alpha", "1"), unit("d2", "beta", "1"), unit("7", "gamma", "1")];
@@ -492,6 +492,80 @@ fn a_unit_carries_every_joined_row_sharing_its_key() {
     assert!(units[0].joined["tags"].is_empty(), "a unit sharing no joined row holds an empty list");
     assert_eq!(units[1].joined["tags"], rows(json!([{"doc": "d2", "tag": "red"}])));
     assert_eq!(notes.read_columns(), ["doc_id", "note"]);
+}
+
+/// A host task joining `notes` and `tags` on `doc_id`.
+struct Noting;
+
+impl DeriveTask for Noting {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+    fn joins(&self) -> Vec<Join> {
+        vec![
+            Join { table: "notes".into(), key_column: "doc_id".into(), columns: vec!["note".into()] },
+            Join { table: "tags".into(), key_column: "doc_id".into(), columns: vec!["tag".into()] },
+        ]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["digests".into()]
+    }
+    fn derive(&self, _unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
+        Ok(Derived::new())
+    }
+}
+
+/// A host task that joins tables also hashes each unit's joined rows into its key, so a changed, added or removed
+/// joined row re-derives that unit alone, and the joined rows' order and unread columns change no key.
+// spec: run.select.join-key@b132944e
+#[test]
+fn a_changed_joined_row_re_derives_its_unit_alone() {
+    let mut registry = Tasks::default();
+    registry.register("noting", Arc::new(Noting)).unwrap();
+    let config = DeriveConfig::parse_with("docs", &json!({"task": "noting", "source_table": "documents", "parent_id_column": "doc_id"}), &registry).unwrap();
+    let parents = rows(json!([{"doc_id": "d1", "body": "a"}, {"doc_id": "d2", "body": "b"}, {"doc_id": "d3", "body": "c"}]));
+    let joined = |notes: Value, tags: Value| {
+        let mut j = JoinedRows::default();
+        let [n, t] = <[Join; 2]>::try_from(Noting.joins()).unwrap();
+        j.insert(&n, rows(notes));
+        j.insert(&t, rows(tags));
+        j
+    };
+    let notes = json!([{"doc_id": "d1", "note": "x", "extra": 1}, {"doc_id": "d1", "note": "y"}, {"doc_id": "d2", "note": "z"}]);
+    let tags = json!([{"doc_id": "d2", "tag": "red"}]);
+    let first = select_host_joined(&parents, &[], &config, &Noting, &joined(notes.clone(), tags.clone()));
+    assert_eq!(first.outstanding.len(), 3, "every unit derives on the first pass");
+    let d1 = &first.outstanding[0];
+    assert_eq!(d1.joined["notes"].len(), 2, "a unit carries its joined rows from selection");
+    assert!(d1.joined["tags"].is_empty());
+    let settled: Vec<Row> = first
+        .outstanding
+        .iter()
+        .map(|u| row(json!({"unit_ref": u.key, "kind": "marker", "unit_status": "ok", "attempts": 1, "derivation_key": u.derivation_key})))
+        .collect();
+    let outstanding = |notes: Value, tags: Value| -> Vec<String> {
+        select_host_joined(&parents, &settled, &config, &Noting, &joined(notes, tags)).outstanding.into_iter().map(|u| u.key).collect()
+    };
+    assert!(outstanding(notes.clone(), tags.clone()).is_empty(), "unchanged joined rows re-derive nothing");
+    let reordered = json!([{"doc_id": "d2", "note": "z"}, {"doc_id": "d1", "note": "y"}, {"doc_id": "d1", "note": "x", "extra": 2}]);
+    assert!(outstanding(reordered, tags.clone()).is_empty(), "row order and unread columns change no key");
+    let changed = json!([{"doc_id": "d1", "note": "x"}, {"doc_id": "d1", "note": "edited"}, {"doc_id": "d2", "note": "z"}]);
+    assert_eq!(outstanding(changed, tags.clone()), ["d1"], "a changed joined row re-derives its unit alone");
+    assert_eq!(outstanding(notes.clone(), json!([{"doc_id": "d2", "tag": "red"}, {"doc_id": "d3", "tag": "new"}])), ["d3"], "an added joined row re-derives its unit");
+    assert_eq!(outstanding(notes, json!([])), ["d2"], "a removed joined row re-derives its unit");
+
+    let plain = row(json!({"doc_id": "d1", "body": "a"}));
+    assert_eq!(
+        host_key_joined("split", "1", "d1", &plain, &["body".into()], &[], &Default::default()),
+        host_key("split", "1", "d1", &plain, &["body".into()]),
+        "a task joining no table keeps its key"
+    );
 }
 
 struct Edges;

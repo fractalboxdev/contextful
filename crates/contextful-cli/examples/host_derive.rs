@@ -8,7 +8,8 @@
 //! exits the parent process with a failed run outcome in the chained-failure fixture.
 //! `WORD_SPLIT_REACH` makes the pure `word-split` ask its reach for a network client, or,
 //! set to `infer`, for a model call.
-//! `DOC_JOIN_NOTES` names the table `doc-join` reads as `notes`, `notes` by default.
+//! `DOC_JOIN_NOTES` names the table `doc-join` reads as `notes`, `notes` by default, and
+//! `DOC_JOIN_NOTES_ON` and `DOC_JOIN_NOTE` its join and note columns, `doc_id` and `note` by default.
 //! `judge` declares `pure` false and lands `scores` and `units` from a `documents` row, one
 //! model call scoring its `body`; `JUDGE_SEND` names an address it requests first.
 
@@ -106,7 +107,11 @@ impl DeriveTask for WordCopy {
 struct DocJoin;
 
 fn notes_table() -> String {
-    std::env::var("DOC_JOIN_NOTES").unwrap_or_else(|_| "notes".into())
+    env_or("DOC_JOIN_NOTES", "notes")
+}
+
+fn env_or(var: &str, default: &str) -> String {
+    std::env::var(var).unwrap_or_else(|_| default.into())
 }
 
 impl DeriveTask for DocJoin {
@@ -118,7 +123,7 @@ impl DeriveTask for DocJoin {
     }
     fn joins(&self) -> Vec<Join> {
         vec![
-            Join { table: notes_table(), key_column: "doc_id".into(), columns: vec!["note".into()] },
+            Join { table: notes_table(), key_column: env_or("DOC_JOIN_NOTES_ON", "doc_id"), columns: vec![env_or("DOC_JOIN_NOTE", "note")] },
             Join { table: "tags".into(), key_column: "doc_id".into(), columns: vec!["tag".into()] },
         ]
     }
@@ -138,7 +143,7 @@ impl DeriveTask for DocJoin {
         let mut out = Derived::new();
         out.insert(
             "digests".into(),
-            vec![row(json!({ "notes": texts(&notes_table(), "note"), "tags": texts("tags", "tag") }))],
+            vec![row(json!({ "notes": texts(&notes_table(), &env_or("DOC_JOIN_NOTE", "note")), "tags": texts("tags", "tag") }))],
         );
         Ok(out)
     }

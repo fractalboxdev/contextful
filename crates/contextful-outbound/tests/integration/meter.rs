@@ -437,3 +437,30 @@ fn a_limiter_call_is_bounded_and_a_denial_returns_without_waiting() {
     assert!(waited >= Duration::from_secs(4) && waited < Duration::from_secs(10), "the limiter call took {waited:?}");
     assert_eq!(vendor_hits(&v), 0);
 }
+
+/// A metered model endpoint reserves one permit ahead of each completion, so a limiter granting two permits in all
+/// admits two completions and the third never reaches the model.
+// spec: run.bind.reach-grant@ad6e21cb
+#[test]
+fn a_metered_endpoint_reserves_one_permit_before_each_completion() {
+    use contextful_core::memory::synthesize::{Inference, Message};
+    let _env = proxy_env();
+    let clock = SetClock::new();
+    let granted = Arc::new(AtomicUsize::new(0));
+    let seen = granted.clone();
+    let l = Server::start(move |r| match r.path() {
+        "/acquire" if seen.fetch_add(1, Ordering::SeqCst) < 2 => Response::json(200, "{\"decision\":\"granted\",\"permits\":1,\"ttl_secs\":60}"),
+        "/acquire" => Response::json(200, "{\"decision\":\"denied\",\"retry_after_secs\":30}"),
+        _ => Response::json(204, ""),
+    });
+    let model = Server::start(|_| Response::json(200, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"));
+    let limiter = limiter_at(&l.url(""), 1, &clock);
+    let endpoint = contextful_outbound::infer::Endpoint::new(&model.url("/v1"), "m", None).unwrap().metered(Meter::new(declaration(), Some(limiter.clone())));
+    let answers: Vec<Result<String, String>> = (0..3).map(|_| endpoint.complete(&[Message::new("user", "x")])).collect();
+    limiter.finish();
+    assert_eq!(answers.len(), 3);
+    assert_eq!(answers.iter().filter(|a| a.as_deref() == Ok("ok")).count(), 2, "{answers:?}");
+    assert!(answers[2].is_err(), "the denied permit sends no completion");
+    assert_eq!(model.received("/v1/chat/completions").len(), 2);
+    assert_eq!(l.received("/acquire").len(), 3);
+}

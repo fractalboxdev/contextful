@@ -423,7 +423,13 @@ pub fn bind_targets(jobs: &[Job], targets: &Targets) -> Result<(), JobError> {
 /// Add explicitly dependent build jobs to the existing pipeline units. Models do not
 /// infer dependencies from SQL and job-to-job dependencies are not admitted.
 pub fn dependent_jobs(specs: &[PipelineSpec], jobs: &[Job]) -> Result<crate::pipeline::declare::DependentRuns, JobError> {
-    let mut runs = crate::pipeline::declare::dependent_runs(specs.iter()).map_err(|e| JobError::Invalid(e.to_string()))?;
+    dependent_jobs_joining(specs, jobs, &|_| Vec::new())
+}
+
+/// [`dependent_jobs`] over pipeline units ordered by the tables each derive pipeline's host
+/// task joins, as `joins` answers them (`run.select.join-order`).
+pub fn dependent_jobs_joining(specs: &[PipelineSpec], jobs: &[Job], joins: &dyn Fn(&PipelineSpec) -> Vec<String>) -> Result<crate::pipeline::declare::DependentRuns, JobError> {
+    let mut runs = crate::pipeline::declare::dependent_runs_joining(specs.iter(), joins).map_err(|e| JobError::Invalid(e.to_string()))?;
     for job in jobs {
         let Some(parent) = &job.after else { continue };
         if !specs.iter().any(|p| &p.id == parent) {
