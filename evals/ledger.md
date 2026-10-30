@@ -2,7 +2,7 @@
 
 # Target ledger
 
-184 entries: 119 gated, 53 recorded, 7 scheduled, 5 open.
+180 entries: 119 gated, 49 recorded, 7 scheduled, 5 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -173,10 +173,6 @@
 | `vector-recall-100k` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.n100k.f32.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
 | `vector-recall-100k-f16` | `store.index.graph` | `retrieval.vector.n100k.f16.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
 | `vector-recall-100k-i8` | `store.index.i8-storage` | `retrieval.vector.n100k.i8.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.9` | recorded |
-| `vector-resident` | `read.retrieve.sidecar-size-cap` | `vector.f16_200mb.probe.anon_delta_mib` | trend | bench `contextful_context::vector_sidecar` | `< 64` | recorded |
-| `vector-resident-i8` | `read.retrieve.sidecar-size-cap` | `vector.i8_200mb.probe.anon_delta_mib` | trend | bench `contextful_context::vector_sidecar` | `< 64` | recorded |
-| `vector-resident-peak-rss` | `read.retrieve.sidecar-size-cap` | `vector.f16_200mb.probe.peak_rss` | trend | bench `contextful_context::vector_sidecar` | — | recorded |
-| `vector-resident-peak-rss-i8` | `read.retrieve.sidecar-size-cap` | `vector.i8_200mb.probe.peak_rss` | trend | bench `contextful_context::vector_sidecar` | — | recorded |
 | `vintage-after-fold-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.append_after_fold` | gate | test `contextful_context::vintage_cost::an_append_after_a_fold_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-append-day-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.append_day` | gate | test `contextful_context::vintage_cost::a_one_day_append_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-backfill-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.backfill_100_days` | gate | test `contextful_context::vintage_cost::a_daily_backfill_reads_no_stored_vintage` | `== 0` | gated |

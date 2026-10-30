@@ -6,13 +6,15 @@
 //!
 //! Each sidecar is built by `vector::build`, the builder the fold calls over its staged rows.
 //! A resident case builds the sidecar, then runs this binary again as a fresh child that
-//! opens it, probes it once and reports its own peak resident set, so the build's memory
-//! never counts.
+//! opens it, probes it and reports its own resident set and anonymous growth, so the
+//! build's memory never counts.
 //!
-//! `cargo bench -p contextful-context --bench vector_sidecar` runs both parts: recall in
-//! about 2 minutes on a 28-core workstation, and resident memory in about 70, almost all of
-//! it the single-threaded graph builds; `-- resident` or `-- recall` runs one. Every case
-//! prints its figures; the workspace test stage builds no bench target.
+//! `cargo bench -p contextful-context --bench vector_sidecar` measures recall, about 2
+//! minutes on a 28-core workstation, the part the ledger records under `contextful-ci
+//! measure`. `-- resident` measures resident memory instead, about 70 minutes, almost all
+//! of it the single-threaded graph builds, and records nothing; `-- recall resident` runs
+//! both. Every case prints its figures, and a resident case asserts the reader's anonymous
+//! growth stays under 64 MiB; the workspace test stage builds no bench target.
 
 use arrow_array::{ArrayRef, FixedSizeListArray, Float32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
@@ -212,7 +214,7 @@ fn resident(storage: VectorStorage) -> Resident {
 
 #[cfg(unix)]
 fn resident_part() {
-    for (storage, suffix) in [(VectorStorage::F16, ""), (VectorStorage::I8, "-i8")] {
+    for storage in [VectorStorage::F16, VectorStorage::I8] {
         let r = resident(storage);
         println!(
             "resident {} at {} × {RESIDENT_DIM} ({:.1} MiB graph, built in {:.0} s): {:.1} MiB resident before opening; one probe peak {:.1} MiB, resident {:.1} MiB, anonymous +{:.2} MiB; after {} more, peak {:.1} MiB, resident {:.1} MiB, anonymous +{:.2} MiB; probe p50 {:.2} ms",
@@ -230,10 +232,9 @@ fn resident_part() {
             r.all[2],
             r.probe_p50_ms
         );
-        // The reader's own memory, which the 64 MiB bound counts, and the whole process's
-        // peak, mapped graph pages included.
-        emit(&format!("vector-resident{suffix}"), r.one[2], 1, RESIDENT_SEED);
-        emit(&format!("vector-resident-peak-rss{suffix}"), r.one[0], 1, RESIDENT_SEED);
+        // The anonymous growth is the reader's own memory, which the 64 MiB bound counts;
+        // the resident set adds the clean mapped graph pages a probe touched.
+        assert!(r.one[2] < 64.0, "one probe of a 200 MB {} sidecar grew the reader by {:.2} MiB", storage_name(storage), r.one[2]);
     }
 }
 
@@ -326,7 +327,7 @@ fn main() {
     if parts.is_empty() || parts.contains(&"recall") {
         recall_part();
     }
-    if parts.is_empty() || parts.contains(&"resident") {
+    if parts.contains(&"resident") {
         resident_part();
     }
 }

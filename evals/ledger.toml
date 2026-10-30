@@ -1416,48 +1416,6 @@ method = { bench = "contextful_context::vector_sidecar" }
 target = { op = ">=", value = 0.9 }
 seed   = 0x5eed_0043
 
-# A fresh process opens a mapped sidecar holding 200 MB of stored vectors at dim 1024 and
-# probes it once. `vector-resident` is the anonymous memory the open and probe add, in MiB,
-# which the 64 MiB bound counts; `vector-resident-peak-rss` is the process's peak resident
-# set, clean mapped graph pages included.
-[entry.vector-resident]
-clause = "read.retrieve.sidecar-size-cap"
-metric = "vector.f16_200mb.probe.anon_delta_mib"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::vector_sidecar" }
-target = { op = "<", value = 64 }
-seed   = 0x5eed_0044
-
-[entry.vector-resident-i8]
-clause = "read.retrieve.sidecar-size-cap"
-metric = "vector.i8_200mb.probe.anon_delta_mib"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::vector_sidecar" }
-target = { op = "<", value = 64 }
-seed   = 0x5eed_0044
-
-[entry.vector-resident-peak-rss]
-clause = "read.retrieve.sidecar-size-cap"
-metric = "vector.f16_200mb.probe.peak_rss"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::vector_sidecar" }
-seed   = 0x5eed_0044
-
-[entry.vector-resident-peak-rss-i8]
-clause = "read.retrieve.sidecar-size-cap"
-metric = "vector.i8_200mb.probe.peak_rss"
-kind   = "bench"
-tier   = "trend"
-direction = "lower_is_better"
-method = { bench = "contextful_context::vector_sidecar" }
-seed   = 0x5eed_0044
-
 [entry.lexical-deep-recall]
 clause = "read.retrieve.candidate-window"
 metric = "slices.deep_recall.retrieval.lexical.hit_rate_at_k"
