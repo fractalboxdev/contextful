@@ -18,10 +18,10 @@ use contextful_core::pipeline::seed::{probe, SeedBlock, SeedCeiling, SeedProbe};
 use contextful_core::pipeline::transform::Chain;
 use contextful_core::ports::Clock;
 use contextful_core::run::advance::CursorKind;
-use contextful_core::run::backfill::{Bound, Window};
+use contextful_core::run::backfill::{Bound, ChunkStatus, Window};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, NATIVE_WORLD};
-use contextful_core::run::record::RunStatus;
+use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_engine::seed::{FingerprintProbe, SeedLoad, SeedOutcome};
 use contextful_engine::{Engine, RunSpec};
 use contextful_outbound::Limiter;
@@ -114,6 +114,76 @@ fn seed_plan(spec: &PipelineSpec, seed: &SeedBlock, t: &TableEntry) -> Result<Pl
     Ok(plan)
 }
 
+/// What every chunk run of one seeded table reads through: its plan, load bounds, source
+/// digest, fingerprint probe and shape.
+struct Chunks {
+    table: String,
+    plan: Plan,
+    load: SeedLoad,
+    artifact: String,
+    head: HttpHead,
+    probe_limiter: Option<Arc<Limiter>>,
+    shape: Chain,
+}
+
+impl Chunks {
+    /// Plan the export chunk of table `t` when its seed holds none, and build what its chunk runs share.
+    fn open<J: contextful_core::run::ports::JournalStore, B: contextful_core::run::ports::BlobStore>(
+        engine: &Engine<J, B>,
+        spec: &PipelineSpec,
+        seed: &SeedBlock,
+        t: &TableEntry,
+        run_id: &str,
+        metered: &Metered,
+        dest: &StoreDestination,
+    ) -> Result<Chunks> {
+        let table = spec.table_name(t.name());
+        let seeding = engine.seeding();
+        if seeding.state(&spec.id, &table)?.chunks.is_empty() {
+            let window = Window::new(Bound::Text(String::new()), Bound::Text(seed.below.render()))?;
+            seeding.plan(&spec.id, &table, &[(EXPORT_CHUNK.to_string(), window)])?;
+        }
+        let plan = seed_plan(spec, seed, t)?;
+        dest.store.validate_source_plan(&plan, dest.normalize)?;
+        let load = SeedLoad {
+            ceiling: SeedCeiling::new(spec.destination_decl(t).order_by(), seed.below.clone()),
+            live_kind: if spec.incremental.is_some() { CursorKind::Monotonic } else { CursorKind::OpaqueToken },
+            live_field: spec.incremental.clone(),
+            normalize: dest.normalize,
+        };
+        let artifact = sha256_hex(serde_json::to_string(&seed.source).unwrap_or_default().as_bytes());
+        let probe_limiter = metered.limiter(&format!("{run_id}.seed-probe"))?;
+        let head = HttpHead(seed_source(spec, seed, t, metered, None, probe_limiter.clone())?);
+        let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
+        Ok(Chunks { table, plan, load, artifact, head, probe_limiter, shape })
+    }
+
+    /// Run the seed's next claimable chunk as run `run`; an opened run id joins `attempted`.
+    #[allow(clippy::too_many_arguments)]
+    fn run_next<J, B>(&self, engine: &Engine<J, B>, spec: &PipelineSpec, seed: &SeedBlock, t: &TableEntry, run: &str, site_id: &str, metered: &Metered, dest: &mut StoreDestination, attempted: &mut Vec<String>) -> Result<SeedOutcome>
+    where
+        J: contextful_core::run::ports::JournalStore + Clone,
+        B: contextful_core::run::ports::BlobStore + Clone,
+    {
+        let limiter = metered.limiter(run)?;
+        let mut source = seed_source(spec, seed, t, metered, Some(run), limiter.clone())?;
+        let trace = crate::telemetry::RunTrace::open();
+        let spec_run = RunSpec { connector: self.plan.connector_pin(&self.artifact), plan: self.plan.clone(), run_id: run.to_string(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
+        let opened = engine.catalog.run(run)?.is_none();
+        // The chunk run reports its stages as child spans of its run span (`disclosure.record.stage-span`).
+        let outcome = trace.engine(engine).seeding().run_next(&self.load, &spec_run, &mut source, &self.shape, dest, &self.head);
+        finish(&self.table, limiter.as_ref());
+        let outcome = outcome?;
+        if let SeedOutcome::Ran(row) = &outcome {
+            trace.close(row);
+        }
+        if opened && engine.catalog.run(run)?.is_some() {
+            attempted.push(run.to_string());
+        }
+        Ok(outcome)
+    }
+}
+
 /// Run the seed of table `t` before its live pull: plan the export chunk when the seed holds
 /// none, then drive [`contextful_engine::seed::Seeding::run_next`] until the seed commits or
 /// skips. Answers whether the live pull proceeds; `false` while another worker holds the
@@ -134,46 +204,16 @@ where
     J: contextful_core::run::ports::JournalStore + Clone,
     B: contextful_core::run::ports::BlobStore + Clone,
 {
-    let table = spec.table_name(t.name());
+    let chunks = Chunks::open(engine, spec, seed, t, run_id, metered, dest)?;
+    let table = &chunks.table;
     let seeding = engine.seeding();
-    if seeding.state(&spec.id, &table)?.chunks.is_empty() {
-        let window = Window::new(Bound::Text(String::new()), Bound::Text(seed.below.render()))?;
-        seeding.plan(&spec.id, &table, &[(EXPORT_CHUNK.to_string(), window)])?;
-    }
-    let plan = seed_plan(spec, seed, t)?;
-    dest.store.validate_source_plan(&plan, dest.normalize)?;
-    let load = SeedLoad {
-        ceiling: SeedCeiling::new(spec.destination_decl(t).order_by(), seed.below.clone()),
-        live_kind: if spec.incremental.is_some() { CursorKind::Monotonic } else { CursorKind::OpaqueToken },
-        live_field: spec.incremental.clone(),
-        normalize: dest.normalize,
-    };
-    let artifact = sha256_hex(serde_json::to_string(&seed.source).unwrap_or_default().as_bytes());
-    let probe_limiter = metered.limiter(&format!("{run_id}.seed-probe"))?;
-    let head = HttpHead(seed_source(spec, seed, t, metered, None, probe_limiter.clone())?);
-    let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
     let outcome = (|| -> Result<bool> {
-        for n in 0..=seeding.state(&spec.id, &table)?.chunks.len() {
+        for n in 0..=seeding.state(&spec.id, table)?.chunks.len() {
             let run = format!("{run_id}.seed-{n}");
-            let limiter = metered.limiter(&run)?;
-            let mut source = seed_source(spec, seed, t, metered, Some(&run), limiter.clone())?;
-            let trace = crate::telemetry::RunTrace::open();
-            let spec_run = RunSpec { connector: plan.connector_pin(&artifact), plan: plan.clone(), run_id: run.clone(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
-            let opened = engine.catalog.run(&run)?.is_none();
-            // The chunk run reports its stages as child spans of its run span (`disclosure.record.stage-span`).
-            let outcome = trace.engine(engine).seeding().run_next(&load, &spec_run, &mut source, &shape, dest, &head);
-            finish(&table, limiter.as_ref());
-            let outcome = outcome?;
-            if let SeedOutcome::Ran(row) = &outcome {
-                trace.close(row);
-            }
-            if opened && engine.catalog.run(&run)?.is_some() {
-                attempted.push(run.clone());
-            }
-            match outcome {
+            match chunks.run_next(engine, spec, seed, t, &run, site_id, metered, dest, attempted)? {
                 SeedOutcome::Ran(row) if row.status == RunStatus::Success => {
                     println!("{table}: {run} seeded · {} rows in {} batches", row.rows, row.batches);
-                    if seeding.state(&spec.id, &table)?.committed() {
+                    if seeding.state(&spec.id, table)?.committed() {
                         return Ok(true);
                     }
                 }
@@ -190,9 +230,55 @@ where
                 SeedOutcome::Idle => return Ok(false),
             }
         }
-        Ok(seeding.state(&spec.id, &table)?.committed())
+        Ok(seeding.state(&spec.id, table)?.committed())
     })();
-    finish(&table, probe_limiter.as_ref());
+    finish(table, chunks.probe_limiter.as_ref());
+    outcome
+}
+
+/// Run chunk `n` of table `t`'s seed plan as one provider step under run `run`, planning the
+/// export chunk when the seed holds none (`run.orchestrate.provider-step`). A chunk an earlier
+/// chunk not done precedes refuses, and so does one an attempt holds on an unexpired owner
+/// lease (`run.orchestrate.step-lease`). Answers the chunk run's row.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn step_chunk<J, B>(
+    engine: &Engine<J, B>,
+    spec: &PipelineSpec,
+    seed: &SeedBlock,
+    t: &TableEntry,
+    run: &str,
+    n: u32,
+    site_id: &str,
+    metered: &Metered,
+    dest: &mut StoreDestination,
+    attempted: &mut Vec<String>,
+) -> Result<RunRow>
+where
+    J: contextful_core::run::ports::JournalStore + Clone,
+    B: contextful_core::run::ports::BlobStore + Clone,
+{
+    let chunks = Chunks::open(engine, spec, seed, t, run, metered, dest)?;
+    let table = &chunks.table;
+    let outcome = (|| -> Result<RunRow> {
+        let plan = engine.seeding().state(&spec.id, table)?.chunks;
+        let Some(chunk) = plan.iter().find(|c| c.ordinal == n) else {
+            bail!("the seed of `{table}` plans {} chunk(s) and no chunk {n}", plan.len());
+        };
+        match plan.iter().filter(|c| c.status != ChunkStatus::Done).min_by_key(|c| c.ordinal) {
+            Some(first) if first.ordinal != n => bail!("chunk {n} of the seed of `{table}` waits on chunk {}, which is not done", first.ordinal),
+            Some(_) => {}
+            None => bail!("chunk {n} of the seed of `{table}` committed under another run"),
+        }
+        match chunks.run_next(engine, spec, seed, t, run, site_id, metered, dest, attempted)? {
+            SeedOutcome::Ran(row) => Ok(*row),
+            SeedOutcome::Idle => {
+                let holder = engine.catalog.owner_at(&chunk.scope())?.and_then(|o| o.attempts.last().cloned()).unwrap_or_default();
+                bail!("chunk {n} of the seed of `{table}` runs under attempt `{holder}`, whose owner lease has not lapsed")
+            }
+            SeedOutcome::Unchanged | SeedOutcome::Committed | SeedOutcome::Unavailable(_) => bail!("chunk {n} of the seed of `{table}` committed under another run"),
+        }
+    })();
+    finish(table, chunks.probe_limiter.as_ref());
     outcome
 }
 

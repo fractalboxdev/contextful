@@ -4,6 +4,7 @@
 pub mod delegate;
 pub mod http;
 pub mod iceberg;
+pub mod orchestrate;
 pub mod container_recovery;
 pub mod s3;
 pub mod sqs;

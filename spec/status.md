@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 205 | 65 | 14 | 8 | 196 | 0 | 0 | 196 |
 | `read` | 2 | 20 | 307 | 53 | 30 | 14 | 296 | 0 | 0 | 296 |
-| `run` | 3 | 31 | 629 | 138 | 52 | 18 | 623 | 4 | 0 | 623 |
+| `run` | 3 | 31 | 631 | 138 | 52 | 17 | 628 | 4 | 0 | 628 |
 | `store` | 9 | 21 | 385 | 72 | 26 | 13 | 385 | 13 | 0 | 385 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 195 | 0 | 0 | 195 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 30 | 182 | 2958 | 721 | 243 | 83 | 2902 | 24 | 0 | |
+| **total** | 30 | 182 | 2960 | 721 | 243 | 82 | 2907 | 24 | 0 | |
 
 Decision records: 18.
 
@@ -45,7 +45,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 15 — Point-in-time evaluation | 7 | 67 | 67 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 15 | 15 | passing | closed |
-| 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
+| 18 — Provider orchestrators | 1 | 8 | 5 | open | open |
 | 19 — Drive connections | 2 | 22 | 13 | open | open |
 | 20 — Drive permission custody | 2 | 11 | 2 | open | open |
 | 21 — Sheet rows | 1 | 8 | 0 | absent | open |
