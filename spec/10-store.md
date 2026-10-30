@@ -252,6 +252,8 @@ A commit holds its table's commit lock, assigns `_commit_seq` above every held v
   *A-topology#commit-lock*
 - `commit-seq-seed` — A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot, so a pulled or counterless store reuses no value.
   *A-topology#commit-lock*
+- `pull-reseed` — A pull downloading any run manifest of a table rewrites that table's `data/.commit_seq`, under its commit lock, to the greatest value its counter, run manifests and current snapshot record.
+  *because a landing session assigns from its held high-water while the counter stands as it last wrote it*
 
 ### request ledgers
 
@@ -359,6 +361,8 @@ When a table's pass fires, and which writer runs it.
   *because a run count bounds no fold's input when batch sizes vary*
 - `session-trigger` — A landing session counts the table's unfolded runs at open and each commit, recounting after another writer commits or folds, and runs a pass before landing returns once the trigger fires.
   *because a continuous writer otherwise accrues thousands of unfolded runs between scheduled passes*
+- `session-listing` — A landing session lists the table's run directories only at open, after its own pass, and on a land finding the pointer moved, `data/.commit_seq` rewritten by another writer, or its `_commit_seq` not one above the counted runs'.
+  *because a listing per commit costs each landing time proportional to the table's unfolded runs*
 - `session-synced` — On a store declaring `[sync]`, a landing session runs no pass, leaving it to {{store.fold.job-pass-synced}}.
   *because a session pass outside the compaction lease races every other node's pass on the bucket pointer*
 - `land-trigger` — After a commit that is not a replay, `contextful context land` runs a pass before returning once the table's trigger fires; on a store declaring `[sync]` it runs none, leaving the pass to {{store.fold.job-pass-synced}}.

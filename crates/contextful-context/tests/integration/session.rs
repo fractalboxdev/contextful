@@ -138,6 +138,51 @@ fn a_session_counts_runs_another_writer_commits_or_folds() {
     assert_eq!(f.store.state(&d).unwrap().unfolded_runs().len(), 1);
 }
 
+/// A landing session lists the table's run directories only at open, after its own pass, and on a land finding the
+/// pointer moved, `data/.commit_seq` rewritten by another writer, or its `_commit_seq` not one above the counted runs'.
+// spec: store.fold.session-listing@ac27f536
+#[test]
+#[allow(clippy::result_large_err)]
+fn a_session_lists_the_run_directories_only_after_another_writer_moves_the_table() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\nfold_max_unfolded_runs = 1000");
+    for i in 0..3 {
+        f.land(&d, &format!("pre-{i}"), json!([{ "id": -(i as i64) }]), "2029-12-31T23:59:00Z").unwrap();
+    }
+    let mut session = LandSession::open(&f.store, d.clone(), NodeId::parse("ingest-a").unwrap()).unwrap();
+    let land = |session: &mut LandSession, i: usize| {
+        let landing = session.land(&single_row(i), injection(&format!("run-{i}")), tick(i), &Position::default(), &|| Ok(())).unwrap();
+        assert!(!landing.replay && landing.fold.is_none(), "run {i}: {landing:?}");
+    };
+    land(&mut session, 0);
+    let settled = session.run_listings();
+    assert!(settled > 0, "the open count lists the run directories");
+    for i in 1..40 {
+        land(&mut session, i);
+    }
+    assert_eq!(session.run_listings(), settled, "39 commits of its own list no run directory");
+    assert_eq!(session.unfolded(), 43);
+
+    // Another writer's commit moves the counter; the next land lists and counts it.
+    f.land_on(&d, "other-0", "ingest-b", json!([{ "id": 5000 }]), &tick(100).to_string(), &[]).unwrap();
+    land(&mut session, 40);
+    let relisted = session.run_listings();
+    assert!(relisted > settled, "a land after another writer's commit lists the run directories");
+    assert_eq!(session.unfolded(), 45);
+    assert_eq!(f.store.state(&d).unwrap().unfolded_runs().len(), 45);
+    for i in 41..50 {
+        land(&mut session, i);
+    }
+    assert_eq!(session.run_listings(), relisted);
+    assert_eq!(session.unfolded(), 54);
+
+    // Another process's pass moves the pointer; the next land lists and counts nothing folded.
+    contextful_context::fold::fold(&f.store, &d, tick(200)).unwrap();
+    land(&mut session, 50);
+    assert!(session.run_listings() > relisted);
+    assert_eq!(session.unfolded(), 1);
+}
+
 /// A session land whose precommit check refuses commits nothing and leaves the count.
 #[test]
 fn a_session_land_runs_its_precommit_check() {

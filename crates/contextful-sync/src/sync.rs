@@ -1799,6 +1799,14 @@ impl Syncer {
             let _guard = PushGuard::take(self.store.root(), std::time::Duration::from_secs(self.config.push_wait_secs()))?;
             self.record_pulled(&manifest, pushed_before)?;
         }
+        // A landing session holds its seed while the counter stands as it left it, so each
+        // table a pulled run manifest joins rewrites its counter (`store.reserve.pull-reseed`).
+        if !replica {
+            let reseeding: BTreeSet<String> = report.downloaded.iter().filter(|k| is_run_manifest(k)).filter_map(|k| project_table(&self.project, k)).collect();
+            for table in reseeding {
+                self.store.reseed_commit_seq(&table)?;
+            }
+        }
         // Pointers last: every pointer to write is verified before any is written.
         let candidates: Vec<(String, BucketPointer)> = match &generation {
             Some((listed, _)) => listed.pointers.iter().map(|(k, p)| (k.clone(), p.clone())).collect(),

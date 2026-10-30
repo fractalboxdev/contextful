@@ -1211,3 +1211,36 @@ fn pull_and_push_read_pointers_by_key_and_list_no_table_objects() {
     c.syncer.push(at(NOW)).unwrap();
     assert_eq!(recorded.script.listed_under("team/research/tables/"), 0, "a push lists no table object");
 }
+
+/// A pull downloading any run manifest of a table rewrites that table's `data/.commit_seq`, under its commit lock,
+/// to the greatest value its counter, run manifests and current snapshot record.
+// spec: store.reserve.pull-reseed@3a885d18
+#[test]
+#[allow(clippy::result_large_err)]
+fn a_pull_reseeds_the_commit_counter_so_a_session_lands_above_the_pulled_runs() {
+    use contextful_context::land::{Batch, LandSession, Position};
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    let d = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"filings\"\nfold_max_unfolded_runs = 1000\n").unwrap().remove(0);
+    let mut session = LandSession::open(&a.syncer.store, d, NodeId::parse("ingest-a").unwrap()).unwrap();
+    let land = |session: &mut LandSession, run: &str, secs: u64| {
+        let batch = Batch { rows: vec![json!({ "id": secs }).as_object().unwrap().clone()], types: Default::default() };
+        let injection = Injection { run_id: run.into(), site_id: "site".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None };
+        session.land(&batch, injection, at("2030-01-01T00:00:00Z").plus_secs(secs), &Position::default(), &|| Ok(())).unwrap().manifest.unwrap()
+    };
+    land(&mut session, "run-a0", 0);
+    assert_eq!(land(&mut session, "run-a1", 1).commit_seq, Some(2));
+    for i in 0..5 {
+        c.land(&format!("run-b{i}"), json!([{ "id": 100 + i }]), "2030-01-01T00:00:10Z");
+    }
+    c.syncer.push(at(NOW)).unwrap();
+    a.syncer.pull(&PullScope::default()).unwrap();
+
+    let counter: serde_json::Value = serde_json::from_slice(&std::fs::read(a.root().join("tables/filings/data/.commit_seq")).unwrap()).unwrap();
+    assert_eq!(counter["commit_seq"], 5, "the pull rewrites the counter to the pulled runs' greatest value");
+    assert_eq!(land(&mut session, "run-a2", 2).commit_seq, Some(6), "the session's next commit lands above every pulled run");
+    assert_eq!(session.unfolded(), 8, "the pulled runs count");
+}

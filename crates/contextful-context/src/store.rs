@@ -75,6 +75,22 @@ pub(crate) struct SchemaCache {
     /// Each valid folded-runs index this store read, by `<table>/<snapshot id>`: a snapshot's
     /// manifest and segments never change, so one validation serves every later landing.
     indexes: std::sync::Mutex<std::collections::HashMap<String, Arc<BTreeMap<String, contextful_core::store::lay_out::FoldedRow>>>>,
+    /// The commit sequence high-water this store last assigned on each table, with the
+    /// counter's and pointer's versions as it left them (`store.fold.session-listing`).
+    seqs: std::sync::Mutex<std::collections::HashMap<String, HeldSeq>>,
+    /// The tables whose last assignment found the counter and pointer as this store left them.
+    sole: std::sync::Mutex<BTreeSet<String>>,
+    /// How many times this store listed a table's run directories.
+    listings: std::sync::atomic::AtomicUsize,
+}
+
+/// One table's assigned high-water and the file versions it holds for: while neither the
+/// counter nor the pointer moves, no other writer committed, reseeded or folded since.
+#[derive(Debug)]
+struct HeldSeq {
+    counter: Option<FileVersion>,
+    pointer: Option<FileVersion>,
+    high: i64,
 }
 
 /// A file's version as one stat reports it: length, modification instant and file
@@ -521,6 +537,27 @@ impl Store {
         self.schema_cache.as_ref().map_or(0, |c| c.reads.load(std::sync::atomic::Ordering::Relaxed))
     }
 
+    /// How many times this store listed a table's run directories; zero without a schema cache.
+    pub fn run_listings(&self) -> usize {
+        self.schema_cache.as_ref().map_or(0, |c| c.listings.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// Whether this store's last `_commit_seq` assignment on `table` found the counter and the
+    /// pointer as its previous assignment left them, so no other writer committed, reseeded or
+    /// folded between the two (`store.fold.session-listing`). False without a schema cache.
+    pub(crate) fn sole_assignment(&self, table: &str) -> bool {
+        self.schema_cache.as_ref().is_some_and(|c| c.sole.lock().expect("the schema cache is not poisoned").contains(table))
+    }
+
+    /// The `<run>` directories under `table`'s `data/runs/`, sorted, counted toward
+    /// [`Store::run_listings`].
+    fn run_dirs(&self, table: &str) -> Result<Vec<PathBuf>> {
+        if let Some(cache) = &self.schema_cache {
+            cache.listings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        sorted_dirs(&self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR))
+    }
+
     /// How many rows the vintage comparison of this store and its clones decoded, counted
     /// before any `_commit_seq` filter (`store.available-time.vintage-hash`).
     pub fn vintage_rows_read(&self) -> u64 {
@@ -601,19 +638,61 @@ impl Store {
     /// The counter is written as [`CommitCounter`] JSON (`store.reserve.commit-marker`): a
     /// build that holds the commit lock across its part write parses it as a bare integer,
     /// fails, and so refuses the table instead of publishing out of ticket order.
+    ///
+    /// A store holding a schema cache keeps the high-water it assigned beside the counter's
+    /// and pointer's versions, and reads no manifest while both stand as it left them: every
+    /// other writer's commit and every reseed rewrites the counter under the commit lock, and
+    /// every pass replaces the pointer (`store.fold.session-listing`).
     pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
-        let data = self.table_dir(table)?.join("data");
-        let path = data.join(COMMIT_SEQ_FILE);
-        let counter = match self.metadata().read_optional(&path)? {
-            Some(bytes) => CommitCounter::read(&bytes, &format!("table `{table}`: file `{}`", path.display()))?,
-            None => 0,
+        let dir = self.table_dir(table)?;
+        let path = dir.join("data").join(COMMIT_SEQ_FILE);
+        let versions = match &self.schema_cache {
+            Some(_) => Some((file_version(&path)?, file_version(&dir.join(POINTER_FILE))?)),
+            None => None,
         };
-        let held = counter.max(self.recorded_commit_seq(table)?);
+        let counter = self.commit_counter(table, &path)?;
+        let held_high = self.schema_cache.as_ref().zip(versions.as_ref()).and_then(|(cache, (counter, pointer))| {
+            let seqs = cache.seqs.lock().expect("the schema cache is not poisoned");
+            seqs.get(table).filter(|h| h.counter == *counter && h.pointer == *pointer).map(|h| h.high)
+        });
+        let held = match held_high {
+            Some(high) => counter.max(high),
+            None => counter.max(self.recorded_commit_seq(table)?),
+        };
         let next = held.checked_add(1).ok_or_else(|| ContextError::Invalid(format!("table `{table}` exhausted its commit sequence")))?;
-        fs::create_dir_all(&data).at(&data)?;
-        let marked = CommitCounter { format_version: FormatVersion::CURRENT, commit_seq: next };
-        self.metadata().replace(&path, &serde_json::to_vec(&marked).expect("a counter serializes"))?;
+        self.write_commit_counter(&path, next)?;
+        if let (Some(cache), Some((_, pointer))) = (&self.schema_cache, versions) {
+            let counter = file_version(&path)?;
+            cache.seqs.lock().expect("the schema cache is not poisoned").insert(table.to_string(), HeldSeq { counter, pointer, high: next });
+            let mut sole = cache.sole.lock().expect("the schema cache is not poisoned");
+            if held_high.is_some() { sole.insert(table.to_string()) } else { sole.remove(table) };
+        }
         Ok(next)
+    }
+
+    /// Rewrite `table`'s commit counter, under its commit lock, to the greatest value its
+    /// counter, run manifests and current snapshot record (`store.reserve.pull-reseed`).
+    pub fn reseed_commit_seq(&self, table: &str) -> Result<i64> {
+        let _commit = self.lock_commit(table)?;
+        let path = self.table_dir(table)?.join("data").join(COMMIT_SEQ_FILE);
+        let held = self.commit_counter(table, &path)?.max(self.recorded_commit_seq(table)?);
+        self.write_commit_counter(&path, held)?;
+        Ok(held)
+    }
+
+    /// The value the counter at `path` records, zero where none is written.
+    fn commit_counter(&self, table: &str, path: &Path) -> Result<i64> {
+        match self.metadata().read_optional(path)? {
+            Some(bytes) => CommitCounter::read(&bytes, &format!("table `{table}`: file `{}`", path.display())),
+            None => Ok(0),
+        }
+    }
+
+    fn write_commit_counter(&self, path: &Path, seq: i64) -> Result<()> {
+        let data = path.parent().expect("the counter sits in its table's data directory");
+        fs::create_dir_all(data).at(data)?;
+        let marked = CommitCounter { format_version: FormatVersion::CURRENT, commit_seq: seq };
+        self.metadata().replace(path, &serde_json::to_vec(&marked).expect("a counter serializes"))
     }
 
     /// The highest `commit_seq` a table's manifests record: every run manifest on disk,
@@ -635,7 +714,7 @@ impl Store {
             Some((ptr, _)) => read(self.snapshot_dir(table, &ptr.snapshot_id)?.join(MANIFEST_FILE))?,
             None => 0,
         };
-        for run_dir in sorted_dirs(&self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR))? {
+        for run_dir in self.run_dirs(table)? {
             for node_dir in sorted_dirs(&run_dir)? {
                 high = high.max(read(node_dir.join(MANIFEST_FILE))?);
             }
@@ -684,17 +763,11 @@ impl Store {
         Ok(out)
     }
 
-    /// Every committed run of a table: each `data/runs/<run>/<node>/` holding a
-    /// `_manifest.json`. A directory without one is in flight and joins nothing
-    /// (`store.lay-out.uncommitted-run`); a manifest that fails to parse, or whose
-    /// `run_id`, `node_id` or `table` disagrees with its path, refuses the table
-    /// (`store.lay-out.manifest-unreadable`).
     /// How many `<run>/<node>` directories of `table` hold a `_manifest.json`, from a
     /// listing alone: no manifest is read or parsed.
     pub fn manifest_count(&self, table: &str) -> Result<usize> {
-        let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
         let mut count = 0;
-        for run_dir in sorted_dirs(&runs_dir)? {
+        for run_dir in self.run_dirs(table)? {
             for node_dir in sorted_dirs(&run_dir)? {
                 if node_dir.join(MANIFEST_FILE).is_file() {
                     count += 1;
@@ -704,6 +777,11 @@ impl Store {
         Ok(count)
     }
 
+    /// Every committed run of a table: each `data/runs/<run>/<node>/` holding a
+    /// `_manifest.json`. A directory without one is in flight and joins nothing
+    /// (`store.lay-out.uncommitted-run`); a manifest that fails to parse, or whose
+    /// `run_id`, `node_id` or `table` disagrees with its path, refuses the table
+    /// (`store.lay-out.manifest-unreadable`).
     pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
         Ok(self.committed_runs_held(table)?.0)
     }
@@ -785,12 +863,11 @@ impl Store {
     /// [`Store::committed_runs_held`] over the manifests on disk alone, which an unbounded read
     /// resolves against: every run a lazy pull skipped is folded into the pointer's snapshot.
     fn local_runs_held(&self, table: &str) -> Result<(Vec<RunManifest>, Option<i64>)> {
-        let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
         let mut out = Vec::new();
         let mut held: Option<i64> = None;
         // One read of each (pipeline, node) commit log per call.
         let mut logs = CommitLogs::new();
-        for run_dir in sorted_dirs(&runs_dir)? {
+        for run_dir in self.run_dirs(table)? {
             for node_dir in sorted_dirs(&run_dir)? {
                 out.extend(self.committed_at(table, &run_dir, &node_dir, &mut logs, &mut held)?);
             }
