@@ -100,10 +100,10 @@ fn template(face: &Face, authority: &AdmittedAuthority, id: &str) -> Result<Resp
     face.execute_template(&session, id, &Map::new(), ReadOptions::default())
 }
 
-/// A query, template, retrieve, row or subscribe read touching a per-individual table raises
-/// `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a
-/// derive task's input read is a row read.
-// spec: disclosure.bound-cohort.per-individual-row@b3d08f04
+/// A query, template, retrieve, row, subscribe or recall read touching a per-individual table
+/// raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that
+/// table; a derive task's input read is a row read.
+// spec: disclosure.bound-cohort.per-individual-row@a1b24e75
 #[test]
 fn a_cohort_source_table_answers_only_a_grant_holding_read_individual() {
     let (r, face) = released();
@@ -188,7 +188,7 @@ fn grouping_a_cohort_table_by_a_strict_subset_of_its_key_refuses() {
 
 /// A row, native row or subscribe read of a cohort model's source table answers only a grant
 /// holding `read-individual` over it, as a statement read does.
-// spec: disclosure.bound-cohort.per-individual-row@b3d08f04
+// spec: disclosure.bound-cohort.per-individual-row@a1b24e75
 #[test]
 fn row_and_subscribe_reads_of_a_cohort_source_answer_only_read_individual() {
     let (r, face) = released();
@@ -213,7 +213,7 @@ fn row_and_subscribe_reads_of_a_cohort_source_answer_only_read_individual() {
 
 /// A derive output whose parent is a cohort source table holds per-individual rows, and so
 /// does an output derived from that output: each answers only `read-individual`.
-// spec: disclosure.bound-cohort.derived-individual@6c87283b
+// spec: disclosure.bound-cohort.derived-individual@b63ba1cf
 #[test]
 fn a_derived_output_of_a_cohort_source_answers_only_read_individual() {
     let (r, _) = released();
@@ -241,4 +241,41 @@ fn a_derived_output_of_a_cohort_source_answers_only_read_individual() {
     for table in derived {
         assert_eq!(face.rows(&session, table, None).unwrap().rows.len(), 1, "{table}");
     }
+}
+
+/// A claims table synthesized from a cohort source holds per-individual claims: recall of it,
+/// and a knowledge card's claims through recall, answer only a grant holding `read-individual`.
+// spec: disclosure.bound-cohort.per-individual-row@a1b24e75
+#[test]
+fn recall_of_a_claims_table_synthesized_from_a_cohort_source_answers_only_read_individual() {
+    use contextful_context::read::RecallRequest;
+    use contextful_core::store::reconcile::ColumnType;
+    let (r, _) = released();
+    let facts = "[[table]]\nname = \"survey/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let evidence = serde_json::to_string(&json!([{ "table": "survey/responses", "run": "run-0001", "seq": 0 }])).unwrap();
+    let claim = json!({ "claim_id": "c1", "subject": "p1", "predicate": "prefers", "object": "solar", "scope": null, "tier": "derived",
+        "confidence": 0.6, "valid_from": "2030-01-05T00:00:00Z", "valid_to": null, "evidence": evidence, "superseded_by": null, "grant_id": "g", "agent": null });
+    let types = [("valid_from", ColumnType::Timestamp), ("valid_to", ColumnType::Timestamp), ("confidence", ColumnType::Float64), ("scope", ColumnType::Utf8), ("superseded_by", ColumnType::Utf8), ("agent", ColumnType::Utf8)]
+        .iter()
+        .map(|(c, t)| (c.to_string(), t.clone()))
+        .collect();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "memory-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("survey/facts") };
+    land(&r.store, &decl, &Batch { rows: vec![claim.as_object().unwrap().clone()], types }, &ctx).unwrap();
+    let lineage = [(vec!["survey/responses".to_string()], vec!["survey/facts".to_string(), "survey/facts_dead_letter".to_string()])];
+    let face = Face::open(r.store.clone(), &format!("{MANIFEST}{facts}"), pepper()).unwrap().with_cohorts(&[spec()]).unwrap().with_derived(&lineage);
+    let request = RecallRequest::new("survey/facts", "p1", at("2030-06-01T00:00:00Z"));
+
+    let reader = authority(&r, vec![grant(&[Action::Read], &["*"])]);
+    let session = face.session(&reader, &Request::default(), Bounds::default()).unwrap();
+    let message = refused_with(face.recall(&session, &request), "DisclosurePerIndividualUngranted");
+    assert!(message.contains("survey/facts"), "{message}");
+
+    let individual = authority(&r, vec![grant(&[Action::Read, Action::ReadIndividual], &["survey/facts", "survey/responses"])]);
+    let session = face.session(&individual, &Request::default(), Bounds::default()).unwrap();
+    assert_eq!(face.recall(&session, &request).unwrap().rows.len(), 1);
 }

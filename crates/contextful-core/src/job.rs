@@ -104,6 +104,9 @@ struct Block {
     model: Option<String>,
     #[serde(default)]
     plan: Option<String>,
+    /// A synthesize fire reaches `read-individual` (`surface.dispatch.fire-individual`).
+    #[serde(default)]
+    read_individual: Option<bool>,
     #[serde(flatten)]
     other: BTreeMap<String, toml::Value>,
 }
@@ -133,6 +136,9 @@ pub struct Synthesis {
     pub source: String,
     pub endpoint: String,
     pub model: String,
+    /// Whether its fire reaches `read-individual` on its source and target
+    /// (`surface.dispatch.fire-individual`).
+    pub read_individual: bool,
 }
 
 /// A plan job's declaration: the compiled plan file, relative to its manifest's directory.
@@ -220,7 +226,8 @@ impl Job {
         if let Some(entities) = memory.of_shape(Shape::Entities).filter(|t| !read.contains(&t.name)) {
             read.push(entities.name.clone());
         }
-        Some(Reach { read, write: vec![target.clone()] })
+        let read_individual = if synthesis.read_individual { vec![synthesis.source.clone(), target.clone()] } else { Vec::new() };
+        Some(Reach { read, write: vec![target.clone()], read_individual })
     }
 }
 
@@ -229,6 +236,30 @@ impl Job {
 pub struct Reach {
     pub read: Vec<String>,
     pub write: Vec<String>,
+    /// The tables the fire reads per-individual rows of (`surface.dispatch.fire-individual`).
+    pub read_individual: Vec<String>,
+}
+
+/// A writer's parent tables beside the output tables it writes.
+pub type Lineage = (Vec<String>, Vec<String>);
+
+/// Each `synthesize` job's source beside its claims table and that table's dead-letter
+/// table, which a per-individual source makes per-individual
+/// (`disclosure.bound-cohort.derived-individual`). A block lacking either name descends from
+/// nothing; validation refuses it on its own.
+pub fn synthesize_lineage(manifest: &str) -> Result<Vec<Lineage>, JobError> {
+    let parsed: Manifest = toml::from_str(manifest).map_err(|e| JobError::Invalid(format!("the manifest does not parse: {e}")))?;
+    let text = |block: &toml::Value, key: &str| block.get(key).and_then(toml::Value::as_str).map(str::to_string);
+    Ok(parsed
+        .job
+        .iter()
+        .filter(|block| text(block, "kind").as_deref() == Some(SYNTHESIZE))
+        .filter_map(|block| {
+            let (source, target) = (text(block, "source")?, text(block, "target")?);
+            let letters = crate::run::ports::dead_letter_table(&target);
+            Some((vec![source], vec![target, letters]))
+        })
+        .collect())
 }
 
 /// Every `[[job]]` block of `manifest`, validated; `registered` answers whether the
@@ -273,6 +304,9 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
             return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
         }
     }
+    if !matches!(kind, JobKind::Synthesize(_)) && block.read_individual.is_some() {
+        return Err(JobError::Invalid(format!("job `{name}` carries unknown key `read_individual`")));
+    }
     if !matches!(kind, JobKind::Plan(_)) && block.plan.is_some() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `plan`")));
     }
@@ -296,7 +330,12 @@ fn synthesis(block: &Block) -> Result<Synthesis, JobError> {
         value.clone().filter(|v| !v.trim().is_empty()).ok_or_else(|| JobError::Invalid(format!("job `{name}` of kind `{SYNTHESIZE}` declares no `{key}`")))
     };
     required("target", &block.target)?;
-    Ok(Synthesis { source: required("source", &block.source)?, endpoint: required("endpoint", &block.endpoint)?, model: required("model", &block.model)? })
+    Ok(Synthesis {
+        source: required("source", &block.source)?,
+        endpoint: required("endpoint", &block.endpoint)?,
+        model: required("model", &block.model)?,
+        read_individual: block.read_individual.unwrap_or(false),
+    })
 }
 
 fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<StoreDriven, JobError> {

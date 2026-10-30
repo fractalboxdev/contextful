@@ -207,7 +207,7 @@ pub(crate) fn open_face_with_pins(project: &Project, declaration: &Path, manifes
     let store = open_store(project, public_key, keyset)?;
     let face = Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?;
     let cohorts = cohort_models(declaration)?;
-    let derives = if cohorts.is_empty() { Vec::new() } else { derive_lineage(declaration)? };
+    let derives = if cohorts.is_empty() { Vec::new() } else { derive_lineage(declaration, manifest)? };
     Ok(face.with_cohorts(&cohorts)?.with_derived(&derives).with_now_offset(offset))
 }
 
@@ -219,16 +219,17 @@ pub(crate) fn register_tasks(tasks: &Tasks) {
     let _ = HOST_TASKS.set(tasks.clone());
 }
 
-/// Each derive pipeline's parents beside its output tables, so an output of a per-individual
-/// table is itself per-individual (`disclosure.bound-cohort.derived-individual`).
-fn derive_lineage(declaration: &Path) -> Result<Vec<(Vec<String>, Vec<String>)>> {
+/// Each derive pipeline's parents beside its output tables, then each `synthesize` job of
+/// `manifest`'s source beside its claims and dead-letter tables, so an output of a
+/// per-individual table is itself per-individual (`disclosure.bound-cohort.derived-individual`).
+fn derive_lineage(declaration: &Path, manifest: &str) -> Result<Vec<(Vec<String>, Vec<String>)>> {
     let declared = contextful_core::pipeline::declare::collect(&manifests(declaration)?)?;
-    Ok(declared
+    let derives = declared
         .iter()
         .map(|d| &d.spec)
         .filter(|s| s.source.name == DERIVE_SOURCE)
-        .map(|s| (derive_parents(s, HOST_TASKS.get()), s.tables.iter().map(|t| s.table_name(t.name())).collect()))
-        .collect())
+        .map(|s| (derive_parents(s, HOST_TASKS.get()), s.tables.iter().map(|t| s.table_name(t.name())).collect()));
+    Ok(derives.chain(contextful_core::job::synthesize_lineage(manifest)?).collect())
 }
 
 /// The source name a derive pipeline declares.

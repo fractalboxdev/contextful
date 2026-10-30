@@ -418,7 +418,7 @@ fn refusal_text(answer: &serde_json::Value) -> String {
 /// A served face over a released `cohort` model: its source table answers only a credential
 /// holding `read-individual` over it, and its published table refuses a grouping coarser
 /// than its released key.
-// spec: disclosure.bound-cohort.per-individual-row@b3d08f04
+// spec: disclosure.bound-cohort.per-individual-row@a1b24e75
 // spec: disclosure.bound-cohort.cohort-widening@5979fff9
 #[test]
 fn a_served_cohort_model_guards_its_source_rows_and_its_released_key() {
@@ -474,7 +474,7 @@ output_format = "srt"
 /// unless its credential holds `read-individual` over that table; the output it lands then
 /// answers only a reader holding `read-individual` over the output.
 // spec: disclosure.bound-cohort.derive-individual@a3d9fb27
-// spec: disclosure.bound-cohort.derived-individual@6c87283b
+// spec: disclosure.bound-cohort.derived-individual@b63ba1cf
 #[test]
 fn a_derive_over_a_cohort_source_runs_only_under_read_individual() {
     let dir = benchmark(&format!("{}{CAP}{DERIVE}", governed("governance = \"cohort\"")));

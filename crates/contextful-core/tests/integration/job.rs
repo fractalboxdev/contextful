@@ -227,6 +227,39 @@ fn a_synthesize_fire_reaches_its_source_claims_and_entities_tables() {
     assert!(store[0].reach(&MemoryDeclarations::parse(facts).unwrap()).is_none(), "a store-driven job's reads come from its statement");
 }
 
+/// A synthesize job declaring `read_individual = true` reaches `read-individual` on its source
+/// and its claims table; one declaring nothing reaches it nowhere, and another kind carrying
+/// the key refuses.
+// spec: surface.dispatch.fire-individual@cd29bedf
+#[test]
+fn a_synthesize_job_declaring_read_individual_reaches_it_on_its_source_and_target() {
+    let block = |extra: &str| format!("[[job]]\nname = \"s\"\nkind = \"synthesize\"\ntarget = \"memory/facts\"\nsource = \"research/notes\"\nendpoint = \"http://127.0.0.1:9/v1\"\nmodel = \"m\"\n{extra}");
+    let facts = "[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let memory = MemoryDeclarations::parse(facts).unwrap();
+    let reach = |extra: &str| parse_jobs(&block(extra), &registered).unwrap()[0].reach(&memory).unwrap();
+    let declared = reach("read_individual = true\n");
+    assert_eq!(declared.read_individual, ["research/notes", "memory/facts"]);
+    assert_eq!((declared.read, declared.write), (vec!["research/notes".to_string(), "memory/facts".to_string()], vec!["memory/facts".to_string()]));
+    assert!(reach("").read_individual.is_empty());
+    assert!(reach("read_individual = false\n").read_individual.is_empty());
+    let refused = parse_jobs(&store_driven("max_in_flight = 1\nread_individual = true\n"), &registered).unwrap_err();
+    assert!(refused.to_string().contains("read_individual"), "{refused}");
+}
+
+/// A synthesize job's claims table and its dead-letter table descend from its source, beside
+/// each derive pipeline's lineage; a job of another kind descends from nothing.
+// spec: disclosure.bound-cohort.derived-individual@b63ba1cf
+#[test]
+fn a_synthesize_job_lineage_runs_from_its_source_to_its_claims_and_dead_letters() {
+    let manifest = format!(
+        "[[job]]\nname = \"s\"\nkind = \"synthesize\"\ntarget = \"memory/facts\"\nsource = \"research/notes\"\nendpoint = \"http://127.0.0.1:9/v1\"\nmodel = \"m\"\n{}",
+        store_driven("max_in_flight = 1\n")
+    );
+    let lineage = contextful_core::job::synthesize_lineage(&manifest).unwrap();
+    assert_eq!(lineage, [(vec!["research/notes".to_string()], vec!["memory/facts".to_string(), "memory/facts_dead_letter".to_string()])]);
+    assert!(contextful_core::job::synthesize_lineage(&store_driven("max_in_flight = 1\n")).unwrap().is_empty());
+}
+
 /// A `[[job]]` of kind `sweep`, `rebuild-catalog` or `validate` raises `JobKindUndispatched`, naming the command doing
 /// its work; the union still parses each, and serve dispatches the other maintenance kinds.
 // spec: surface.fire.kind-undispatched@dc08aa63

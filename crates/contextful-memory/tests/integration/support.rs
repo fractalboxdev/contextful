@@ -115,6 +115,15 @@ impl Fixture {
     }
 
     fn authority_with(&self, agent: &str, actions: &[Action], tables: &[&str], zone: &str, max_rows: Option<u64>) -> AdmittedAuthority {
+        self.authority_granting(agent, &[(actions, tables)], zone, max_rows)
+    }
+
+    /// An authority holding one grant per `(actions, tables)` pair.
+    pub fn authority_of(&self, agent: &str, grants: &[(&[Action], &[&str])]) -> AdmittedAuthority {
+        self.authority_granting(agent, grants, "on-prem:hq", None)
+    }
+
+    fn authority_granting(&self, agent: &str, grants: &[(&[Action], &[&str])], zone: &str, max_rows: Option<u64>) -> AdmittedAuthority {
         let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
         let subject = Subject {
             on_behalf_of: Some("user://dana@acme.example".into()),
@@ -122,18 +131,21 @@ impl Fixture {
             zone: Some(zone.into()),
             ..Subject::default()
         };
-        let grant = Grant {
-            horizon: None,
-            actions: actions.to_vec(),
-            tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
-            tenant: None,
-            aggregate: None,
-            templates: None,
-            max_rows,
-            max_duration_ms: None,
-            max_response_bytes: None,
-        };
-        let mut req = MintRequest::custody(subject, vec![grant]);
+        let grants = grants
+            .iter()
+            .map(|(actions, tables)| Grant {
+                horizon: None,
+                actions: actions.to_vec(),
+                tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
+                tenant: None,
+                aggregate: None,
+                templates: None,
+                max_rows,
+                max_duration_ms: None,
+                max_response_bytes: None,
+            })
+            .collect();
+        let mut req = MintRequest::custody(subject, grants);
         req.lifetime = Lifetime::Requested(900);
         let clock = FixedClock(at("2030-01-01T00:00:00Z"));
         let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer: &self.signer, clock: &clock }).unwrap();

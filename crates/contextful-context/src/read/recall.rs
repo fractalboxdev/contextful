@@ -126,6 +126,9 @@ impl Face {
         };
         let relation = session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")))?;
         self.bind_bounds(session, &std::collections::BTreeSet::from([table.to_string()]), request.bounds())?;
+        // A per-individual claims table answers only `read-individual`
+        // (`disclosure.bound-cohort.per-individual-row`).
+        self.bind_cohort_sources(session, &std::collections::BTreeSet::from([table.to_string()]))?;
         if self.memory().table(table).is_none_or(|t| t.shape != Shape::Facts) {
             let why = format!("`{table}` declares no `{}` shape, so it holds no claim to recall", Shape::Facts.name());
             return Err(Refusal::from(MemoryError::RecallNotClaims(why)).into());
