@@ -405,6 +405,73 @@ fn a_serve_scheduling_a_synthesize_job_without_key_or_credential_refuses_at_star
     assert!(endpoint.bodies.lock().unwrap().is_empty(), "no fire runs");
 }
 
+/// A `cohort` model over `research/notes`, one row per note.
+const COHORT: &str = r#"
+[[model]]
+id = "research/by_text"
+sql = "SELECT text, note_id FROM \"research/notes\""
+unique_key = ["text", "note_id"]
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "text", type = "utf8", nullable = false }, { name = "note_id", type = "utf8", nullable = false }]
+[model.disclosure]
+grouping_allowlist = ["text"]
+contributor_key = "note_id"
+min_group_size = 2
+governance = "cohort"
+"#;
+
+/// A scheduled synthesize fire over a cohort model's source refuses before reading a row or
+/// calling its endpoint until the job declares `read_individual = true`; the fire then mints
+/// `read-individual` over its source and target, runs, and its claims answer only
+/// `read-individual`.
+// spec: surface.dispatch.fire-individual@cd29bedf
+// spec: disclosure.bound-cohort.synthesize-individual@fa72ffb0
+// spec: disclosure.bound-cohort.derived-individual@b63ba1cf
+#[test]
+fn a_synthesize_fire_over_a_cohort_source_runs_only_under_its_declared_grant() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("{manifest}{COHORT}")).unwrap();
+    let endpoint = Endpoint::start(vec![claim("Dana")]);
+    scheduled_synthesis(p, &public, &token, &endpoint, HQ);
+    let facts = p.join(".contextful/context/research/tables/memory/facts");
+    let cycle = |now: &str| -> Output {
+        let args = ["pipeline", "serve", "--cycle", "--project", "research", "--now", now, "--issuer-key", ".contextful/issuer.seed"];
+        run(p, &args, &[("CONTEXTFUL_ISSUER_PUBKEY", public.as_str()), ("CONTEXTFUL_AUDIENCE", AUD), ("CONTEXTFUL_INFERENCE_KEY", "")])
+    };
+
+    let refused = cycle("2030-01-01T00:02:00Z");
+    let report = format!("{}{}", String::from_utf8_lossy(&refused.stdout), String::from_utf8_lossy(&refused.stderr));
+    assert!(report.contains("DisclosurePerIndividualUngranted") && report.contains("research/notes"), "{report}");
+    assert!(endpoint.bodies.lock().unwrap().is_empty(), "a refused fire calls no endpoint");
+    assert!(!facts.exists(), "a refused fire lands no claim");
+
+    let declared = std::fs::read_to_string(p.join("contextful.toml")).unwrap().replace("model = \"fixture\"\n", "model = \"fixture\"\nread_individual = true\n");
+    std::fs::write(p.join("contextful.toml"), declared).unwrap();
+    stdout(&run(p, &["pipeline", "apply", "--project", "research"], &[("CONTEXTFUL_TOKEN", &token), ("CONTEXTFUL_ISSUER_PUBKEY", &public), ("CONTEXTFUL_AUDIENCE", AUD)]));
+    let fired: Value = serde_json::from_str(&stdout(&cycle("2030-01-01T00:04:00Z"))).unwrap();
+    assert_eq!(fired["fired"], json!(["job:synth-facts"]), "{fired}");
+    assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "{fired}");
+    assert!(facts.exists(), "the granted fire lands its claims");
+
+    let mint = |actions: &[&str]| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://reader", "--zone", "on-prem:hq", "--table", "memory/*", "--table", "research/notes", "--ttl", "600"];
+        for action in actions {
+            args.extend(["--action", action]);
+        }
+        stdout(&run(p, &args, &[]))
+    };
+    let args = ["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--observed-at", "2030-06-01T00:00:00Z", "--public-key", &public, "--audience", AUD];
+    let recall = |token: &str| run(p, &args, &[("CONTEXTFUL_TOKEN", token)]);
+    let withheld = recall(&mint(&["read"]));
+    assert!(!withheld.status.success());
+    assert!(String::from_utf8_lossy(&withheld.stderr).contains("DisclosurePerIndividualUngranted"), "{}", String::from_utf8_lossy(&withheld.stderr));
+    let granted: Value = serde_json::from_str(&stdout(&recall(&mint(&["read", "read-individual"])))).unwrap();
+    assert_eq!(granted["rows"].as_array().map(Vec::len), Some(1), "{granted}");
+}
+
 // spec: surface.dispatch.fire-credential-zone@33b36162
 #[test]
 fn an_issuer_key_serve_in_a_project_declaring_no_default_zone_refuses_at_start() {

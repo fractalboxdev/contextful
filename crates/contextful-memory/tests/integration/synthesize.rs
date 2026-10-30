@@ -460,3 +460,73 @@ fn cursor_files_never_collide() {
     assert_ne!(cursor_path(state, "a/b", "c"), cursor_path(state, "a%2Fb", "c"));
     assert_eq!(cursor_path(state, "a/b", "c"), cursor_path(state, "a/b", "c"));
 }
+
+/// A `cohort` model over `research/notes`, one row per note.
+const COHORT: &str = r#"
+[[model]]
+id = "research/by_topic"
+sql = "SELECT topic, note_id FROM \"research/notes\""
+unique_key = ["topic", "note_id"]
+
+[model.disclosure]
+grouping_allowlist = ["topic"]
+contributor_key = "note_id"
+min_group_size = 2
+governance = "cohort"
+"#;
+
+/// A synthesize job reading `research/notes` into `memory/facts`.
+const JOB: &str = "[[job]]\nname = \"synth\"\nkind = \"synthesize\"\nsource = \"research/notes\"\ntarget = \"memory/facts\"\nendpoint = \"http://127.0.0.1:9/v1\"\nmodel = \"m\"\n";
+
+/// A fixture whose face knows the cohort model and the synthesize job's lineage.
+fn cohort_fixture() -> Fixture {
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::pipeline::model::collect_models;
+    let dir = tempfile::tempdir().unwrap();
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = [ManifestFile { path: "contextful.toml".into(), text: COHORT.to_string() }];
+    let model = collect_models(&files, &collect(&files).unwrap()).unwrap().remove(0).spec;
+    let lineage = contextful_core::job::synthesize_lineage(JOB).unwrap();
+    let face = contextful_context::read::Face::open(store, MANIFEST, contextful_policy::enforce::mask::Pepper::resolve(|_| None))
+        .unwrap()
+        .with_cohorts(&[model])
+        .unwrap()
+        .with_derived(&lineage);
+    Fixture::over(dir, face)
+}
+
+/// A pass over a per-individual source refuses before its first batch, calling no endpoint and
+/// writing no cursor, unless its credential holds `read-individual` over its source and its
+/// target; the claims it then lands answer only `read-individual`.
+// spec: disclosure.bound-cohort.synthesize-individual@fa72ffb0
+// spec: disclosure.bound-cohort.derived-individual@b63ba1cf
+#[test]
+fn a_pass_over_a_per_individual_source_runs_only_under_read_individual() {
+    let f = cohort_fixture();
+    let node = NodeId::parse("memory-a").unwrap();
+    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "topic": "energy", "text": "Dana is Acme's CFO." }]));
+    let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001")]);
+    let cursor = contextful_memory::synthesize::cursor_path(&f.state, "research/notes", "memory/facts");
+    let refused = |who: &AdmittedAuthority, table: &str| {
+        let fault = pass(&f, who, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap_err();
+        let text = fault.to_string();
+        assert!(text.contains("DisclosurePerIndividualUngranted") && text.contains(table), "{text}");
+        assert_eq!(inference.calls(), 0, "a refused pass calls no endpoint");
+        assert!(!cursor.exists(), "a refused pass writes no cursor");
+    };
+
+    refused(&f.writer(), "research/notes");
+    let source_only = f.authority_of("agent://synthesizer", &[(&[Action::Read, Action::ReadIndividual], &["research/notes"]), (&[Action::Read, Action::Write], &["memory/*"])]);
+    refused(&source_only, "memory/facts");
+    let writer = f.authority("agent://synthesizer", &[Action::Read, Action::Write, Action::ReadIndividual], &["research/*", "memory/*"]);
+    let report = pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    assert_eq!(report.landed, 1);
+
+    let reader = f.authority("agent://reader", &[Action::Read], &["*"]);
+    let session = f.face.session(&reader, &Request::default(), Bounds::default()).unwrap();
+    let fault = f.face.rows(&session, "memory/facts", None).unwrap_err();
+    assert!(fault.to_string().contains("DisclosurePerIndividualUngranted"), "{fault}");
+    let individual = f.authority("agent://reader", &[Action::Read, Action::ReadIndividual], &["memory/facts"]);
+    let session = f.face.session(&individual, &Request::default(), Bounds::default()).unwrap();
+    assert_eq!(f.face.rows(&session, "memory/facts", None).unwrap().rows.len(), 1);
+}

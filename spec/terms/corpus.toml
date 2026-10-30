@@ -124,11 +124,11 @@ assurance = 11021
 authority = 7720
 connector = 11427
 corpus = 5120
-disclosure = 6573
+disclosure = 6642
 read = 9693
 run = 21520
 store = 12412
-surface = 6403
+surface = 6449
 topology = 2641
 
 [ceiling.adr-words]

@@ -26461,7 +26461,7 @@
       "operation": "bound-cohort",
       "subject": "per-individual-row",
       "kind": "refusal",
-      "statement": "A query, template, retrieve, row or subscribe read touching a per-individual table raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a derive task's input read is a row read.",
+      "statement": "A query, template, retrieve, row, subscribe or recall read touching a per-individual table raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a derive task's input read is a row read.",
       "why": "because the face applies no floor to an ad-hoc read, so a read of a source table returns contributors' rows that no release has suppressed",
       "file": "spec/61-disclosure.md",
       "line": 134
@@ -26472,8 +26472,8 @@
       "operation": "bound-cohort",
       "subject": "derived-individual",
       "kind": "behavior",
-      "statement": "A table a `cohort` model's statement names is per-individual, and so is each output table of a derive pipeline whose source or joined table is per-individual, transitively.",
-      "why": "because a derive copies its parents' rows into its output, which then holds contributors' rows no release has suppressed",
+      "statement": "A table a `cohort` model's statement names is per-individual, and so is each output table of a derive pipeline whose source or joined table is per-individual, and each claims and dead-letter table of a `synthesize` job reading one, transitively.",
+      "why": "because a derive or synthesis pass carries its parents' rows, or claims extracted from them, into its output, which then holds contributors' rows no release has suppressed",
       "file": "spec/61-disclosure.md",
       "line": 136
     },
@@ -26484,9 +26484,20 @@
       "subject": "derive-individual",
       "kind": "behavior",
       "statement": "A derive run whose source or joined table is per-individual refuses as {{disclosure.bound-cohort.per-individual-row}} at run start, before selecting any unit, unless its credential holds `read-individual` over that table; a run without a credential refuses too.",
-      "why": "because no declaration carries a grant, so the run's credential is the only authority a derive holds, and refusing before selection lands no row",
+      "why": "because the run's credential is the only authority a derive holds, and refusing before selection lands no row",
       "file": "spec/61-disclosure.md",
       "line": 138
+    },
+    {
+      "id": "disclosure.bound-cohort.synthesize-individual",
+      "contract": "disclosure",
+      "operation": "bound-cohort",
+      "subject": "synthesize-individual",
+      "kind": "behavior",
+      "statement": "A synthesis pass whose source or target is per-individual refuses as {{disclosure.bound-cohort.per-individual-row}} at run start, before reading a row or calling its endpoint, unless its credential holds `read-individual` over that table.",
+      "why": "because a pass reads its target's live claims as well as its source, and refusing before the first batch spends no model call",
+      "file": "spec/61-disclosure.md",
+      "line": 140
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -26497,7 +26508,7 @@
       "statement": "A `cohort` model whose permitted grouping columns or non-contributor grain columns name its contributor key or a forbidden column raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 140
+      "line": 142
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -26508,7 +26519,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "disclosure.record.segment",
@@ -28601,6 +28612,17 @@
       "line": 217
     },
     {
+      "id": "surface.dispatch.fire-individual",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "fire-individual",
+      "kind": "behavior",
+      "statement": "A `synthesize` job declaring `read_individual = true` also reaches `read-individual` on its source and its target; no other fire reaches `read-individual`.",
+      "why": "because a per-individual source makes its target per-individual too, and the reviewed declaration is where an operator states that a scheduled pass reads contributors' rows",
+      "file": "spec/70-control-plane.md",
+      "line": 219
+    },
+    {
       "id": "surface.dispatch.fire-credential-lifetime",
       "contract": "surface",
       "operation": "dispatch",
@@ -28609,7 +28631,7 @@
       "statement": "A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.",
       "why": "because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure",
       "file": "spec/70-control-plane.md",
-      "line": 219
+      "line": 221
     },
     {
       "id": "surface.dispatch.fire-credential-pins",
@@ -28620,7 +28642,7 @@
       "statement": "Each child holding a minted fire credential also receives `CONTEXTFUL_ISSUER_PUBKEY`, the seed's public key, and `CONTEXTFUL_AUDIENCE`, the issuance policy's default audience the credential carries, replacing values serve inherited.",
       "why": "because the child admits its credential from inherited variables, and a pin or audience other than the minting one refuses every fire",
       "file": "spec/70-control-plane.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "surface.dispatch.fire-credential-inherited",
@@ -28631,7 +28653,7 @@
       "statement": "A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "surface.dispatch.fire-credential-missing",
@@ -28642,7 +28664,7 @@
       "statement": "A serve dispatching to child processes, whose applied snapshot schedules a store-driven or synthesize job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.",
       "why": "because a missing credential otherwise fails every fire while the serve reports healthy",
       "file": "spec/70-control-plane.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "surface.dispatch.fire-credential-zone",
@@ -28653,7 +28675,7 @@
       "statement": "A serve under `--issuer-key`, whose applied snapshot schedules a store-driven or synthesize job, under a root whose `[project.zone]` declares no `default`, raises `FireCredentialZoneUnset` at start and fires nothing.",
       "why": "because a credential signing no zone asserts an undeclared zone, which {{authority.place.undeclared}} admits nowhere but `*`, so every fire reads no row",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "surface.delegate.binding",
@@ -28664,7 +28686,7 @@
       "statement": "`[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = \"<name>\" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/70-control-plane.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "surface.delegate.host",
@@ -28675,7 +28697,7 @@
       "statement": "A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.",
       "why": "because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress",
       "file": "spec/70-control-plane.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "surface.delegate.envelope",
@@ -28686,7 +28708,7 @@
       "statement": "A delegate request carries {{type:contextful_core::surface::delegate::Envelope}}: `idempotency_key` under {{run.journal.idempotency-key}}, `entity` with namespace, key and fence, and `version` when fired from an applied snapshot.",
       "why": "because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call",
       "file": "spec/70-control-plane.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "surface.delegate.signed",
@@ -28697,7 +28719,7 @@
       "statement": "A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.",
       "why": "because an answer bound to its request cannot be replayed onto another item's call",
       "file": "spec/70-control-plane.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "surface.delegate.rejected",
@@ -28708,7 +28730,7 @@
       "statement": "An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.",
       "why": "because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry",
       "file": "spec/70-control-plane.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "surface.delegate.call-mode",
@@ -28719,7 +28741,7 @@
       "statement": "Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/70-control-plane.md",
-      "line": 245,
+      "line": 247,
       "scenarios": [
         "WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request."
       ]
@@ -28733,7 +28755,7 @@
       "statement": "A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.",
       "why": "because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix",
       "file": "spec/70-control-plane.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "surface.delegate.submit-unfilled",
@@ -28744,7 +28766,7 @@
       "statement": "A `store-driven` fire whose delegate binds `mode = \"submit\"` raises `DelegateSubmitUnfilled`, naming `call` as the mode that dispatches, before any execution opens, so no item receives a receipt.",
       "why": "because no engine path drives the worker protocol for a delegated item, and a refusal before admission leaves every item due once the binding names `call`",
       "file": "spec/70-control-plane.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "surface.delegate.call-timeout",
@@ -28755,7 +28777,7 @@
       "statement": "A `call` delegate's `timeout` defaults to 300 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "surface.delegate.call-timeout-ceiling",
@@ -28766,7 +28788,7 @@
       "statement": "A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.",
       "why": "because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one",
       "file": "spec/70-control-plane.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "surface.delegate.outcome",
@@ -28777,7 +28799,7 @@
       "statement": "An answer is a {{type:contextful_core::surface::delegate::Answer}}; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/70-control-plane.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "surface.delegate.defer-parks",
@@ -28788,7 +28810,7 @@
       "statement": "A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.",
       "why": "because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity",
       "file": "spec/70-control-plane.md",
-      "line": 256,
+      "line": 258,
       "scenarios": [
         "WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again."
       ]
@@ -28802,7 +28824,7 @@
       "statement": "A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.",
       "why": "because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics",
       "file": "spec/70-control-plane.md",
-      "line": 258
+      "line": 260
     },
     {
       "id": "surface.delegate.dedup-window",
@@ -28813,7 +28835,7 @@
       "statement": "A binding's optional `dedup_window_secs` declares the whole seconds the delegate deduplicates a repeated `idempotency_key`; each `call` request's guard records it under {{run.callback-guard.identity}}, `none` when absent.",
       "why": "because a paid call deduplicates only while the delegate's response cache holds its key",
       "file": "spec/70-control-plane.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "surface.delegate.clocks",
@@ -28824,7 +28846,7 @@
       "statement": "Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.",
       "why": "because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires",
       "file": "spec/70-control-plane.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -28835,7 +28857,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "surface.edit.connector-upload",
@@ -28846,7 +28868,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 276
+      "line": 278
     },
     {
       "id": "surface.edit.store-draft",
@@ -28857,7 +28879,7 @@
       "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 278
+      "line": 280
     },
     {
       "id": "surface.apply.version-race",
@@ -28868,7 +28890,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "surface.apply.validation",
@@ -28879,7 +28901,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 287
+      "line": 289
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -28890,7 +28912,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 289
+      "line": 291
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -28901,7 +28923,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -28912,7 +28934,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 293
+      "line": 295
     },
     {
       "id": "surface.apply.local-claim",
@@ -28923,7 +28945,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -28934,7 +28956,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "surface.apply.receipt-message",
@@ -28945,7 +28967,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 299,
+      "line": 301,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -28959,7 +28981,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "surface.apply.receipt-file",
@@ -28970,7 +28992,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 303,
+      "line": 305,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -28984,7 +29006,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 305
+      "line": 307
     },
     {
       "id": "surface.apply.guarded-import",
@@ -28995,7 +29017,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; an import over a directory holding a version claims nothing, names that version and exits zero.",
       "why": "because a restart on a warm disk runs import before apply, and a refusal there stops the restart",
       "file": "spec/70-control-plane.md",
-      "line": 307,
+      "line": 309,
       "scenarios": [
         "WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds."
       ]
@@ -29009,7 +29031,7 @@
       "statement": "Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.",
       "why": "because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped",
       "file": "spec/70-control-plane.md",
-      "line": 309,
+      "line": 311,
       "scenarios": [
         "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.",
         "WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.",
@@ -29025,7 +29047,7 @@
       "statement": "Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains",
       "file": "spec/70-control-plane.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "surface.apply.self-valid",
@@ -29036,7 +29058,7 @@
       "statement": "Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.",
       "why": "because a signed head failing its own adoption refuses every cold start until a reset",
       "file": "spec/70-control-plane.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "surface.apply.draft-claim",
@@ -29047,7 +29069,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 315
+      "line": 317
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -29058,7 +29080,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 317
+      "line": 319
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -29069,7 +29091,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface#applied-jobs-retain",
       "file": "spec/70-control-plane.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "surface.apply.draft-absent",
@@ -29080,7 +29102,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -29091,7 +29113,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "surface.apply.served-malformed",
@@ -29102,7 +29124,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -29113,7 +29135,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 327
+      "line": 329
     },
     {
       "id": "surface.reside.region-entries",
@@ -29124,7 +29146,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "A-surface#residency-divergence-detected",
       "file": "spec/70-control-plane.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -29135,7 +29157,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "surface.reside.site-regions",
@@ -29146,7 +29168,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface#residency-divergence-detected",
       "file": "spec/70-control-plane.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "surface.connection.routes",
@@ -29157,7 +29179,7 @@
       "statement": "`POST /connections` creates, `POST /connections/{id}/pause` pauses, and `DELETE /connections/{id}` deletes a connection outside the operator-only `/control/*` routes.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 354
+      "line": 356
     },
     {
       "id": "surface.connection.create",
@@ -29168,7 +29190,7 @@
       "statement": "A served connection create binds an admitted tenant, principal, source selection, secret name and pipeline id in one versioned control claim under {{surface.apply.version-race}}.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 355
+      "line": 357
     },
     {
       "id": "surface.connection.authority",
@@ -29179,7 +29201,7 @@
       "statement": "A connection mutation requires an admitted write credential for its tenant and principal, checked on the request before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.",
       "why": "because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential",
       "file": "spec/70-control-plane.md",
-      "line": 357
+      "line": 359
     },
     {
       "id": "surface.connection.idempotent-create",
@@ -29190,7 +29212,7 @@
       "statement": "Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.",
       "why": "because a retried consent callback must not produce a second scheduled pipeline",
       "file": "spec/70-control-plane.md",
-      "line": 359,
+      "line": 361,
       "scenarios": [
         "WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain."
       ]
@@ -29204,7 +29226,7 @@
       "statement": "Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 361
+      "line": 363
     },
     {
       "id": "surface.connection.malformed",
@@ -29215,7 +29237,7 @@
       "statement": "A create body outside {{type:contextful_cli::connection::Declaration}}, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.",
       "why": "because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline",
       "file": "spec/70-control-plane.md",
-      "line": 362,
+      "line": 364,
       "scenarios": [
         "WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version."
       ]
@@ -29229,7 +29251,7 @@
       "statement": "A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.",
       "why": "because a retired id reused by a new declaration restarts a pipeline whose credential is revoked",
       "file": "spec/70-control-plane.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "surface.connection.pause",
@@ -29240,7 +29262,7 @@
       "statement": "Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 366
+      "line": 368
     },
     {
       "id": "surface.connection.delete",
@@ -29251,7 +29273,7 @@
       "statement": "Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 367
+      "line": 369
     },
     {
       "id": "surface.connection.schedule-scale",
@@ -29262,7 +29284,7 @@
       "statement": "Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 368
+      "line": 370
     },
     {
       "id": "surface.connection.consent-boundary",
@@ -29273,7 +29295,7 @@
       "statement": "The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 370
+      "line": 372
     },
     {
       "id": "surface.open-console.page-routes",
@@ -38696,6 +38718,10 @@
     ],
     [
       "disclosure.bound-cohort.derive-individual",
+      "disclosure.bound-cohort.per-individual-row"
+    ],
+    [
+      "disclosure.bound-cohort.synthesize-individual",
       "disclosure.bound-cohort.per-individual-row"
     ],
     [
@@ -59146,8 +59172,29 @@
       },
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/memory.rs",
+        "name": "a_synthesize_fire_over_a_cohort_source_runs_only_under_its_declared_grant",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/cohort.rs",
         "name": "a_derived_output_of_a_cohort_source_answers_only_read_individual",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/job.rs",
+        "name": "a_synthesize_job_lineage_runs_from_its_source_to_its_claims_and_dead_letters",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-memory/tests/integration/synthesize.rs",
+        "name": "a_pass_over_a_per_individual_source_runs_only_under_read_individual",
         "verdict": "performed",
         "proved": false
       }
@@ -59198,6 +59245,13 @@
         "name": "row_and_subscribe_reads_of_a_cohort_source_answer_only_read_individual",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/cohort.rs",
+        "name": "recall_of_a_claims_table_synthesized_from_a_cohort_source_answers_only_read_individual",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "disclosure.bound-cohort.singleton-cohort": [
@@ -59212,6 +59266,22 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/cohort.rs",
         "name": "a_cohort_key_naming_one_person_raises_singleton_cohort_at_declaration",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.bound-cohort.synthesize-individual": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/memory.rs",
+        "name": "a_synthesize_fire_over_a_cohort_source_runs_only_under_its_declared_grant",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-memory/tests/integration/synthesize.rs",
+        "name": "a_pass_over_a_per_individual_source_runs_only_under_read_individual",
         "verdict": "performed",
         "proved": false
       }
@@ -75198,6 +75268,22 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "an_issuer_key_serve_in_a_project_declaring_no_default_zone_refuses_at_start",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "surface.dispatch.fire-individual": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/memory.rs",
+        "name": "a_synthesize_fire_over_a_cohort_source_runs_only_under_its_declared_grant",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/job.rs",
+        "name": "a_synthesize_job_declaring_read_individual_reaches_it_on_its_source_and_target",
         "verdict": "performed",
         "proved": false
       }

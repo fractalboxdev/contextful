@@ -1674,14 +1674,15 @@ fn fire_reach(located: &Located, job: &Job) -> Result<Reach> {
         JobKind::StoreDriven(driven) => {
             let tree = face.serialize(&driven.input.statement)?;
             let read = contextful_core::read::guard::admit(&tree, |_| true)?.relations.into_iter().collect();
-            Ok(Reach { read, write: driven.tables.clone() })
+            Ok(Reach { read, write: driven.tables.clone(), read_individual: Vec::new() })
         }
         _ => job.reach(face.memory()).with_context(|| format!("job `{}` is kind `{}`, which admits no fire credential", job.name, job.kind_name())),
     }
 }
 
 /// One credential for a fire of `job`, on behalf of `svc://job/<job>`: `read` and `write`
-/// over its reach (`surface.dispatch.fire-credential`).
+/// over its reach (`surface.dispatch.fire-credential`), and `read-individual` where its job
+/// declares it (`surface.dispatch.fire-individual`).
 fn fire_credential(located: &Located, root: &Path, seed: &Path, job: &Job) -> Result<crate::token::ServiceCredential> {
     let reach = fire_reach(located, job)?;
     let grant = |action: Action, tables: &[String]| -> Result<Grant> {
@@ -1702,6 +1703,9 @@ fn fire_credential(located: &Located, root: &Path, seed: &Path, job: &Job) -> Re
         grants.push(grant(Action::Read, &reach.read)?);
     }
     grants.push(grant(Action::Write, &reach.write)?);
+    if !reach.read_individual.is_empty() {
+        grants.push(grant(Action::ReadIndividual, &reach.read_individual)?);
+    }
     crate::token::mint_service(root, seed, &format!("svc://job/{}", job.name), grants, FIRE_CREDENTIAL_SECS)
 }
 

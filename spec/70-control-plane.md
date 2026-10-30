@@ -216,6 +216,8 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables*
 - `fire-reach` — A store-driven fire reaches `read` on its statement's relations and `write` on its `tables`; a synthesize fire reaches `read` on its source, its target and the declared entities table, and `write` on its target.
   *because a synthesize pass consolidates against live claims and resolves mentions against entities, and writes no table but its claims and their dead letters*
+- `fire-individual` — A `synthesize` job declaring `read_individual = true` also reaches `read-individual` on its source and its target; no other fire reaches `read-individual`.
+  *because a per-individual source makes its target per-individual too, and the reviewed declaration is where an operator states that a scheduled pass reads contributors' rows*
 - `fire-credential-lifetime` — A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.
   *because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure*
 - `fire-credential-pins` — Each child holding a minted fire credential also receives `CONTEXTFUL_ISSUER_PUBKEY`, the seed's public key, and `CONTEXTFUL_AUDIENCE`, the issuance policy's default audience the credential carries, replacing values serve inherited.

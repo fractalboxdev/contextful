@@ -131,12 +131,14 @@ The line between a per-person table and a cohort table, and the floor a cohort r
   *because a coarser grouping sums released groups into figures no release noised or floored, and the recorded key decides each read without a ledger of earlier releases*
 - `widening-groupings` — A SELECT groups each cohort table its `FROM` reaches by each `GROUP BY` set, each aggregate window's partition list, and the empty set when it aggregates under neither; only a bare column reference covers a key column.
   *because an expression over a key column can merge its values, so only the column itself keeps released groups apart*
-- `per-individual-row` — A query, template, retrieve, row or subscribe read touching a per-individual table raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a derive task's input read is a row read.
+- `per-individual-row` — A query, template, retrieve, row, subscribe or recall read touching a per-individual table raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a derive task's input read is a row read.
   *because the face applies no floor to an ad-hoc read, so a read of a source table returns contributors' rows that no release has suppressed*
-- `derived-individual` — A table a `cohort` model's statement names is per-individual, and so is each output table of a derive pipeline whose source or joined table is per-individual, transitively.
-  *because a derive copies its parents' rows into its output, which then holds contributors' rows no release has suppressed*
+- `derived-individual` — A table a `cohort` model's statement names is per-individual, and so is each output table of a derive pipeline whose source or joined table is per-individual, and each claims and dead-letter table of a `synthesize` job reading one, transitively.
+  *because a derive or synthesis pass carries its parents' rows, or claims extracted from them, into its output, which then holds contributors' rows no release has suppressed*
 - `derive-individual` — A derive run whose source or joined table is per-individual refuses as {{disclosure.bound-cohort.per-individual-row}} at run start, before selecting any unit, unless its credential holds `read-individual` over that table; a run without a credential refuses too.
-  *because no declaration carries a grant, so the run's credential is the only authority a derive holds, and refusing before selection lands no row*
+  *because the run's credential is the only authority a derive holds, and refusing before selection lands no row*
+- `synthesize-individual` — A synthesis pass whose source or target is per-individual refuses as {{disclosure.bound-cohort.per-individual-row}} at run start, before reading a row or calling its endpoint, unless its credential holds `read-individual` over that table.
+  *because a pass reads its target's live claims as well as its source, and refusing before the first batch spends no model call*
 - `singleton-cohort` — A `cohort` model whose permitted grouping columns or non-contributor grain columns name its contributor key or a forbidden column raises `DisclosureSingletonCohort` at declaration, before any row lands under it.
   *A-disclosure#aggregate-disclosure-enforced*
 - `exact-figures` — A policy declaring `figures = "exact"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `"noised"`, and exact figures publish only from a `cohort` table.

@@ -83,7 +83,7 @@ their members ({{disclosure.explain.groups-not-members}}).
 
 ## Disclosure: releasing a figure
 
-A release computes statistics over contributors' rows. Before computing, it reserves
+A release computes statistics over contributors' rows. It first reserves
 each contributor's spend against a lifetime budget, and a failed reservation publishes
 nothing ({{disclosure.release.budget-reservation}}). A group key outside the permitted
 columns fails ({{disclosure.release.group-key}}). A model declaring a disclosure policy
@@ -101,12 +101,16 @@ cohort key resolving to one person fails at declaration
 
 The tables a cohort model's statement reads hold one row per contributor, so a read of
 one fails unless the credential grants `read-individual` over it
-({{disclosure.bound-cohort.per-individual-row}}). A derive reading one needs it too; its
-output inherits the rule ({{disclosure.bound-cohort.derive-individual}}). A statement
-grouping the published cohort table by fewer than all its group-key columns fails: the
-coarser groups sum figures no release noised ({{disclosure.bound-cohort.cohort-widening}}).
+({{disclosure.bound-cohort.per-individual-row}}). A statement grouping the published cohort
+table by fewer than all its group-key columns fails: the coarser groups sum figures no
+release noised ({{disclosure.bound-cohort.cohort-widening}}).
 
-A named query template holds exactly one statement
+A derive or synthesis pass over such a table needs `read-individual` too; its output
+inherits the rule ({{disclosure.bound-cohort.derive-individual}},
+{{disclosure.bound-cohort.synthesize-individual}}). A scheduled synthesis holds it only
+when its job declares `read_individual = true` ({{surface.dispatch.fire-individual}}).
+
+A named query template holds one statement
 ({{disclosure.template.single-statement}}). The offline diagnostic checks every
 published model's policy from local files ({{disclosure.set-mode.check-verb}}).
 
@@ -122,17 +126,17 @@ earliest broken index ({{disclosure.attest.broken-chain}}).
 
 ## Erasure
 
-The reader leaves the organization, and an operator erases the reader's rows. Erasure needs the forget grant
+When the reader leaves, an operator erases their rows under the forget grant
 ({{disclosure.erase.privilege}}). The cascade invalidates every fact derived from the
 erased rows in the same operation ({{disclosure.erase.cascade}}), and the files holding
 them are rewritten or collected ({{disclosure.erase.physical-removal}}).
 
 A dead letter
 repeats the content of the rows its failed batch carried, so each letter citing an erased
-row leaves with it ({{disclosure.erase.dead-letters}}). A letter written without
-`evidence`, such as a pipeline's record of an unreadable input, cites no row, so no
-subject reaches it; `context erase --dead-letters-without-evidence` clears those letters
-from each requested table through the same signed publication
+row leaves with it ({{disclosure.erase.dead-letters}}). A letter without
+`evidence` cites no row, so no subject reaches it;
+`context erase --dead-letters-without-evidence` clears those letters
+through the same signed publication
 ({{disclosure.erase.dead-letters-without-evidence}}).
 
 A tenant purge returns a signed receipt naming a salted pseudonym, not the tenant

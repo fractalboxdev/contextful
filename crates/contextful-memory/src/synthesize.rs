@@ -280,6 +280,9 @@ impl Pass<'_> {
         require(self.authority, Action::Write, self.into)?;
         let writer = Writer::of(self.authority);
         let session = self.session()?;
+        // A per-individual source or target refuses before the first batch reads a row or
+        // calls the endpoint (`disclosure.bound-cohort.synthesize-individual`).
+        self.face.bind_individual(Some(session.grants()), &[self.source.to_string(), self.into.to_string()])?;
         let path = cursor_path(self.state, self.source, self.into);
         let start = read_cursor(&path)?;
         let mut report = PassReport::default();
