@@ -1,13 +1,23 @@
 //! Local image headers become metadata rows without decoding pixel data.
 
+use crate::http::Mediation;
+use crate::request::{header_templates, hydrate_headers};
+use contextful_core::connector::attach::{endpoint, Allowlist};
+use contextful_core::connector::reference::Template;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, PullRequest, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::time::Instant;
+use contextful_outbound::client::Client;
+use contextful_outbound::Resolver;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use url::Url;
 
 pub const NAME: &str = "image";
 pub const TABLE: &str = "images";
@@ -20,6 +30,69 @@ const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 #[derive(Debug, Clone)]
 pub struct ImageConfig {
     pub root: PathBuf,
+    /// The reader each image's bytes are posted to for its body, when declared.
+    pub body: Option<BodyEndpoint>,
+}
+
+/// Where an image source posts each image's bytes, and where the answer holds the body and
+/// its quotability marker (`connector.source.image-body`).
+#[derive(Debug, Clone)]
+pub struct BodyEndpoint {
+    pub url: Url,
+    /// Header name to value template, hydrated onto every request.
+    pub headers: BTreeMap<String, Template>,
+    /// The JSON pointer to the body text in the answer.
+    pub text: String,
+    /// The JSON pointer to the quotability marker in the answer.
+    pub quotability: String,
+}
+
+/// An image source's `body` declaration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BodyDeclaration {
+    /// The reader each image's bytes are posted to.
+    pub url: String,
+    /// Header name to value template, hydrated onto every request.
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    /// The JSON pointer to the body text in the answer, `/text` by default.
+    #[serde(default = "default_text")]
+    pub text: String,
+    /// The JSON pointer to the quotability marker in the answer, `/quotability` by default.
+    #[serde(default = "default_quotability")]
+    pub quotability: String,
+}
+
+fn default_text() -> String {
+    "/text".into()
+}
+
+fn default_quotability() -> String {
+    "/quotability".into()
+}
+
+impl BodyEndpoint {
+    fn parse(value: &Value) -> Result<Self, RunError> {
+        let invalid = |why: String| RunError::Invalid(format!("`{NAME}` source `body`: {why}"));
+        let d: BodyDeclaration =serde_json::from_value(value.clone()).map_err(|e| invalid(e.to_string()))?;
+        let url = endpoint(NAME, &d.url).map_err(|e| invalid(e.to_string()))?;
+        for (key, pointer) in [("body.text", &d.text), ("body.quotability", &d.quotability)] {
+            if !pointer.starts_with('/') {
+                return Err(invalid(format!("`{key} = \"{pointer}\"` is not a JSON pointer opening with `/`")));
+            }
+        }
+        Ok(BodyEndpoint { url, headers: header_templates("body.", &d.headers)?, text: d.text, quotability: d.quotability })
+    }
+
+    /// The one host every body request reaches. A declaration binding a credential holds to it.
+    fn allowlist(&self) -> Result<Allowlist, ConnectorError> {
+        let allow = Allowlist::parse(&[self.url.host_str().unwrap_or_default()])?;
+        if self.headers.values().any(Template::has_reference) {
+            allow.check_bound()?;
+        }
+        Ok(allow)
+    }
 }
 
 impl ImageConfig {
@@ -27,9 +100,9 @@ impl ImageConfig {
         let object = value
             .as_object()
             .ok_or_else(|| RunError::Invalid("`image` config is an object".into()))?;
-        if let Some(key) = object.keys().find(|key| key.as_str() != "root") {
+        if let Some(key) = object.keys().find(|key| !matches!(key.as_str(), "root" | "body")) {
             return Err(RunError::PipelineUnknownConfigKey(format!(
-                "the `image` source reads no key `{key}`; it reads root"
+                "the `image` source reads no key `{key}`; it reads root and body"
             )));
         }
         let root = object
@@ -41,7 +114,13 @@ impl ImageConfig {
             })?;
         Ok(Self {
             root: PathBuf::from(root),
+            body: object.get("body").map(BodyEndpoint::parse).transpose()?,
         })
+    }
+
+    /// The header templates the body reader's requests hydrate.
+    pub fn templates(&self) -> impl Iterator<Item = &Template> {
+        self.body.iter().flat_map(|b| b.headers.values())
     }
 
     pub fn table(&self, name: &str) -> Result<(), ConnectorError> {
@@ -57,16 +136,64 @@ impl ImageConfig {
 
 pub struct ImageSource {
     root: PathBuf,
+    reader: Option<BodyReader>,
+}
+
+/// The body reader over the mediated client.
+struct BodyReader {
+    endpoint: BodyEndpoint,
+    resolver: Arc<Resolver>,
+    client: Client,
+}
+
+impl BodyReader {
+    /// Post one image's bytes and fill `row`'s body and marker from the answer, then hold the
+    /// pair to `connector.source.marker-body-pairing`.
+    fn fill(&self, row: &mut Value, path: &str, bytes: &[u8]) -> Result<(), Failure> {
+        let kind = if path.to_ascii_lowercase().ends_with(".png") { "image/png" } else { "image/jpeg" };
+        let headers = hydrate_headers(&self.resolver, &self.endpoint.headers, Some(kind))?;
+        let response = self.client.send("POST", &self.endpoint.url, &headers, Some(bytes))?;
+        let status = response.status;
+        if !(200..300).contains(&status) {
+            let why = format!("the `{NAME}` body reader answered {status} for `{path}`");
+            return Err(match status {
+                429 => Failure::new(FailureTag::RateLimited, why),
+                500..=599 => Failure::new(FailureTag::Transient, why),
+                _ => Failure::new(FailureTag::Permanent, why),
+            });
+        }
+        let answer: Value = serde_json::from_slice(&response.body)
+            .map_err(|e| Failure::new(FailureTag::Permanent, format!("the `{NAME}` body reader answered `{path}` with a body that is not JSON: {e}")))?;
+        let text = answer.pointer(&self.endpoint.text).cloned().unwrap_or(Value::Null);
+        let marker = answer.pointer(&self.endpoint.quotability).cloned().unwrap_or(Value::Null);
+        match (&text, marker.as_str().and_then(Quotability::parse)) {
+            (Value::String(t), Some(q)) => fill_body(row, t.clone(), q),
+            _ => {
+                row["body"] = text;
+                row["quotability"] = marker;
+            }
+        }
+        check_quotability(row).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))
+    }
 }
 
 impl ImageSource {
-    pub fn new(config: ImageConfig, base: &Path) -> Self {
+    /// A source walking `config.root` under `base`; a declared body reader is reached
+    /// through `mediation` under its one host.
+    pub fn new(config: ImageConfig, base: &Path, resolver: Arc<Resolver>, mediation: &Mediation) -> Result<Self, ConnectorError> {
         let root = if config.root.is_absolute() {
             config.root
         } else {
             base.join(config.root)
         };
-        Self { root }
+        let reader = match config.body {
+            Some(endpoint) => {
+                let client = mediation.client(endpoint.allowlist()?, endpoint.url.clone(), None);
+                Some(BodyReader { endpoint, resolver, client })
+            }
+            None => None,
+        };
+        Ok(Self { root, reader })
     }
 
     fn files(&self, cancel: &dyn Cancellation) -> Result<Vec<(String, PathBuf)>, Failure> {
@@ -133,6 +260,11 @@ impl Quotability {
             Quotability::Verbatim => "verbatim",
             Quotability::Reading => "reading",
         }
+    }
+
+    /// The marker a spelling names, if either.
+    pub fn parse(text: &str) -> Option<Quotability> {
+        [Quotability::Verbatim, Quotability::Reading].into_iter().find(|q| q.as_str() == text)
     }
 }
 
@@ -374,8 +506,12 @@ impl Source for ImageSource {
             if rows.len() == MAX_IMAGE_ROWS {
                 return Err(Failure::deterministic(FailureTag::Permanent, format!("`image` source exceeds the {} row ceiling", MAX_IMAGE_ROWS)));
             }
-            rows.push(json!({"path": path, "sha256": format!("{:x}", hash.finalize()), "width": width,
-                "height": height, "capture_at": if path.to_ascii_lowercase().ends_with(".png") { png_capture_at(&all) } else { None::<String> }, "modified_at": modified_at, "modality": "image", "body": null, "quotability": null}));
+            let mut row = json!({"path": path, "sha256": format!("{:x}", hash.finalize()), "width": width,
+                "height": height, "capture_at": if path.to_ascii_lowercase().ends_with(".png") { png_capture_at(&all) } else { None::<String> }, "modified_at": modified_at, "modality": "image", "body": null, "quotability": null});
+            if let Some(reader) = &self.reader {
+                reader.fill(&mut row, &path, &all)?;
+            }
+            rows.push(row);
         }
         serde_json::to_vec(&json!({"rows": rows, "more": false, "types": {
             "path": "utf8", "sha256": "utf8", "width": "int64", "height": "int64",

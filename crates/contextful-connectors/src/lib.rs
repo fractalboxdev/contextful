@@ -14,6 +14,8 @@ pub mod object;
 pub mod proxy;
 pub mod receive;
 pub mod report;
+mod request;
+pub mod search;
 
 /// The Google Drive source's name, listed whether or not the build compiles it in.
 pub const DRIVE: &str = "drive";
@@ -25,7 +27,7 @@ pub const DRIVE_FEATURE: &str = "drive";
 pub const OBJECT_FEATURE: &str = "s3-sync";
 
 /// The names resolving to compiled-in sources.
-pub const BUILT_IN: [&str; 9] = [http::NAME, derive::NAME, DRIVE, DRIVE_PICKS, object::NAME, file::NAME, image::NAME, receive::NAME, report::NAME];
+pub const BUILT_IN: [&str; 10] = [http::NAME, derive::NAME, DRIVE, DRIVE_PICKS, object::NAME, file::NAME, image::NAME, receive::NAME, report::NAME, search::NAME];
 
 /// Whether a listed source is compiled into this build; a feature-gated one that is not
 /// answers with the feature to rebuild with.

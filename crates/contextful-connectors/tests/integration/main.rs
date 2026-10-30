@@ -13,5 +13,6 @@ mod object;
 mod receive;
 mod report;
 mod report_declared;
+mod search;
 mod support;
 mod workbook;
