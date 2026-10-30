@@ -859,7 +859,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             // A model's table collects under the window a build's own retention reads: its
             // declaration, else the default (`store.collect.declared-window`).
             let l = locate(args.project.as_deref(), args.declaration.clone())?;
-            let files = crate::pipeline::manifests(&l.declaration)?;
+            let files = crate::project::manifests(&l.declaration)?;
             for m in contextful_core::pipeline::model::collect_models(&files, &contextful_core::pipeline::declare::collect(&files)?)? {
                 if !decls.iter().any(|d| d.name == m.spec.id) {
                     decls.push(TableDecl::named(&m.spec.id));
