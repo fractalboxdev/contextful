@@ -1,5 +1,6 @@
-//! The span exporter: OTLP/HTTP JSON to the collector the operator names in
-//! `OTEL_EXPORTER_OTLP_ENDPOINT` (`disclosure.record.span-export`). An unset endpoint
+//! The span exporter: OTLP/HTTP JSON or protobuf to the collector the operator names in
+//! `OTEL_EXPORTER_OTLP_ENDPOINT` (`disclosure.record.span-export`,
+//! `disclosure.record.span-encoding`). An unset endpoint
 //! builds no exporter, so a default configuration opens no socket for telemetry. Spans
 //! leave off the operation's path through a bounded queue; a span past the cap is dropped
 //! and counted (`disclosure.record.span-queue`).
@@ -7,7 +8,7 @@
 use crate::client::{Client, HeaderValue};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::reference::Hydrated;
-use contextful_core::trace::{otlp_traces, Span, SpanSink, TraceContext};
+use contextful_core::trace::{otlp_traces, Attr, Span, SpanKind, SpanSink, TraceContext};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -67,9 +68,9 @@ pub struct SpanExporter {
 impl SpanExporter {
     /// The exporter `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (used as given) or
     /// `OTEL_EXPORTER_OTLP_ENDPOINT` (with `/v1/traces` appended) names, sending the
-    /// `OTEL_EXPORTER_OTLP_HEADERS` headers under `OTEL_SERVICE_NAME`; `None` with
+    /// `OTEL_EXPORTER_OTLP_HEADERS` headers under `OTEL_SERVICE_NAME` in `wire`; `None` with
     /// neither endpoint set.
-    pub fn from_env(var: impl Fn(&str) -> Option<String>) -> Result<Option<SpanExporter>, String> {
+    pub fn from_env(var: impl Fn(&str) -> Option<String>, wire: Wire) -> Result<Option<SpanExporter>, String> {
         let set = |k: &str| var(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let endpoint = match (set("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"), set("OTEL_EXPORTER_OTLP_ENDPOINT")) {
             (Some(traces), _) => traces,
@@ -78,11 +79,11 @@ impl SpanExporter {
         };
         let headers = parse_headers(&set("OTEL_EXPORTER_OTLP_HEADERS").unwrap_or_default())?;
         let service = set("OTEL_SERVICE_NAME").unwrap_or_else(|| DEFAULT_SERVICE.to_string());
-        SpanExporter::new(&endpoint, headers, &service).map(Some)
+        SpanExporter::new(&endpoint, headers, &service, wire).map(Some)
     }
 
-    /// An exporter posting batches to the collector at `endpoint`.
-    pub fn new(endpoint: &str, headers: Vec<(String, String)>, service: &str) -> Result<SpanExporter, String> {
+    /// An exporter posting batches to the collector at `endpoint` in `wire`.
+    pub fn new(endpoint: &str, headers: Vec<(String, String)>, service: &str, wire: Wire) -> Result<SpanExporter, String> {
         let url = Url::parse(endpoint).map_err(|e| format!("the OTLP endpoint `{endpoint}` is no URL: {e}"))?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err(format!("the OTLP endpoint speaks http or https, not `{}`", url.scheme()));
@@ -94,7 +95,7 @@ impl SpanExporter {
         }
         let allow = Allowlist::parse(&[url.host_str().unwrap_or_default().to_string()]).map_err(|e| e.to_string())?;
         // The collector is the operator's own, so an internal address is admitted for it alone.
-        let client = Client::new(allow, url.clone()).with_timeout(EXPORT_TIMEOUT).with_body_limit(64 * 1024).framed("Content-Type", "application/json").admitting_internal();
+        let client = Client::new(allow, url.clone()).with_timeout(EXPORT_TIMEOUT).with_body_limit(64 * 1024).framed("Content-Type", wire.content_type()).admitting_internal();
         let headers: Vec<(String, HeaderValue)> = headers.into_iter().map(|(k, v)| (k, HeaderValue::Sensitive(Arc::new(Hydrated::new(v))))).collect();
         let (tx, rx) = sync_channel::<Span>(SPAN_QUEUE);
         let (done_tx, done_rx) = sync_channel::<()>(1);
@@ -112,9 +113,9 @@ impl SpanExporter {
                             Err(_) => break,
                         }
                     }
-                    let body = otlp_traces(&service, &batch).to_string();
+                    let body = wire.body(&service, &batch);
                     let n = batch.len() as u64;
-                    match client.send_once("POST", &url, &headers, Some(body.as_bytes())) {
+                    match client.send_once("POST", &url, &headers, Some(&body)) {
                         Ok(r) if (200..300).contains(&r.status) => sent.fetch_add(n, Ordering::Relaxed),
                         _ => lost.fetch_add(n, Ordering::Relaxed),
                     };
@@ -155,6 +156,147 @@ impl SpanSink for SpanExporter {
             self.dropped.fetch_add(1, Ordering::Relaxed);
         }
     }
+}
+
+/// The OTLP/HTTP encoding an exporter sends each batch in (`disclosure.record.span-encoding`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wire {
+    /// The OTLP JSON mapping, under `application/json`.
+    Json,
+    /// Binary protobuf `ExportTraceServiceRequest`, under `application/x-protobuf`.
+    Protobuf,
+}
+
+impl Wire {
+    fn content_type(self) -> &'static str {
+        match self {
+            Wire::Json => "application/json",
+            Wire::Protobuf => "application/x-protobuf",
+        }
+    }
+
+    fn body(self, service: &str, spans: &[Span]) -> Vec<u8> {
+        match self {
+            Wire::Json => otlp_traces(service, spans).to_string().into_bytes(),
+            Wire::Protobuf => otlp_protobuf(service, spans),
+        }
+    }
+}
+
+/// Protobuf wire types.
+const VARINT: u8 = 0;
+const FIXED64: u8 = 1;
+const LEN: u8 = 2;
+
+fn varint(out: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        out.push((v as u8) | 0x80);
+        v >>= 7;
+    }
+    out.push(v as u8);
+}
+
+fn tag(out: &mut Vec<u8>, field: u32, wire: u8) {
+    varint(out, (u64::from(field) << 3) | u64::from(wire));
+}
+
+fn bytes(out: &mut Vec<u8>, field: u32, data: &[u8]) {
+    tag(out, field, LEN);
+    varint(out, data.len() as u64);
+    out.extend_from_slice(data);
+}
+
+fn message(out: &mut Vec<u8>, field: u32, fill: impl FnOnce(&mut Vec<u8>)) {
+    let mut inner = Vec::new();
+    fill(&mut inner);
+    bytes(out, field, &inner);
+}
+
+fn fixed64(out: &mut Vec<u8>, field: u32, v: u64) {
+    tag(out, field, FIXED64);
+    out.extend_from_slice(&v.to_le_bytes());
+}
+
+/// An `AnyValue`; each case is a `oneof` member, so a default value is still written.
+fn any_value(out: &mut Vec<u8>, v: &Attr) {
+    match v {
+        Attr::Str(s) => bytes(out, 1, s.as_bytes()),
+        Attr::Bool(b) => {
+            tag(out, 2, VARINT);
+            varint(out, u64::from(*b));
+        }
+        Attr::Int(n) => {
+            tag(out, 3, VARINT);
+            varint(out, *n as u64);
+        }
+        Attr::List(items) => message(out, 5, |array| {
+            for item in items {
+                message(array, 1, |value| bytes(value, 1, item.as_bytes()));
+            }
+        }),
+    }
+}
+
+fn key_value(out: &mut Vec<u8>, field: u32, key: &str, value: &Attr) {
+    message(out, field, |kv| {
+        bytes(kv, 1, key.as_bytes());
+        message(kv, 2, |v| any_value(v, value));
+    });
+}
+
+fn span(out: &mut Vec<u8>, s: &Span) {
+    bytes(out, 1, &s.trace_id);
+    bytes(out, 2, &s.span_id);
+    if let Some(parent) = s.parent {
+        bytes(out, 4, &parent);
+    }
+    bytes(out, 5, s.name.as_bytes());
+    tag(out, 6, VARINT);
+    varint(out, match s.kind {
+        SpanKind::Internal => 1,
+        SpanKind::Server => 2,
+        SpanKind::Client => 3,
+    });
+    // The JSON body's clamping: no instant before the epoch, no end before the start.
+    let start = s.start_unix_nanos.max(0);
+    let end = s.end_unix_nanos.max(start);
+    fixed64(out, 7, u64::try_from(start).unwrap_or(u64::MAX));
+    fixed64(out, 8, u64::try_from(end).unwrap_or(u64::MAX));
+    for (k, v) in &s.attributes {
+        key_value(out, 9, k, v);
+    }
+    for linked in &s.links {
+        message(out, 13, |link| {
+            bytes(link, 1, &linked.trace_id);
+            bytes(link, 2, &linked.span_id);
+            if let Some(state) = &linked.state {
+                bytes(link, 3, state.as_bytes());
+            }
+        });
+    }
+    if let Some(reason) = &s.error {
+        message(out, 15, |status| {
+            bytes(status, 2, reason.as_bytes());
+            tag(status, 3, VARINT);
+            varint(status, 2);
+        });
+    }
+}
+
+/// The binary protobuf `ExportTraceServiceRequest` for `spans`, carrying what
+/// [`otlp_traces`] carries under resource attribute `service.name` = `service`.
+pub fn otlp_protobuf(service: &str, spans: &[Span]) -> Vec<u8> {
+    let mut out = Vec::new();
+    message(&mut out, 1, |resource_spans| {
+        message(resource_spans, 1, |resource| key_value(resource, 1, "service.name", &Attr::Str(service.to_string())));
+        message(resource_spans, 2, |scope_spans| {
+            message(scope_spans, 1, |scope| bytes(scope, 1, b"contextful"));
+            for s in spans {
+                message(scope_spans, 2, |out| span(out, s));
+            }
+        });
+    });
+    out
 }
 
 /// The `k=v,k2=v2` list `OTEL_EXPORTER_OTLP_HEADERS` carries, values percent-decoded.

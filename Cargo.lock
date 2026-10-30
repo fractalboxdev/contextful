@@ -1019,6 +1019,7 @@ dependencies = [
  "iceberg",
  "jsonwebtoken",
  "parquet",
+ "prost",
  "rusty-s3",
  "s3s",
  "serde",

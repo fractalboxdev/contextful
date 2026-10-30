@@ -390,7 +390,7 @@ The three profiles as feature bundles:
 ```toml
 [features]
 contextful-edge    = ["read-plane", "transport-ureq", "s3-sync"]
-contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host", "pg-catalog", "d1-catalog", "aws-secrets-manager"]
+contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host", "pg-catalog", "d1-catalog", "aws-secrets-manager", "aws-sqs", "iceberg-export", "otlp"]
 contextful-control = ["dep:contextful-control"]
 ```
 

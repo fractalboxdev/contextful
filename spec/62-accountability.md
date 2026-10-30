@@ -136,7 +136,9 @@ Spans leave the process over OTLP only when an endpoint is configured.
   *because a host tracing its own requests sees the substrate's read as a child of its span, and the digest joins it to the audit entry*
 - `read-span-content` — A read span carries no statement text, subject member or row value.
   *because a collector sits outside the audit chain's custody, so a span discloses only digests, counts and identifiers*
-- `span-export` — With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave as OTLP/HTTP JSON to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.
+- `span-export` — With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave over OTLP/HTTP to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.
+- `span-encoding` — A build linking the `otlp` feature sends each batch as an OTLP protobuf `ExportTraceServiceRequest` under `Content-Type: application/x-protobuf`; a build without it sends the OTLP JSON mapping under `application/json`.
+  *because a collector that accepts no OTLP JSON still receives the spans of a build linking `otlp`*
 - `span-unconfigured` — With neither endpoint set, no exporter exists: no span leaves the process and telemetry opens no socket.
   *because egress reachable under a default configuration is telemetry the operator never chose*
 - `span-queue` — Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.

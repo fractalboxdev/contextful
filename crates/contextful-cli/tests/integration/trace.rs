@@ -14,10 +14,10 @@ pub(super) const TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
 pub(super) const PARENT: &str = "00f067aa0ba902b7";
 const PROXIES: [&str; 6] = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
 
-/// The `(target, body)` of each request a collector received.
-type Received = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+/// The `(target, content type, body)` of each request a collector received.
+type Received = Arc<Mutex<Vec<(String, String, Vec<u8>)>>>;
 
-/// A loopback collector answering every POST with 200, keeping each `(target, body)`.
+/// A loopback collector answering every POST with 200, keeping each `(target, content type, body)`.
 pub(super) struct Collector {
     pub(super) url: String,
     seen: Received,
@@ -37,7 +37,7 @@ impl Collector {
                     continue;
                 }
                 let target = line.split_whitespace().nth(1).unwrap_or_default().to_string();
-                let mut length = 0;
+                let (mut length, mut content_type) = (0, String::new());
                 loop {
                     let mut h = String::new();
                     if reader.read_line(&mut h).unwrap_or(0) == 0 || h.trim().is_empty() {
@@ -46,25 +46,30 @@ impl Collector {
                     if let Some((k, v)) = h.split_once(':') {
                         if k.trim().eq_ignore_ascii_case("content-length") {
                             length = v.trim().parse().unwrap_or(0);
+                        } else if k.trim().eq_ignore_ascii_case("content-type") {
+                            content_type = v.trim().to_string();
                         }
                     }
                 }
                 let mut body = vec![0; length];
                 let _ = reader.read_exact(&mut body);
-                keep.lock().unwrap().push((target, body));
+                keep.lock().unwrap().push((target, content_type, body));
                 let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
             }
         });
         Collector { url, seen }
     }
 
-    /// Every span the collector received at `/v1/traces`.
+    /// Every span the collector received at `/v1/traces`, a protobuf body read in its OTLP JSON shape.
     pub(super) fn spans(&self) -> Vec<Value> {
         let seen = self.seen.lock().unwrap();
         let mut out = Vec::new();
-        for (target, body) in seen.iter() {
+        for (target, content_type, body) in seen.iter() {
             assert_eq!(target, "/v1/traces");
-            let v: Value = serde_json::from_slice(body).unwrap();
+            let v: Value = match content_type.as_str() {
+                "application/x-protobuf" => contextful_acceptance::otlp::traces_json(body).unwrap(),
+                _ => serde_json::from_slice(body).unwrap(),
+            };
             for resource in v["resourceSpans"].as_array().unwrap() {
                 for scope in resource["scopeSpans"].as_array().unwrap() {
                     out.extend(scope["spans"].as_array().unwrap().iter().cloned());
@@ -72,6 +77,11 @@ impl Collector {
             }
         }
         out
+    }
+
+    /// The content type of each request the collector received.
+    fn content_types(&self) -> Vec<String> {
+        self.seen.lock().unwrap().iter().map(|(_, content_type, _)| content_type.clone()).collect()
     }
 }
 
@@ -193,6 +203,46 @@ fn a_run_exports_its_span_under_the_callers_span() {
     assert_eq!(span["status"]["code"], 2);
 }
 
+/// A traced run's spans as `collector` receives them: every request's content type, and the run span.
+fn exported_run(collector: &Collector) -> (Vec<String>, Value) {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&manifest(&vendor));
+    let parent = format!("00-{TRACE}-{PARENT}-01");
+    ok(&fire(dir.path(), "encoded", &[("TRACEPARENT", &parent), ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.url)]));
+    let spans = named(&collector.spans(), "contextful.run");
+    assert_eq!(spans.len(), 1, "{spans:?}");
+    (collector.content_types(), spans[0].clone())
+}
+
+/// A build linking the `otlp` feature sends each batch as an OTLP protobuf `ExportTraceServiceRequest` under
+/// `Content-Type: application/x-protobuf`; a build without it sends the OTLP JSON mapping under `application/json`.
+// spec: disclosure.record.span-encoding@bf09336e
+#[cfg(feature = "otlp")]
+#[test]
+fn a_build_linking_otlp_exports_the_run_span_as_protobuf() {
+    let collector = Collector::start();
+    let (content_types, span) = exported_run(&collector);
+    assert!(!content_types.is_empty());
+    assert!(content_types.iter().all(|c| c == "application/x-protobuf"), "{content_types:?}");
+    assert_eq!((span["traceId"].as_str(), span["parentSpanId"].as_str()), (Some(TRACE), Some(PARENT)));
+    assert_eq!(attribute(&span, "contextful.run.id"), Some(serde_json::json!({ "stringValue": "encoded" })));
+    assert_eq!(attribute(&span, "contextful.pipeline"), Some(serde_json::json!({ "stringValue": "shop" })));
+    assert_eq!(attribute(&span, "contextful.rows"), Some(serde_json::json!({ "intValue": "1" })));
+}
+
+/// A build linking the `otlp` feature sends each batch as an OTLP protobuf `ExportTraceServiceRequest` under
+/// `Content-Type: application/x-protobuf`; a build without it sends the OTLP JSON mapping under `application/json`.
+// spec: disclosure.record.span-encoding@bf09336e
+#[cfg(not(feature = "otlp"))]
+#[test]
+fn a_build_without_otlp_exports_the_run_span_as_json() {
+    let collector = Collector::start();
+    let (content_types, span) = exported_run(&collector);
+    assert!(!content_types.is_empty());
+    assert!(content_types.iter().all(|c| c == "application/json"), "{content_types:?}");
+    assert_eq!(attribute(&span, "contextful.run.id"), Some(serde_json::json!({ "stringValue": "encoded" })));
+}
+
 /// The spans named `name`.
 pub(super) fn named(spans: &[Value], name: &str) -> Vec<Value> {
     spans.iter().filter(|s| s["name"] == name).cloned().collect()
@@ -257,7 +307,7 @@ fn a_run_exports_one_child_span_per_stage_under_its_run_span() {
     assert!(pulls.iter().all(|s| attribute(s, "contextful.bytes").is_some()), "{pulls:?}");
     assert_eq!(attribute(&named(&spans, "contextful.commit")[0], "contextful.rows"), Some(serde_json::json!({ "intValue": "2" })));
     assert_eq!(attribute(&named(&spans, "contextful.land")[0], "contextful.rows"), Some(serde_json::json!({ "intValue": "2" })));
-    let payload = collector.seen.lock().unwrap().iter().map(|(_, body)| String::from_utf8_lossy(body).into_owned()).collect::<String>();
+    let payload = collector.seen.lock().unwrap().iter().map(|(_, _, body)| String::from_utf8_lossy(body).into_owned()).collect::<String>();
     for value in ["zebra-canary", "yak-canary"] {
         assert!(!payload.contains(value), "the exported payload discloses `{value}`");
     }
@@ -452,7 +502,7 @@ fn assert_one_read_span(collector: &Collector) {
     assert_eq!(attr("contextful.query.hash"), Some(serde_json::json!({ "stringValue": hash })));
     assert_eq!(attr("contextful.result.rows"), Some(serde_json::json!({ "intValue": "2" })));
     assert_eq!(attr("contextful.tool"), Some(serde_json::json!({ "stringValue": "context.query" })));
-    let payload = collector.seen.lock().unwrap().iter().map(|(_, body)| String::from_utf8_lossy(body).into_owned()).collect::<String>();
+    let payload = collector.seen.lock().unwrap().iter().map(|(_, _, body)| String::from_utf8_lossy(body).into_owned()).collect::<String>();
     for secret in ["SELECT", "note_id", "Solar battery storage", "Hiring plan", "dana@acme.example", "on-prem:hq"] {
         assert!(!payload.contains(secret), "the exported payload discloses `{secret}`: {payload}");
     }
