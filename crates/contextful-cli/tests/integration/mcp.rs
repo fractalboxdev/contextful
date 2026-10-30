@@ -54,8 +54,8 @@ fn serve(dir: &Path, args: &[&str], token: Option<&str>, input: &[Value]) -> Out
 
 /// The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`,
 /// `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version
-/// output.
-// spec: read.embed.build-identity@70b84b1a
+/// output; `otlp` names {{disclosure.record.span-encoding}}'s protobuf exporter.
+// spec: read.embed.build-identity@1b0a81f6
 #[test]
 fn the_handshake_reports_what_this_build_links() {
     let (dir, public, token) = project();
@@ -70,7 +70,12 @@ fn the_handshake_reports_what_this_build_links() {
     if cfg!(feature = "component-host") {
         connectors.push("wasm");
     }
-    let expected = json!({ "backends": ["duckdb", "fts", "hnsw"], "connectors": connectors, "faces": ["http", "eval", "otlp"] });
+    // `otlp` names the protobuf span exporter, linked only by the `otlp` feature.
+    let mut faces = vec!["http", "eval"];
+    if cfg!(feature = "otlp") {
+        faces.push("otlp");
+    }
+    let expected = json!({ "backends": ["duckdb", "fts", "hnsw"], "connectors": connectors, "faces": faces });
     assert_eq!(answer["result"]["contextful.build"], expected, "{answer}");
 }
 

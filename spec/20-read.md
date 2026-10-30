@@ -429,7 +429,7 @@ Embedding implementations, stored model identifiers, query-model checks, build i
 - `default-embedder` — The default embedding implementation deterministically hashes token term frequencies into an L2-normalized vector. This implementation performs no I/O and requires no download, key or network call.
 - `default-embedder-reach` — The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.
 - `model-identifier` — Every stored vector uses a {{store.reconcile.binary-and-vector}} column beside `embedding_model`, which names the producing model. Rows alone determine index identity and provenance.
-- `build-identity` — The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output.
+- `build-identity` — The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output; `otlp` names {{disclosure.record.span-encoding}}'s protobuf exporter.
   *P3*
 - `required-face` — Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.
   *A-topology#build-profiles*

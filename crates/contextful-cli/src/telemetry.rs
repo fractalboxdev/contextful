@@ -12,9 +12,13 @@ use contextful_core::run::record::RunRow;
 use contextful_core::trace::{Span, SpanKind, SpanSink, TraceContext};
 #[cfg(feature = "data-plane")]
 use contextful_engine::stages::{StageReport, StageSink};
-use contextful_outbound::telemetry::{fresh_trace, span_id, SpanExporter};
+use contextful_outbound::telemetry::{fresh_trace, span_id, SpanExporter, Wire};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+
+/// The encoding spans leave in: binary protobuf in a build linking `otlp`, else OTLP JSON
+/// (`disclosure.record.span-encoding`).
+const WIRE: Wire = if cfg!(feature = "otlp") { Wire::Protobuf } else { Wire::Json };
 
 /// Longest wait at exit for queued spans to reach the collector.
 const DRAIN: Duration = Duration::from_secs(5);
@@ -32,7 +36,7 @@ fn telemetry() -> &'static Telemetry {
     TELEMETRY.get_or_init(|| {
         let var = |k: &str| std::env::var(k).ok();
         let caller = var("TRACEPARENT").and_then(|p| TraceContext::parse(&p, var("TRACESTATE").as_deref()));
-        let exporter = match SpanExporter::from_env(var) {
+        let exporter = match SpanExporter::from_env(var, WIRE) {
             Ok(e) => e.map(Arc::new),
             Err(e) => {
                 eprintln!("telemetry: no spans export: {e}");

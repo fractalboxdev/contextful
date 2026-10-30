@@ -30,6 +30,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"]
 iceberg = "=0.10.1"
 arrow-array = "58"
 futures = "0.3"
+# A third-party protobuf decoder (`otlp`): a span exporter's OTLP protobuf body decodes
+# with no engine code.
+prost = "0.10"
 
 [dev-dependencies]
 # A third-party S3 client: it presigns the multipart calls the loopback bucket answers.
