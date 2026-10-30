@@ -90,7 +90,6 @@ fn targets(server: &Server) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "milestone 18 is open: run.orchestrate.role, semantics and delegate-inside hold no performed clause"]
 fn m18_orchestrate() {
     let cf = bin("contextful");
     let faults: Arc<Faults> = Arc::default();

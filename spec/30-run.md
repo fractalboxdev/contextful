@@ -654,6 +654,7 @@ Each deployment supplies a durable orchestrator implementing the execution inter
 - `run.orchestrate.resume`: WHEN a backfill chunk's provider step crashes after half its pages and the provider replays the step, THEN the engine resumes from its recorded pages and the chunk's parts match the uninterrupted run's bytes.
 - `run.orchestrate.one-retry-layer`: WHEN a provider step's pull meets a throttle, THEN the engine's schedule retries inside the step and the provider records one step attempt.
 - `run.orchestrate.step-lease`: WHEN a chunk step's process dies and the provider replays it before the dead attempt's owner lease lapses, THEN the replay refuses naming that attempt, and a replay after the lapse resumes it.
+- `run.orchestrate.delegate-inside`: WHEN a job step's process dies while its second item's `call` is unanswered and the provider replays the step, THEN the delegate receives that call alone again, under its first idempotency key.
 
 unsettled: Where does a target profile record a provider's step ceiling, so a backfill whose chunk plan passes it refuses at planning? owner: topology affects: run.orchestrate
 
