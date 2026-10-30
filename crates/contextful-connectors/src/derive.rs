@@ -17,7 +17,7 @@ use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, vendor_deadline, ChainAudit, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
 use contextful_core::run::derive::task::{
-    host_revived, host_rows, ingested_since, join_units, keep_ordered, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit, INGESTED_AT,
+    host_revived, host_rows, ingested_since, join_units, keep_ordered, landing_order, select_host, DeriveTask, Derived, MeteredClient, Reach, HostSelection, HostUnit, INGESTED_AT,
 };
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
@@ -827,6 +827,8 @@ pub struct HostDerive {
     pub reader: Box<dyn TableReader>,
     /// The parent's availability time and the run's bound (`run.select.available-select`).
     pub available: Option<AvailableSelect>,
+    /// The run's metered client, handed to a task that is not pure (`run.bind.reach-client`).
+    pub client: Option<Arc<dyn MeteredClient>>,
 }
 
 impl HostDerive {
@@ -947,7 +949,14 @@ impl HostDerive {
             if budget.is_some_and(|b| started.elapsed() >= b) {
                 break;
             }
-            let mut rows = host_rows(unit, &name, task, task.derive(unit));
+            // A request for a client the reach withholds fails the tick, settling no unit
+            // (`run.bind.pure-task`, `run.bind.reach-client`).
+            let reach = Reach::for_task(&name, task, self.client.as_deref());
+            let outcome = task.derive(unit, &reach);
+            if let Some(e) = reach.refusal() {
+                return Err(refused(e));
+            }
+            let mut rows = host_rows(unit, &name, task, outcome);
             for (table, output) in &mut rows {
                 for row in output.iter_mut() {
                     if let Some(e) = bound_confidence(row) {

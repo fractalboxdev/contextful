@@ -247,6 +247,20 @@ fn an_empty_host_content_marker_carries_the_declared_parent_retention_clock() {
     );
 }
 
+// spec: run.bind.pure-task@96425242
+#[test]
+fn a_pure_host_task_asking_for_a_network_client_fails_the_run_with_derive_metered_client() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split"));
+    let out = fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[("WORD_SPLIT_REACH", "1")]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("DeriveMeteredClient"), "{}", String::from_utf8_lossy(&out.stderr));
+    let fired = fire(&host, dir.path(), "split-2", "2030-01-01T02:00:00Z", &[]);
+    ok(&fired);
+    let settled = select(dir.path(), "SELECT unit_ref FROM split_units WHERE kind = 'marker' ORDER BY unit_ref");
+    assert_eq!(settled, [["d1"], ["d2"], ["d3"]], "the refused tick settled no unit, so the next selects every one");
+}
+
 /// The rows `sql` answers over the project, each as its cells' text.
 fn select(dir: &std::path::Path, sql: &str) -> Vec<Vec<String>> {
     let v: serde_json::Value = serde_json::from_str(&ok(&cf(dir, &["query", "--json", "--project", "research", sql]))).unwrap();

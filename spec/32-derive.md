@@ -124,6 +124,10 @@ Engine bindings select registered tasks, configure engine interfaces and constra
   *A-run#derive-engine-machine*
 - `join-repeated` — A host task whose joins name one table twice raises `DeriveJoinRepeated` at registration.
   *because a unit holds one joined list per table, so the second join's rows replace the first's*
+- `pure-task` — A host task is pure unless it declares `pure` false. The engine hands a pure task no client, and its request for one refuses as {{run.select.metered-client}}, failing the tick; the engine intercepts no socket the task's own code opens.
+  *because compiled task code shares the engine's process, so the client the engine hands it is the one reach the engine withholds*
+- `reach-client` — A host task declaring `pure` false receives the run's metered client for every unit; a run binding none refuses its request as {{run.select.metered-client}}.
+  *A-connector#host-access-quota*
 - `driver-mismatch` — `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no `engine`; any other pairing raises `DeriveDriverMismatch`.
   *A-run#derive-engine-machine*
 - `endpoint-host-bare` — An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.
@@ -143,8 +147,6 @@ Engine bindings select registered tasks, configure engine interfaces and constra
   *A-run#derive-engine-machine*
 - `locality-wider` — An engine whose declared locality is wider than the zones its source table admits raises `DeriveLocalityWider` at build, naming the engine, its locality and the table.
   *because a derived passage carries its parent's content, and an engine outside the parent's zones moves that content where the parent cannot go*
-
-unsettled: Does a host task declaring no model reach refuse a socket it opens, as {{run.select.metered-client}} refuses one for `link_preview` (issue 95)? owner: derive affects: run.bind
 
 ## exec
 

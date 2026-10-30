@@ -7,7 +7,7 @@ use contextful_core::run::derive::cues::{parse, passages, Cue, PASSAGES_PER_DOCU
 use contextful_core::run::derive::emit::{
     document_status, marker_row, passage_rows, revived, select, superseded, Derivation, Unit, UnitStatus, DERIVATION_KEY, EMPTY_ATTEMPTS,
 };
-use contextful_core::run::derive::task::{check_content_table, check_host_tables, host_key, select_host, DeriveTask, Derived, HostUnit, Tasks};
+use contextful_core::run::derive::task::{check_content_table, check_host_tables, host_key, select_host, DeriveTask, Derived, HostUnit, Reach, Tasks};
 use contextful_core::run::derive::exec::{engine_id, excerpt, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS, STEP_ERROR_EXCERPT_BYTES};
 use contextful_core::run::ports::Row;
 use contextful_core::run::RunError;
@@ -30,7 +30,7 @@ fn registered() -> Tasks {
         fn content_tables(&self) -> Vec<String> {
             vec!["words".into()]
         }
-        fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+        fn derive(&self, _unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
             Ok(Derived::new())
         }
     }

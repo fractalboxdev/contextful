@@ -6,9 +6,10 @@
 //! `WORD_SPLIT_VERSION` sets the task's version, `1` by default; `WORD_SPLIT_SKIP` names,
 //! comma-separated, the content tables the task returns no rows for. `WORD_SPLIT_FAIL`
 //! exits the parent process with a failed run outcome in the chained-failure fixture.
+//! `WORD_SPLIT_REACH` makes the pure `word-split` ask its reach for a network client.
 //! `DOC_JOIN_NOTES` names the table `doc-join` reads as `notes`, `notes` by default.
 
-use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Join, Tasks};
+use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Join, Reach, Tasks};
 use contextful_core::run::ports::Row;
 use contextful_core::run::RunError;
 use serde_json::json;
@@ -18,6 +19,7 @@ struct WordSplit {
     version: String,
     skip: Vec<String>,
     fail: bool,
+    reach: bool,
 }
 
 struct WordCopy;
@@ -36,7 +38,7 @@ impl DeriveTask for WordCopy {
         vec!["copies".into()]
     }
 
-    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
         let word = unit
             .row
             .get("word")
@@ -77,7 +79,7 @@ impl DeriveTask for DocJoin {
         vec!["digests".into()]
     }
 
-    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
         let texts = |table: &str, column: &str| {
             let mut v: Vec<String> = unit.joined.get(table).into_iter().flatten().filter_map(|r| r.get(column)?.as_str().map(str::to_string)).collect();
             v.sort();
@@ -113,7 +115,10 @@ impl DeriveTask for WordSplit {
         vec!["words".into(), "stats".into()]
     }
 
-    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, unit: &HostUnit, reach: &Reach<'_>) -> Result<Derived, RunError> {
+        if self.reach {
+            reach.client()?;
+        }
         if self.fail {
             eprintln!("word-split failed for this run");
             std::process::exit(1);
@@ -156,6 +161,7 @@ fn main() {
         .map(str::to_string)
         .collect();
     let fail = std::env::var_os("WORD_SPLIT_FAIL").is_some();
+    let reach = std::env::var_os("WORD_SPLIT_REACH").is_some();
     let mut tasks = Tasks::default();
     if let Err(e) = tasks.register(
         "word-split",
@@ -163,6 +169,7 @@ fn main() {
             version,
             skip,
             fail,
+            reach,
         }),
     ) {
         eprintln!("{e}");

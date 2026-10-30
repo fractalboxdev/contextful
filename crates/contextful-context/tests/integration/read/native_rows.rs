@@ -1,7 +1,7 @@
 //! Admitted native task inputs retain stored JSON types through the registered relation.
 
 use super::*;
-use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Tasks};
+use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Reach, Tasks};
 use contextful_core::run::RunError;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ impl DeriveTask for Counter {
     fn columns(&self) -> Vec<String> { vec!["counter".into(), "text".into()] }
     fn marker_table(&self) -> String { "units".into() }
     fn content_tables(&self) -> Vec<String> { vec!["counts".into()] }
-    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
         let count = unit.row.get("counter").and_then(Value::as_i64)
             .ok_or_else(|| RunError::Invalid(format!("native task input is not an integer: {:?}", unit.row)))?;
         let text = unit.row.get("text").and_then(Value::as_str)
@@ -35,7 +35,7 @@ fn a_registered_task_receives_numeric_values_and_numeric_looking_text_distinctly
     assert_eq!(response.rows.len(), 1, "the task input exists before its type assertions");
     let row = response.columns.iter().cloned().zip(response.rows[0].clone()).collect();
     let unit = HostUnit { key: "one".into(), row, prior_attempts: 0, derivation_key: "counter-v1".into(), ..Default::default() };
-    let derived = task.derive(&unit).expect("an admitted native row preserves its original JSON kinds");
+    let derived = task.derive(&unit, &Reach::none("native")).expect("an admitted native row preserves its original JSON kinds");
     assert_eq!(derived["counts"][0]["counter"], json!(9_007_199_254_740_993_i64));
     assert_eq!(derived["counts"][0]["text"], json!("9007199254740993"));
     let wire = r.face.rows(&session, "research/counters", None).unwrap();
