@@ -122,7 +122,11 @@ them are rewritten or collected ({{disclosure.erase.physical-removal}}).
 
 A dead letter
 repeats the content of the rows its failed batch carried, so each letter citing an erased
-row leaves with it ({{disclosure.erase.dead-letters}}).
+row leaves with it ({{disclosure.erase.dead-letters}}). A letter written without
+`evidence`, such as a pipeline's record of an unreadable input, cites no row, so no
+subject reaches it; `context erase --dead-letters-without-evidence` clears those letters
+from each requested table through the same signed publication
+({{disclosure.erase.dead-letters-without-evidence}}).
 
 A tenant purge returns a signed receipt naming a salted pseudonym, not the tenant
 identifier ({{disclosure.receipt.pseudonym}}).

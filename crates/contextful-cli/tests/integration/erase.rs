@@ -443,3 +443,37 @@ fn a_zero_row_purge_prints_that_the_tenant_holds_no_rows() {
     assert!(printed.starts_with("purge: tenant holds no retained rows; receipt "), "{printed}");
     assert!(!printed.contains("physical collection"), "{printed}");
 }
+
+/// `context erase --dead-letters-without-evidence --tables notes` refuses a caller without
+/// Forget before store access, and under Forget removes the letter without evidence and
+/// prints the count per dead-letter table in its receipt.
+// spec: disclosure.erase.dead-letters-without-evidence@691172f7
+// spec: disclosure.erase.purge-counts@7c152824
+#[test]
+fn the_dead_letter_purge_requires_forget_and_prints_its_counts() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\n").unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(root.join("rows.jsonl"), "{\"id\":\"a\",\"subject\":\"alice\"}\n").unwrap();
+    ok(run(root, &["context", "land", "notes", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+    std::fs::write(root.join("letters.jsonl"), "{\"key\":\"inbox/cli-letter-canary.csv\",\"reason\":\"unreadable\",\"sha256\":\"00\"}\n").unwrap();
+    ok(run(root, &["context", "land", "notes_dead_letter", "--project", "research", "--rows", "letters.jsonl", "--run-id", "run-2", "--site-id", "fixture"], None, None));
+    let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+    let mint = |action| ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", action, "--table", "notes", "--ttl", "3600"], None, None));
+    let (read, forget) = (mint("read"), mint("forget"));
+    let args = ["context", "erase", "--project", "research", "--dead-letters-without-evidence", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+    let store = root.join(".contextful/context/research");
+    let refused = run(root, &args, Some(&read), Some(&pins));
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("ErasureUngranted"), "{}", String::from_utf8_lossy(&refused.stderr));
+    assert!(!store.join("_erasure_frontier.json").exists(), "a refused purge publishes a frontier");
+    assert!(!root.join(".contextful/audit.key").exists(), "a refused purge bootstraps an audit key");
+    let receipt: serde_json::Value = serde_json::from_str(&ok(run(root, &args, Some(&forget), Some(&pins)))).unwrap();
+    assert_eq!(receipt["dead_letters_without_evidence"], serde_json::json!({ "notes_dead_letter": 1 }));
+    assert_eq!(receipt["affected_counts"], serde_json::json!({ "notes_dead_letter": 1 }));
+    assert_eq!(receipt["subject_hash"], "dead-letters-without-evidence");
+    assert_eq!(receipt["physical_collection"], "complete");
+    let rows: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", "SELECT id FROM notes"], None, Some(&pins)))).unwrap();
+    assert_eq!(rows["rows"], serde_json::json!([["a"]]), "the purge alone removes no source row");
+}

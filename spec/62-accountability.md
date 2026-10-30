@@ -272,10 +272,6 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
   *A-disclosure#forced-rewrite-measured*
 - `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
   *A-disclosure#forced-rewrite-measured*
-- `dead-letters` — Erasure also rewrites each row of a declared table's `<table>_dead_letter` whose {{read.synthesize.dead-letter-evidence}} cites a removed row; undecodable `evidence` follows {{disclosure.erase.unsupported-scope}}.
-  *because a dead letter repeats its source rows' content, so a letter left in place keeps erased bytes readable*
-- `dead-letter-grant` — A Forget grant covering a table also covers its `<table>_dead_letter`, in erasure and in {{disclosure.erase.recovery-verb}}.
-  *because a dead-letter table derives from its table alone, so covering it reaches no content the grant does not already reach*
 - `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.
   *A-disclosure#re-synthesis-after*
 - `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.
@@ -286,6 +282,19 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
   *A-disclosure#forced-rewrite-measured*
 - `tenant-rewrite` — `context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.
   *A-disclosure#forced-rewrite-measured*
+
+### dead letters
+
+Erasure reaches the `<table>_dead_letter` beside each declared table by the evidence its letters cite, or purges the letters citing none.
+
+- `dead-letters` — Erasure also rewrites each row of a declared table's `<table>_dead_letter` whose {{read.synthesize.dead-letter-evidence}} cites a removed row; undecodable `evidence` follows {{disclosure.erase.unsupported-scope}}.
+  *because a dead letter repeats its source rows' content, so a letter left in place keeps erased bytes readable*
+- `dead-letter-grant` — A Forget grant covering a table also covers its `<table>_dead_letter`, in erasure and in {{disclosure.erase.recovery-verb}}.
+  *because a dead-letter table derives from its table alone, so covering it reaches no content the grant does not already reach*
+- `dead-letters-without-evidence` — `context erase --dead-letters-without-evidence`, alone or beside a selector, removes each `<table>_dead_letter` row without `evidence` for every requested table, under {{disclosure.erase.dead-letter-grant}} and {{disclosure.erase.atomic-publication}}.
+  *because a letter written without evidence cites no row, so no selector reaches it, and an unsigned deletion leaves no audit entry or physical-removal guarantee*
+- `purge-counts` — The audit entry and receipt of {{disclosure.erase.dead-letters-without-evidence}} count its removed rows per dead-letter table, apart from `affected_counts`; given alone, the entry's subject hash names the operation instead.
+  *because an operator proves the purge from its signed entry, and a purge without a subject has no subject to pseudonymize*
 
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
 

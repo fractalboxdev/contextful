@@ -74,7 +74,7 @@ pub enum ContextCmd {
         /// Resume an authenticated committed frontier without selecting or signing another erasure.
         #[arg(long)]
         recover: bool,
-        #[arg(long, required_unless_present_any = ["keyset_file", "recover", "tenant"], conflicts_with_all = ["keyset_file", "recover"])]
+        #[arg(long, required_unless_present_any = ["keyset_file", "recover", "tenant", "dead_letters_without_evidence"], conflicts_with_all = ["keyset_file", "recover"])]
         subject: Option<String>,
         #[arg(long = "key-set", alias = "keyset-file", conflicts_with = "recover")]
         keyset_file: Option<PathBuf>,
@@ -82,6 +82,10 @@ pub enum ContextCmd {
         /// column, as the store owner, and print its signed receipt.
         #[arg(long, conflicts_with_all = ["subject", "keyset_file", "tables", "recover"])]
         tenant: Option<String>,
+        /// Also remove every dead letter carrying no `evidence` beside each requested table,
+        /// alone or beside `--subject` or `--key-set`, and count them in the receipt.
+        #[arg(long, conflicts_with_all = ["recover", "tenant"])]
+        dead_letters_without_evidence: bool,
         #[arg(long, value_delimiter = ',', required_unless_present_any = ["recover", "keyset_file", "tenant"], conflicts_with = "recover")]
         tables: Vec<String>,
         /// Explicit configured signing port; verification pins remain independent.
@@ -348,7 +352,16 @@ fn run_purge(args: &StoreArgs, tenant: &str, issuer_key: &Path, admit: &AdmitArg
     Ok(())
 }
 
-fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Path>, tables: &[String], issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
+/// One erasure request as the command line states it.
+struct Erasure<'a> {
+    subject: Option<&'a str>,
+    keyset_file: Option<&'a Path>,
+    tables: &'a [String],
+    dead_letters_without_evidence: bool,
+}
+
+fn run_erasure(args: &StoreArgs, request: Erasure<'_>, issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
+    let Erasure { subject, keyset_file, tables, dead_letters_without_evidence } = request;
     use contextful_context::erase::{erase_declared, EraseRequest, EraseSelector};
     use contextful_core::disclosure::erase::RetainedRows;
     use contextful_policy::enforce::erase::ForgetAdmission;
@@ -392,9 +405,10 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
         }
     }
     let selector = match (subject, &key_file) {
-        (Some(subject), None) => EraseSelector::Subject(subject),
-        (None, Some(KeyFile::Tables(file))) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
-        (None, Some(KeyFile::Column(file))) => EraseSelector::ColumnKeySet { subject_hash: &file.subject_hash, column: &file.column, keys: &file.keys },
+        (Some(subject), None) => Some(EraseSelector::Subject(subject)),
+        (None, Some(KeyFile::Tables(file))) => Some(EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys }),
+        (None, Some(KeyFile::Column(file))) => Some(EraseSelector::ColumnKeySet { subject_hash: &file.subject_hash, column: &file.column, keys: &file.keys }),
+        (None, None) if dead_letters_without_evidence => None,
         _ => bail!("ErasureScopeUnsupported: select one subject or key set"),
     };
     let (authority, _) = admit.admit(args.project.as_deref(), "context erase")?;
@@ -406,12 +420,16 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     let boundary = erasure_boundary(&located.project, admit);
     let audit_key = contextful_context::project::audit_key(&store, &located.project)?;
     let audit_dir = located.project.audit_dir();
-    let erased = erase_declared(&store, &pack, EraseRequest { declarations, tables: &selected_tables, selector, admission: &admitted,
+    let erased = erase_declared(&store, &pack, EraseRequest { declarations, tables: &selected_tables, selector, dead_letters_without_evidence, admission: &admitted,
         signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &clock })?;
-    let receipt = serde_json::json!({ "transaction_id": erased.transaction_id, "subject_hash": erased.subject_hash,
+    let mut receipt = serde_json::json!({ "transaction_id": erased.transaction_id, "subject_hash": erased.subject_hash,
         "affected_counts": erased.affected_counts, "physical_collection": "complete" });
+    if dead_letters_without_evidence { receipt["dead_letters_without_evidence"] = serde_json::json!(erased.dead_letters_without_evidence); }
     if json { println!("{}", serde_json::to_string(&receipt)?); }
-    else { println!("erasure {}: physical collection complete", erased.transaction_id); }
+    else {
+        for (table, count) in &erased.dead_letters_without_evidence { println!("{table}: {count} dead letters without evidence removed"); }
+        println!("erasure {}: physical collection complete", erased.transaction_id);
+    }
     Ok(())
 }
 
@@ -437,10 +455,13 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             println!("{}", serde_json::to_string(value)?);
             Ok(())
         }
-        ContextCmd::Erase { store, recover, subject, keyset_file, tenant, tables, issuer_key, admit, json } => {
+        ContextCmd::Erase { store, recover, subject, keyset_file, tenant, dead_letters_without_evidence, tables, issuer_key, admit, json } => {
             if recover { run_erasure_recovery(&store, &admit, json) }
             else if let Some(tenant) = tenant { run_purge(&store, &tenant, issuer_key.as_deref().context("a purge has no explicit signing port")?, &admit, json) }
-            else { run_erasure(&store, subject.as_deref(), keyset_file.as_deref(), &tables, issuer_key.as_deref().context("erasure has no explicit signing port")?, &admit, json) }
+            else {
+                let request = Erasure { subject: subject.as_deref(), keyset_file: keyset_file.as_deref(), tables: &tables, dead_letters_without_evidence };
+                run_erasure(&store, request, issuer_key.as_deref().context("erasure has no explicit signing port")?, &admit, json)
+            }
         }
         ContextCmd::Land { table, store, rows, run_id, session, site_id, types, now: at, admit } => {
             let o = Opened::open(&store)?;

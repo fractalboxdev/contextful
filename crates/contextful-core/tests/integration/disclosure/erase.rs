@@ -362,3 +362,35 @@ fn a_dead_letter_citing_a_removed_row_joins_the_selection() {
     let mut selected = select_subject(&notes, &rows, &["notes".to_string()], "alice").unwrap();
     assert!(matches!(select_dead_letters(&mut selected, &rows, &letters), Err(ErasureError::ErasureScopeUnsupported(_))));
 }
+
+/// A dead letter carrying no `evidence`, absent or null, joins the selection beside the
+/// letters a subject's evidence reaches; a letter carrying evidence, and every letter of
+/// a table outside the scope, stays. The count holds the evidence-less rows per table.
+// spec: disclosure.erase.dead-letters-without-evidence@691172f7
+#[test]
+fn a_dead_letter_without_evidence_joins_the_selection() {
+    use contextful_core::disclosure::erase::{select_dead_letters, select_dead_letters_without_evidence, ErasureSelection};
+    let notes = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"notes\"\nsubject_id = \"subject\"\n").unwrap();
+    let row = |value: serde_json::Value| value.as_object().unwrap().clone();
+    let cite = |seq: i64| json!([{ "table": "notes", "run": "run-1", "seq": seq }]).to_string();
+    let rows: RetainedRows = BTreeMap::from([
+        ("notes".to_string(), vec![row(json!({"subject": "alice", "_run_id": "run-1", "_row_seq": 0})), row(json!({"subject": "bob", "_run_id": "run-1", "_row_seq": 1}))]),
+        ("notes_dead_letter".to_string(), vec![row(json!({"response": "alice's", "evidence": cite(0)})), row(json!({"response": "bob's", "evidence": cite(1)})),
+            row(json!({"response": "written before evidence"})), row(json!({"response": "null evidence", "evidence": null}))]),
+        ("calls_dead_letter".to_string(), vec![row(json!({"key": "input.csv", "reason": "unreadable"}))]),
+    ]);
+    let scope = vec!["notes_dead_letter".to_string(), "absent_dead_letter".to_string()];
+
+    let mut alone = ErasureSelection::default();
+    let counts = select_dead_letters_without_evidence(&mut alone, &rows, &scope);
+    assert_eq!(alone.removes("notes_dead_letter"), [false, false, true, true]);
+    assert!(alone.removes("calls_dead_letter").is_empty(), "a table outside the scope joins the selection");
+    assert_eq!(counts, BTreeMap::from([("notes_dead_letter".to_string(), 2)]));
+
+    let mut beside = select_subject(&notes, &rows, &["notes".to_string()], "alice").unwrap();
+    select_dead_letters(&mut beside, &rows, &["notes_dead_letter".to_string()]).unwrap();
+    let counts = select_dead_letters_without_evidence(&mut beside, &rows, &scope);
+    assert_eq!(beside.removes("notes_dead_letter"), [true, false, true, true], "the purge keeps the letters the subject's evidence selects");
+    assert_eq!(beside.removes("notes"), [true, false]);
+    assert_eq!(counts, BTreeMap::from([("notes_dead_letter".to_string(), 2)]));
+}

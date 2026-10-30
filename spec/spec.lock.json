@@ -27397,28 +27397,6 @@
       "line": 273
     },
     {
-      "id": "disclosure.erase.dead-letters",
-      "contract": "disclosure",
-      "operation": "erase",
-      "subject": "dead-letters",
-      "kind": "behavior",
-      "statement": "Erasure also rewrites each row of a declared table's `<table>_dead_letter` whose {{read.synthesize.dead-letter-evidence}} cites a removed row; undecodable `evidence` follows {{disclosure.erase.unsupported-scope}}.",
-      "why": "because a dead letter repeats its source rows' content, so a letter left in place keeps erased bytes readable",
-      "file": "spec/62-accountability.md",
-      "line": 275
-    },
-    {
-      "id": "disclosure.erase.dead-letter-grant",
-      "contract": "disclosure",
-      "operation": "erase",
-      "subject": "dead-letter-grant",
-      "kind": "behavior",
-      "statement": "A Forget grant covering a table also covers its `<table>_dead_letter`, in erasure and in {{disclosure.erase.recovery-verb}}.",
-      "why": "because a dead-letter table derives from its table alone, so covering it reaches no content the grant does not already reach",
-      "file": "spec/62-accountability.md",
-      "line": 277
-    },
-    {
       "id": "disclosure.erase.physical-removal",
       "contract": "disclosure",
       "operation": "erase",
@@ -27427,7 +27405,7 @@
       "statement": "Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 279
+      "line": 275
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -27438,7 +27416,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 281
+      "line": 277
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -27449,7 +27427,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 283
+      "line": 279
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -27460,7 +27438,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 285
+      "line": 281
     },
     {
       "id": "disclosure.erase.tenant-rewrite",
@@ -27471,7 +27449,55 @@
       "statement": "`context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 287
+      "line": 283
+    },
+    {
+      "id": "disclosure.erase.dead-letters",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "dead-letters",
+      "kind": "behavior",
+      "statement": "Erasure also rewrites each row of a declared table's `<table>_dead_letter` whose {{read.synthesize.dead-letter-evidence}} cites a removed row; undecodable `evidence` follows {{disclosure.erase.unsupported-scope}}.",
+      "why": "because a dead letter repeats its source rows' content, so a letter left in place keeps erased bytes readable",
+      "file": "spec/62-accountability.md",
+      "line": 290,
+      "group": "dead letters"
+    },
+    {
+      "id": "disclosure.erase.dead-letter-grant",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "dead-letter-grant",
+      "kind": "behavior",
+      "statement": "A Forget grant covering a table also covers its `<table>_dead_letter`, in erasure and in {{disclosure.erase.recovery-verb}}.",
+      "why": "because a dead-letter table derives from its table alone, so covering it reaches no content the grant does not already reach",
+      "file": "spec/62-accountability.md",
+      "line": 292,
+      "group": "dead letters"
+    },
+    {
+      "id": "disclosure.erase.dead-letters-without-evidence",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "dead-letters-without-evidence",
+      "kind": "behavior",
+      "statement": "`context erase --dead-letters-without-evidence`, alone or beside a selector, removes each `<table>_dead_letter` row without `evidence` for every requested table, under {{disclosure.erase.dead-letter-grant}} and {{disclosure.erase.atomic-publication}}.",
+      "why": "because a letter written without evidence cites no row, so no selector reaches it, and an unsigned deletion leaves no audit entry or physical-removal guarantee",
+      "file": "spec/62-accountability.md",
+      "line": 294,
+      "group": "dead letters"
+    },
+    {
+      "id": "disclosure.erase.purge-counts",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "purge-counts",
+      "kind": "behavior",
+      "statement": "The audit entry and receipt of {{disclosure.erase.dead-letters-without-evidence}} count its removed rows per dead-letter table, apart from `affected_counts`; given alone, the entry's subject hash names the operation instead.",
+      "why": "because an operator proves the purge from its signed entry, and a purge without a subject has no subject to pseudonymize",
+      "file": "spec/62-accountability.md",
+      "line": 296,
+      "group": "dead letters"
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -27482,7 +27508,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 298
+      "line": 307
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -27493,7 +27519,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 300
+      "line": 309
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -27504,7 +27530,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 302
+      "line": 311
     },
     {
       "id": "disclosure.receipt.coverage",
@@ -27515,7 +27541,7 @@
       "statement": "A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.",
       "why": "because a purge deletes no bucket object, so a claim over the replication bucket names a removal that never ran",
       "file": "spec/62-accountability.md",
-      "line": 304
+      "line": 313
     },
     {
       "id": "disclosure.receipt.chain-record",
@@ -27526,7 +27552,7 @@
       "statement": "A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 306
+      "line": 315
     },
     {
       "id": "disclosure.receipt.prior-request",
@@ -27537,7 +27563,7 @@
       "statement": "A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.",
       "why": "because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record",
       "file": "spec/62-accountability.md",
-      "line": 308
+      "line": 317
     },
     {
       "id": "disclosure.receipt.zero-rows",
@@ -27548,7 +27574,7 @@
       "statement": "A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.",
       "why": "because an owner proves a tenant's absence with one artifact whether or not rows existed",
       "file": "spec/62-accountability.md",
-      "line": 310
+      "line": 319
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -34270,6 +34296,7 @@
     "connector.source.reports, images, search and receive": "Async vendor reports, images, web search results and pushed `receive` batches each land through their own source.",
     "corpus.state.commands": "The commands that write tags, rewrite revisions and list the clauses a test file or a diff reaches.",
     "corpus.state.milestones": "Roadmap names, acceptance tests, milestone verdicts and the clauses no milestone schedules.",
+    "disclosure.erase.dead letters": "Erasure reaches the `<table>_dead_letter` beside each declared table by the evidence its letters cite, or purges the letters citing none.",
     "disclosure.record.custody": "One append group holds the log at a time, under unanchored or signed custody.",
     "disclosure.record.telemetry": "Spans leave the process over OTLP only when an endpoint is configured.",
     "read.register.HTTP transport": "`contextful serve --http` admits each request, bounds its connections and drains on stop.",
@@ -38584,6 +38611,14 @@
       "store.index.fulltext-by-fold"
     ],
     [
+      "disclosure.erase.physical-removal",
+      "store.fold.retention"
+    ],
+    [
+      "disclosure.erase.tenant-rewrite",
+      "disclosure.erase.atomic-publication"
+    ],
+    [
       "disclosure.erase.dead-letters",
       "read.synthesize.dead-letter-evidence"
     ],
@@ -38596,12 +38631,16 @@
       "disclosure.erase.recovery-verb"
     ],
     [
-      "disclosure.erase.physical-removal",
-      "store.fold.retention"
+      "disclosure.erase.dead-letters-without-evidence",
+      "disclosure.erase.dead-letter-grant"
     ],
     [
-      "disclosure.erase.tenant-rewrite",
+      "disclosure.erase.dead-letters-without-evidence",
       "disclosure.erase.atomic-publication"
+    ],
+    [
+      "disclosure.erase.purge-counts",
+      "disclosure.erase.dead-letters-without-evidence"
     ],
     [
       "disclosure.receipt.chain-record",
@@ -58735,6 +58774,43 @@
         "proved": false
       }
     ],
+    "disclosure.erase.dead-letters-without-evidence": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/erase.rs",
+        "name": "the_dead_letter_purge_requires_forget_and_prints_its_counts",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "the_purge_removes_the_dead_letters_without_evidence_of_each_requested_table",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "the_purge_beside_a_subject_publishes_once_and_counts_apart",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "no_purged_dead_letter_byte_remains_in_a_retained_file",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/disclosure/erase.rs",
+        "name": "a_dead_letter_without_evidence_joins_the_selection",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.erase.key-set": [
       {
         "kind": "test",
@@ -58767,6 +58843,22 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/erase.rs",
         "name": "forget_admission_requires_distinct_authority_for_every_requested_table",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.erase.purge-counts": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/erase.rs",
+        "name": "the_dead_letter_purge_requires_forget_and_prints_its_counts",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "the_purge_beside_a_subject_publishes_once_and_counts_apart",
         "verdict": "performed",
         "proved": false
       }
