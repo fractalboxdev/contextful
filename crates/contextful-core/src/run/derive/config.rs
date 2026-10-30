@@ -21,10 +21,13 @@ pub const LINK_SECONDS_PER_RUN: u64 = 300;
 pub const PARENT_SCAN_ROWS: u64 = 1_000_000;
 
 /// The keys a derive source reads.
-pub const KEYS: [&str; 14] = [
+pub const KEYS: [&str; 16] = [
     "engine", "source_table", "media_column", "parent_id_column", "task", "max_rows_per_run", "max_attempts", "max_seconds_per_run", "journal", "grant",
-    "sample_rate", "since", "filter", "order_by",
+    "sample_rate", "since", "filter", "order_by", "endpoint", "model",
 ];
+/// The keys naming a host task's model endpoint, read only beside a task declaring `pure`
+/// false (`run.bind.model-keys`).
+pub const MODEL_KEYS: [&str; 2] = ["endpoint", "model"];
 /// The keys only a host task reads: which of its units a pass selects (`run.select.sample`,
 /// `run.select.since`, `run.select.filter`, `run.select.order`).
 pub const HOST_KEYS: [&str; 4] = ["sample_rate", "since", "filter", "order_by"];
@@ -135,6 +138,14 @@ impl OrderBy {
     }
 }
 
+/// The model endpoint a host task declaring `pure` false reaches: the OpenAI-compatible
+/// base URL `/chat/completions` hangs off, and the model it serves (`run.bind.model-endpoint`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelEndpoint {
+    pub endpoint: String,
+    pub model: String,
+}
+
 /// A derive source's configuration, from `[pipeline.source.config]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeriveConfig {
@@ -156,6 +167,9 @@ pub struct DeriveConfig {
     pub filter: Option<ParentFilter>,
     /// The order a host task's outstanding units are cut in; absent, scan order (`run.select.order`).
     pub order_by: Option<OrderBy>,
+    /// The model endpoint a host task declaring `pure` false reaches; absent, the run binds no
+    /// client (`run.bind.model-endpoint`).
+    pub model: Option<ModelEndpoint>,
 }
 
 fn int(cfg: &Map<String, Value>, key: &str) -> Option<i64> {
@@ -227,6 +241,7 @@ impl DeriveConfig {
                 })
             })
             .transpose()?;
+        let model = model_endpoint(pipeline_id, cfg, &task, tasks)?;
         if task != Task::LinkPreview && cfg.contains_key("grant") {
             return Err(RunError::DeriveUnmeteredGrant(format!(
                 "pipeline `{pipeline_id}` declares `grant` for {}, which does not use the shared-quota client", task.name()
@@ -338,8 +353,32 @@ impl DeriveConfig {
             since,
             filter,
             order_by,
+            model,
         })
     }
+}
+
+/// A host task's `endpoint` and `model`: both beside a task declaring `pure` false, else
+/// neither (`run.bind.model-keys`).
+fn model_endpoint(pipeline_id: &str, cfg: &Map<String, Value>, task: &Task, tasks: &Tasks) -> Result<Option<ModelEndpoint>, RunError> {
+    let Some(key) = MODEL_KEYS.into_iter().find(|k| cfg.contains_key(*k)) else { return Ok(None) };
+    let reaches = match task {
+        Task::Host(name) => tasks.get(name).is_some_and(|t| !t.pure()),
+        Task::Transcribe | Task::LinkPreview => false,
+    };
+    if !reaches {
+        return Err(RunError::PipelineUnknownConfigKey(format!(
+            "task `{}` reads no key `{key}`; `endpoint` and `model` name the model a host task declaring `pure` false reaches, and a pure or built-in task reaches none",
+            task.name()
+        )));
+    }
+    let text = |key: &str| match cfg.get(key).and_then(Value::as_str).map(str::trim) {
+        Some(v) if !v.is_empty() => Ok(v.to_string()),
+        _ => Err(RunError::PipelineSpecInvalid(format!(
+            "pipeline `{pipeline_id}` declares no string `{key}`; a model endpoint names both `endpoint` and `model`"
+        ))),
+    };
+    Ok(Some(ModelEndpoint { endpoint: text("endpoint")?, model: text("model")? }))
 }
 
 /// How a cue document an engine writes is spelled.

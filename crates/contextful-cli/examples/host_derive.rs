@@ -6,10 +6,14 @@
 //! `WORD_SPLIT_VERSION` sets the task's version, `1` by default; `WORD_SPLIT_SKIP` names,
 //! comma-separated, the content tables the task returns no rows for. `WORD_SPLIT_FAIL`
 //! exits the parent process with a failed run outcome in the chained-failure fixture.
-//! `WORD_SPLIT_REACH` makes the pure `word-split` ask its reach for a network client.
+//! `WORD_SPLIT_REACH` makes the pure `word-split` ask its reach for a network client, or,
+//! set to `infer`, for a model call.
 //! `DOC_JOIN_NOTES` names the table `doc-join` reads as `notes`, `notes` by default.
+//! `judge` declares `pure` false and lands `scores` and `units` from a `documents` row, one
+//! model call scoring its `body`; `JUDGE_SEND` names an address it requests first.
 
-use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Join, Reach, Tasks};
+use contextful_core::connector::infer::{DataItem, Provenance};
+use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Join, ModelCall, Reach, Request, Tasks};
 use contextful_core::run::ports::Row;
 use contextful_core::run::RunError;
 use serde_json::json;
@@ -19,7 +23,53 @@ struct WordSplit {
     version: String,
     skip: Vec<String>,
     fail: bool,
-    reach: bool,
+    reach: Option<String>,
+}
+
+/// One model call over a unit's body, its value fenced as third-party data.
+fn score_call(unit: &HostUnit) -> ModelCall {
+    let body = unit.row.get("body").and_then(|v| v.as_str()).unwrap_or_default();
+    ModelCall {
+        template: "Score the passage from 0 to 1.".into(),
+        items: vec![(Provenance::ThirdParty, DataItem::new(format!("documents#{}", unit.key), body))],
+        cap: 4000,
+        rules: "Answer with one number.".into(),
+    }
+}
+
+struct Judge {
+    send: Option<String>,
+}
+
+impl DeriveTask for Judge {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn pure(&self) -> bool {
+        false
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["scores".into()]
+    }
+
+    fn derive(&self, unit: &HostUnit, reach: &Reach<'_>) -> Result<Derived, RunError> {
+        if let Some(url) = &self.send {
+            reach.client()?.send(&Request { method: "GET".into(), url: url.clone(), ..Request::default() })?;
+        }
+        let inferred = reach.infer(&score_call(unit))?;
+        let mut out = Derived::new();
+        out.insert(
+            "scores".into(),
+            vec![row(json!({ "score": inferred.record.content, "provenance": inferred.taint.as_str() }))],
+        );
+        Ok(out)
+    }
 }
 
 struct WordCopy;
@@ -116,8 +166,14 @@ impl DeriveTask for WordSplit {
     }
 
     fn derive(&self, unit: &HostUnit, reach: &Reach<'_>) -> Result<Derived, RunError> {
-        if self.reach {
-            reach.client()?;
+        match self.reach.as_deref() {
+            Some("infer") => {
+                reach.infer(&score_call(unit))?;
+            }
+            Some(_) => {
+                reach.client()?;
+            }
+            None => {}
         }
         if self.fail {
             eprintln!("word-split failed for this run");
@@ -161,7 +217,7 @@ fn main() {
         .map(str::to_string)
         .collect();
     let fail = std::env::var_os("WORD_SPLIT_FAIL").is_some();
-    let reach = std::env::var_os("WORD_SPLIT_REACH").is_some();
+    let reach = std::env::var("WORD_SPLIT_REACH").ok();
     let mut tasks = Tasks::default();
     if let Err(e) = tasks.register(
         "word-split",
@@ -180,6 +236,10 @@ fn main() {
         std::process::exit(1);
     }
     if let Err(e) = tasks.register("doc-join", Arc::new(DocJoin)) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+    if let Err(e) = tasks.register("judge", Arc::new(Judge { send: std::env::var("JUDGE_SEND").ok() })) {
         eprintln!("{e}");
         std::process::exit(1);
     }

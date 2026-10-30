@@ -351,6 +351,10 @@ impl contextful_core::run::derive::task::MeteredClient for Recording {
         self.0.lock().unwrap().push(request.url.clone());
         Ok(contextful_core::run::derive::task::Answer { status: 200, body: Vec::new() })
     }
+    fn complete(&self, _messages: &[contextful_core::memory::synthesize::Message]) -> Result<contextful_core::memory::synthesize::CallRecord, RunError> {
+        self.0.lock().unwrap().push("model".into());
+        Ok(contextful_core::memory::synthesize::CallRecord { content: String::new(), logprobs: None, usage: None })
+    }
 }
 
 fn reaching(task: Reaching, client: Option<Arc<Recording>>) -> contextful_connectors::derive::HostDerive {

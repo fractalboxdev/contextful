@@ -88,6 +88,21 @@ fn a_completion_passes_the_hook_and_the_address_check() {
     assert_eq!((inward.lookups(), inward.sends()), (1, 0));
 }
 
+/// An endpoint serving one run passes that run's id on every completion's intent, so a hook
+/// keeping the run's request ledger admits it.
+// spec: run.bind.model-endpoint@24a7ad04
+#[test]
+fn an_endpoint_serving_a_run_carries_its_run_id_into_the_hook() {
+    let _env = proxy_env();
+    let server = Server::start(|_| Response::json(200, &json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string()));
+    let hook = Ledger::new(&[], std::sync::Arc::default());
+    let endpoint = Endpoint::new(&server.url("/v1"), "m", None).unwrap().with_hook(hook.clone()).for_run("judge-1.units");
+    assert_eq!(endpoint.complete(&[Message::new("user", "x")]).unwrap(), "ok");
+    let intents = hook.intents.lock().unwrap().clone();
+    assert_eq!(intents.len(), 1);
+    assert_eq!(intents[0].run_id.as_deref(), Some("judge-1.units"));
+}
+
 /// A model call with no configured key declares no header and keeps the system proxy; a configured key is a declared
 /// header and takes the hardened client under {{connector.attach.header-selects-client}}.
 // spec: connector.attach.header-selects-client@08348cb1
