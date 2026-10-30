@@ -5,7 +5,7 @@ use contextful_core::run::RunError;
 use contextful_core::run::derive::config::DeriveConfig;
 use contextful_core::run::derive::emit::{UnitStatus, superseded, superseded_within_version};
 use contextful_core::run::derive::task::{
-    DeriveTask, Derived, HostUnit, Join, TASK_VERSION, Tasks, check_host_tables, host_key,
+    Answer, DeriveTask, Derived, HostUnit, Join, MeteredClient, Reach, Request, TASK_VERSION, Tasks, check_host_tables, host_key,
     host_rows, join_units, landing_order, select_host,
 };
 use contextful_core::run::ports::Row;
@@ -31,7 +31,7 @@ impl DeriveTask for Split {
     fn content_tables(&self) -> Vec<String> {
         vec!["words".into(), "stats".into()]
     }
-    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
         let body = unit
             .row
             .get("body")
@@ -250,7 +250,7 @@ fn tables_outside_the_tasks_set_refuse() {
 fn a_unit_lands_stamped_content_rows_and_one_marker() {
     let task = Split { version: "3" };
     let u = unit("d1", "alpha beta", "3");
-    let out = host_rows(&u, "split", &task, task.derive(&u));
+    let out = host_rows(&u, "split", &task, task.derive(&u, &Reach::none("split")));
     assert_eq!(out["words"].len(), 2);
     for r in &out["words"] {
         assert_eq!(
@@ -288,7 +288,7 @@ fn a_unit_lands_stamped_content_rows_and_one_marker() {
     );
 
     let empty = unit("d2", "   ", "3");
-    let out = host_rows(&empty, "split", &task, task.derive(&empty));
+    let out = host_rows(&empty, "split", &task, task.derive(&empty, &Reach::none("split")));
     assert_eq!(out.keys().collect::<Vec<_>>(), ["stats", "units", "words"]);
     assert!(
         ["stats", "words"]
@@ -353,7 +353,7 @@ fn a_content_table_a_unit_lands_nothing_in_takes_an_empty_marker() {
         fn content_tables(&self) -> Vec<String> {
             vec!["words".into(), "stats".into()]
         }
-        fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+        fn derive(&self, _unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
             let mut out = Derived::new();
             out.insert(
                 "words".into(),
@@ -375,7 +375,7 @@ fn a_content_table_a_unit_lands_nothing_in_takes_an_empty_marker() {
     // A blank body derives nothing: each content table takes one `empty` marker.
     let blank = unit("d1", "  ", "1");
     let task = Split { version: "1" };
-    let out = host_rows(&blank, "split", &task, task.derive(&blank));
+    let out = host_rows(&blank, "split", &task, task.derive(&blank, &Reach::none("split")));
     for t in ["words", "stats"] {
         assert_eq!(out[t].len(), 1, "{t}");
         let m = &out[t][0];
@@ -409,7 +409,7 @@ fn a_content_table_a_unit_lands_nothing_in_takes_an_empty_marker() {
 
     // A unit returning rows for `words` alone lands the empty marker in `stats`.
     let v2 = unit("d1", "alpha beta", "2");
-    let out = host_rows(&v2, "split", &Partial, Partial.derive(&v2));
+    let out = host_rows(&v2, "split", &Partial, Partial.derive(&v2, &Reach::none("split")));
     assert_eq!(
         (out["words"][0]["kind"].clone(), out["words"].len()),
         (json!("passage"), 1)
@@ -513,7 +513,7 @@ impl DeriveTask for Edges {
     fn content_tables(&self) -> Vec<String> {
         vec!["degrees".into()]
     }
-    fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, _unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
         Ok(Derived::new())
     }
 }
@@ -637,7 +637,7 @@ impl DeriveTask for Scored {
     fn content_tables(&self) -> Vec<String> {
         vec!["words".into()]
     }
-    fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+    fn derive(&self, _unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
         Ok(Derived::new())
     }
 }
@@ -811,4 +811,83 @@ fn a_filter_an_order_and_a_sample_select_one_deterministic_set() {
     let mut reversed = parents.clone();
     reversed.reverse();
     assert_eq!(keys(&select_host(&reversed, &[], &config, &Scored)), expected, "a second pass in another scan order selects the same set");
+}
+
+/// A host task asking its reach for a client and sending one request per unit; `pure` is
+/// its declaration.
+struct Fetching {
+    pure: bool,
+}
+
+impl DeriveTask for Fetching {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn pure(&self) -> bool {
+        self.pure
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["words".into()]
+    }
+    fn derive(&self, unit: &HostUnit, reach: &Reach<'_>) -> Result<Derived, RunError> {
+        let request = Request { method: "GET".into(), url: format!("https://api.example/{}", unit.key), ..Request::default() };
+        let answer = reach.client()?.send(&request)?;
+        let mut out = Derived::new();
+        out.insert("words".into(), vec![row(json!({"word_seq": 0, "status": answer.status}))]);
+        Ok(out)
+    }
+}
+
+/// A metered client recording every request it receives.
+#[derive(Default)]
+struct Recording(std::sync::Mutex<Vec<Request>>);
+
+impl MeteredClient for Recording {
+    fn send(&self, request: &Request) -> Result<Answer, RunError> {
+        self.0.lock().unwrap().push(request.clone());
+        Ok(Answer { status: 200, body: Vec::new() })
+    }
+}
+
+#[test]
+fn a_registered_task_is_pure_unless_it_declares_otherwise() {
+    assert!(Split { version: "1" }.pure(), "a task declaring nothing is pure");
+    assert!(!Fetching { pure: false }.pure());
+}
+
+// spec: run.bind.pure-task@96425242
+#[test]
+fn a_pure_task_asking_for_a_client_refuses_with_derive_metered_client() {
+    let client = Recording::default();
+    let task = Fetching { pure: true };
+    let reach = Reach::for_task("fetching", &task, Some(&client));
+    let err = task.derive(&unit("d1", "alpha", "1"), &reach).unwrap_err();
+    assert!(matches!(&err, RunError::DeriveMeteredClient(m) if m.contains("`fetching` is pure")), "{err}");
+    assert_eq!(reach.refusal(), Some(err), "the reach records the refusal the engine fails the tick on");
+    assert!(client.0.lock().unwrap().is_empty(), "a pure task's request reaches no client");
+}
+
+// spec: run.bind.reach-client@4781aac6
+#[test]
+fn a_task_declaring_reach_receives_the_runs_metered_client() {
+    let client = Recording::default();
+    let task = Fetching { pure: false };
+    let reach = Reach::for_task("fetching", &task, Some(&client));
+    let derived = task.derive(&unit("d1", "alpha", "1"), &reach).unwrap();
+    assert_eq!(derived["words"][0]["status"], json!(200));
+    assert!(reach.refusal().is_none());
+    let sent = client.0.lock().unwrap().clone();
+    assert_eq!(sent.len(), 1, "the request entered the run's metered client");
+    assert_eq!(sent[0].url, "https://api.example/d1");
+
+    let unbound = Reach::for_task("fetching", &task, None);
+    let err = task.derive(&unit("d1", "alpha", "1"), &unbound).unwrap_err();
+    assert!(matches!(&err, RunError::DeriveMeteredClient(m) if m.contains("binds none")), "{err}");
+    assert_eq!(unbound.refusal(), Some(err));
 }

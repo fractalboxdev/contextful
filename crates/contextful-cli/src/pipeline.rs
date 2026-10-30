@@ -439,6 +439,7 @@ fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Lo
             retention_columns: spec.tables.iter().filter_map(|t| t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))).collect(),
             reader,
             available,
+            client: None,
         }
         .plan(),
         _ => bail!("pipeline `{}` reads source `{}`; a dry run counts a derive pipeline's units", spec.id, spec.source.name),
@@ -1013,6 +1014,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     }).collect(),
                     reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
                     available: available.clone(),
+                    client: None,
                 };
                 let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
                 derive_skipped = skipped;

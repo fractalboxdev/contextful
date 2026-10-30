@@ -306,6 +306,94 @@ fn a_link_preview_refuses_a_missing_mediation_hook_before_a_socket() {
     assert!(site.received("/article").is_empty());
 }
 
+/// A host task asking its reach for a client per unit and landing the answer's status; a
+/// task swallowing the refusal derives the unit without one.
+struct Reaching {
+    pure: bool,
+    swallow: bool,
+}
+
+impl contextful_core::run::derive::task::DeriveTask for Reaching {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn pure(&self) -> bool {
+        self.pure
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["answers".into()]
+    }
+    fn derive(&self, unit: &contextful_core::run::derive::task::HostUnit, reach: &contextful_core::run::derive::task::Reach<'_>) -> Result<contextful_core::run::derive::task::Derived, RunError> {
+        use contextful_core::run::derive::task::Request;
+        let status = match reach.client() {
+            Ok(client) => client.send(&Request { method: "GET".into(), url: format!("https://api.example/{}", unit.key), ..Request::default() })?.status,
+            Err(_) if self.swallow => 0,
+            Err(e) => return Err(e),
+        };
+        let mut out = contextful_core::run::derive::task::Derived::new();
+        out.insert("answers".into(), vec![json!({"status": status}).as_object().unwrap().clone()]);
+        Ok(out)
+    }
+}
+
+/// A metered client recording the address of every request it receives.
+#[derive(Default)]
+struct Recording(std::sync::Mutex<Vec<String>>);
+
+impl contextful_core::run::derive::task::MeteredClient for Recording {
+    fn send(&self, request: &contextful_core::run::derive::task::Request) -> Result<contextful_core::run::derive::task::Answer, RunError> {
+        self.0.lock().unwrap().push(request.url.clone());
+        Ok(contextful_core::run::derive::task::Answer { status: 200, body: Vec::new() })
+    }
+}
+
+fn reaching(task: Reaching, client: Option<Arc<Recording>>) -> contextful_connectors::derive::HostDerive {
+    let mut tasks = contextful_core::run::derive::task::Tasks::default();
+    tasks.register("reach", Arc::new(task)).unwrap();
+    let config = DeriveConfig::parse_with("docs", &json!({"task": "reach", "source_table": "documents", "parent_id_column": "doc_id"}), &tasks).unwrap();
+    let parents = vec![json!({"doc_id": "d1", "body": "a"}).as_object().unwrap().clone(), json!({"doc_id": "d2", "body": "b"}).as_object().unwrap().clone()];
+    contextful_connectors::derive::HostDerive {
+        pipeline_id: "docs".into(),
+        config,
+        task: tasks.get("reach").unwrap(),
+        tables: Default::default(),
+        retention_columns: Default::default(),
+        reader: Box::new(Rows(vec![("documents".into(), parents)])),
+        available: None,
+        client: client.map(|c| c as Arc<dyn contextful_core::run::derive::task::MeteredClient>),
+    }
+}
+
+// spec: run.bind.pure-task@96425242
+#[test]
+fn a_pure_host_task_asking_for_a_client_fails_the_tick_with_derive_metered_client() {
+    for swallow in [false, true] {
+        let client = Arc::new(Recording::default());
+        let failure = reaching(Reaching { pure: true, swallow }, Some(client.clone())).stage(&Never).unwrap_err();
+        assert!(failure.message.contains("DeriveMeteredClient"), "swallow {swallow}: {failure:?}");
+        assert!(client.0.lock().unwrap().is_empty(), "a pure task's request reaches no client");
+    }
+}
+
+// spec: run.bind.reach-client@4781aac6
+#[test]
+fn a_host_task_declaring_reach_sends_through_the_runs_metered_client() {
+    let client = Arc::new(Recording::default());
+    let (landing, _) = reaching(Reaching { pure: false, swallow: false }, Some(client.clone())).stage(&Never).unwrap();
+    let answers = &landing.iter().find(|(t, _)| t == "answers").unwrap().1;
+    assert_eq!(answers.len(), 2, "{landing:?}");
+    assert!(answers.iter().all(|r| r["status"] == 200), "{answers:?}");
+    assert_eq!(*client.0.lock().unwrap(), ["https://api.example/d1", "https://api.example/d2"]);
+    let failure = reaching(Reaching { pure: false, swallow: false }, None).stage(&Never).unwrap_err();
+    assert!(failure.message.contains("DeriveMeteredClient"), "a run binding no client refuses: {failure:?}");
+}
+
 fn link_source(dir: &Path, address: &str, extra: &str) -> DeriveSource {
     let binding = format!("[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n{extra}");
     let mut s = source(dir, json!([{"doc_id": "article", "path": address}]), &binding);
@@ -956,7 +1044,7 @@ impl contextful_core::run::derive::task::DeriveTask for Joined {
     fn content_tables(&self) -> Vec<String> {
         vec!["joined".into()]
     }
-    fn derive(&self, unit: &contextful_core::run::derive::task::HostUnit) -> Result<contextful_core::run::derive::task::Derived, RunError> {
+    fn derive(&self, unit: &contextful_core::run::derive::task::HostUnit, _reach: &contextful_core::run::derive::task::Reach<'_>) -> Result<contextful_core::run::derive::task::Derived, RunError> {
         let (notes, tags) = (unit.joined["notes"].len(), unit.joined["tags"].len());
         self.0.lock().unwrap().push((unit.key.clone(), notes, tags));
         let mut out = contextful_core::run::derive::task::Derived::new();
@@ -1014,6 +1102,7 @@ fn a_host_unit_carries_its_joined_rows_read_once_before_it_derives() {
         retention_columns: Default::default(),
         reader: Box::new(reader),
         available: None,
+        client: None,
     };
     let (landing, _) = derive.stage(&Never).unwrap();
     let mut seen = task.0.lock().unwrap().clone();
@@ -1059,6 +1148,7 @@ fn a_since_selects_the_parents_landed_at_or_after_it() {
         retention_columns: Default::default(),
         reader: Box::new(Rows(vec![("documents".into(), parents)])),
         available: None,
+        client: None,
     };
     assert_eq!(derive.plan().unwrap().eligible, 3, "a parent landed before `since`, or unstamped, is no eligible unit");
     derive.stage(&Never).unwrap();
@@ -1121,6 +1211,7 @@ fn a_streamed_host_selection_filters_then_keeps_the_ordered_top_units_across_bat
         retention_columns: Default::default(),
         reader: Box::new(Streamed(parents)),
         available: None,
+        client: None,
     };
     let counts = derive.plan().unwrap();
     assert_eq!((counts.eligible, counts.outstanding), (5, 5), "the filter keeps five parents");

@@ -133,7 +133,7 @@ DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", g
 DeriveUnitIncomplete           = { clause = "run.select.incomplete-unit", gloss = "A parent row without a key or media value." }
 DeriveJournaledPull            = { clause = "run.select.journaled-pull", gloss = "A derive pipeline configured to journal its pulls." }
 DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss = "A transcribe pipeline declaring a shared-quota grant." }
-DeriveMeteredClient            = { clause = "run.select.metered-client", gloss = "A link pipeline opening a socket outside the mediated client." }
+DeriveMeteredClient            = { clause = "run.select.metered-client", gloss = "A derive task reaching the network outside the client the engine hands it." }
 DeriveEngineUnbound            = { clause = "run.bind.unbound-engine", gloss = "A pipeline naming an engine the machine has not defined." }
 DeriveCommandInManifest        = { clause = "run.bind.command-in-manifest", gloss = "An executable key on the request side of the binding split." }
 DeriveUnknownTask              = { clause = "run.bind.unknown-task", gloss = "A `task` naming neither a built-in nor a registered task." }

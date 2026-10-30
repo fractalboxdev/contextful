@@ -56,11 +56,85 @@ impl Join {
     }
 }
 
+/// One request a host task sends through the run's metered client.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Request {
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<Vec<u8>>,
+}
+
+/// A metered client's answer to one [`Request`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Answer {
+    pub status: u16,
+    pub body: Vec<u8>,
+}
+
+/// The run's metered client, the network reach the engine hands a host task that is not
+/// pure (`run.bind.reach-client`).
+pub trait MeteredClient: Send + Sync {
+    /// Send `request` under the run's meter, answering its status and body.
+    fn send(&self, request: &Request) -> Result<Answer, RunError>;
+}
+
+/// What the engine hands a host task while it derives one unit: the run's metered client
+/// when the task is not pure and the run binds one, else nothing. A request for an absent
+/// client raises `DeriveMeteredClient` and the engine fails the tick, whether or not the
+/// task returns the error (`run.bind.pure-task`, `run.bind.reach-client`).
+pub struct Reach<'a> {
+    task: &'a str,
+    pure: bool,
+    client: Option<&'a dyn MeteredClient>,
+    refused: std::sync::Mutex<Option<RunError>>,
+}
+
+impl<'a> Reach<'a> {
+    /// The reach of `task`, registered as `name`, under the run's `client`: a pure task's
+    /// reach holds no client whatever the run binds.
+    pub fn for_task(name: &'a str, task: &dyn DeriveTask, client: Option<&'a dyn MeteredClient>) -> Reach<'a> {
+        let pure = task.pure();
+        Reach { task: name, pure, client: if pure { None } else { client }, refused: Default::default() }
+    }
+
+    /// The reach of a pure task named `name`: no client.
+    pub fn none(name: &'a str) -> Reach<'a> {
+        Reach { task: name, pure: true, client: None, refused: Default::default() }
+    }
+
+    /// The run's metered client; a pure task, or a run binding none, raises
+    /// `DeriveMeteredClient`, recorded for [`Reach::refusal`].
+    pub fn client(&self) -> Result<&'a dyn MeteredClient, RunError> {
+        if let Some(client) = self.client {
+            return Ok(client);
+        }
+        let e = RunError::DeriveMeteredClient(if self.pure {
+            format!("host task `{}` is pure and receives no network client; a task reaching the network declares `pure` false", self.task)
+        } else {
+            format!("host task `{}` asks for a metered client and the run binds none", self.task)
+        });
+        let mut refused = self.refused.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        refused.get_or_insert_with(|| e.clone());
+        Err(e)
+    }
+
+    /// The first refused request for a client, which fails the tick.
+    pub fn refusal(&self) -> Option<RunError> {
+        self.refused.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+    }
+}
+
 /// A derive task compiled into the embedding binary. Configuration names it; it never
 /// names a command (`run.bind.host-task`).
 pub trait DeriveTask: Send + Sync {
     /// The version its output derives under; raising it re-selects every settled unit.
     fn version(&self) -> &str;
+    /// Whether the task reaches no network. A pure task receives no metered client; one
+    /// declaring `false` receives the run's (`run.bind.pure-task`).
+    fn pure(&self) -> bool {
+        true
+    }
     /// The parent-table columns a unit carries besides its key column.
     fn columns(&self) -> Vec<String>;
     /// The tables a unit joins beside its driving row; none by default.
@@ -71,8 +145,9 @@ pub trait DeriveTask: Send + Sync {
     fn marker_table(&self) -> String;
     /// The tables its content rows land in, in landing order.
     fn content_tables(&self) -> Vec<String>;
-    /// Derive one unit into rows per content table; an error lands a `failed` marker.
-    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError>;
+    /// Derive one unit into rows per content table, reaching the network only through
+    /// `reach`; an error lands a `failed` marker.
+    fn derive(&self, unit: &HostUnit, reach: &Reach<'_>) -> Result<Derived, RunError>;
 }
 
 /// The host tasks an embedding binary registers before build.
