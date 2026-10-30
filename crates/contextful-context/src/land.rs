@@ -1392,8 +1392,9 @@ pub fn discard_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -
 /// One long-lived writer's hold on a table: the store opened and the node resolved once,
 /// each micro-batch committed as its own run, and the unfolded-run count kept across them
 /// (`run.land.session`). The count opens from the table's manifests and then moves per
-/// commit; a land recounts from the manifests only when the pointer or the committed-run
-/// listing moved past its own commit, and a land that fires the table's trigger runs a
+/// commit; a land recounts from the manifests only when the pointer moved, another writer
+/// rewrote the commit counter, or its `_commit_seq` is not one above the counted runs'
+/// (`store.fold.session-listing`), and a land that fires the table's trigger runs a
 /// pass before it returns (`store.fold.session-trigger`), save on a store declaring
 /// `[sync]`, whose fold job owns the pass (`store.fold.session-synced`). The session sums
 /// the unfolded runs' part bytes beside the count (`store.fold.declared-bytes`) and holds
@@ -1409,8 +1410,9 @@ pub struct LandSession<'a> {
     /// The instant the 6 h interval runs from: the previous pass, else the oldest
     /// unfolded run.
     since: Option<Instant>,
-    /// The pointer's ETag and the committed-run listing's size as of the last count.
-    seen: (String, usize),
+    /// The pointer's ETag and the highest `_commit_seq` the counted runs and the current
+    /// snapshot record, as of the last count.
+    seen: (String, i64),
 }
 
 /// One session landing: the committed manifest, whether it replayed a run already
@@ -1429,7 +1431,7 @@ impl<'a> LandSession<'a> {
     /// snapshot omits.
     pub fn open(store: &'a Store, decl: TableDecl, node: NodeId) -> Result<LandSession<'a>> {
         let store = store.with_schema_cache();
-        let mut session = LandSession { store, opened: std::marker::PhantomData, decl, node, unfolded: 0, unfolded_bytes: 0, since: None, seen: (String::new(), 0) };
+        let mut session = LandSession { store, opened: std::marker::PhantomData, decl, node, unfolded: 0, unfolded_bytes: 0, since: None, seen: (String::new(), i64::MIN) };
         session.recount()?;
         Ok(session)
     }
@@ -1442,6 +1444,11 @@ impl<'a> LandSession<'a> {
     /// How many times this session parsed the table's `schema.json`.
     pub fn schema_reads(&self) -> usize {
         self.store.schema_reads()
+    }
+
+    /// How many times this session listed the table's run directories.
+    pub fn run_listings(&self) -> usize {
+        self.store.run_listings()
     }
 
     /// Land `batch` as run `injection.run_id`, committed at `committed_at` with the source
@@ -1465,13 +1472,18 @@ impl<'a> LandSession<'a> {
             self.recount()?;
             return Ok(SessionLanding { manifest: landing.manifest, replay: false, folded: None, fold: None });
         }
-        let observed = self.observe()?;
-        if observed == (self.seen.0.clone(), self.seen.1 + 1) {
+        let table = self.decl.name.as_str();
+        let seq = landing.manifest.as_ref().and_then(|m| m.commit_seq);
+        // Every lower value publishes or ends before this commit publishes
+        // (`store.reserve.commit-order`), so a value one above the counted runs' leaves no
+        // other writer's run uncounted.
+        let sole = self.store.sole_assignment(table) && seq.is_some() && seq == self.seen.1.checked_add(1);
+        if sole && self.store.pointer_etag(table)? == self.seen.0 {
             // Only this commit moved the table.
             self.unfolded += 1;
             self.unfolded_bytes = self.unfolded_bytes.saturating_add(landing.manifest.as_ref().and_then(|m| m.part_bytes).unwrap_or(0));
             self.since.get_or_insert(committed_at);
-            self.seen = observed;
+            self.seen.1 = seq.unwrap_or(self.seen.1);
         } else {
             // Another writer committed or folded since the last count.
             self.recount()?;
@@ -1491,23 +1503,18 @@ impl<'a> LandSession<'a> {
         Ok(SessionLanding { manifest: landing.manifest, replay: false, folded: None, fold })
     }
 
-    /// The pointer's ETag and the committed-run listing's size, reading no manifest.
-    fn observe(&self) -> Result<(String, usize)> {
-        let table = self.decl.name.as_str();
-        Ok((self.store.pointer_etag(table)?, self.store.manifest_count(table)?))
-    }
-
     /// Read the count and the interval's start from the table's pointer and manifests. The
-    /// listing is observed first, so a commit racing the read moves it and the next land
+    /// pointer is observed first, so a pass racing the read moves it and the next land
     /// recounts.
     fn recount(&mut self) -> Result<()> {
-        let observed = self.observe()?;
+        let pointer = self.store.pointer_etag(self.decl.name.as_str())?;
         let state = self.store.state(&self.decl)?;
         let unfolded = state.unfolded_runs();
         self.unfolded = unfolded.len();
         self.unfolded_bytes = contextful_core::store::fold::unfolded_bytes(&unfolded);
         self.since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
-        self.seen = observed;
+        let high = state.runs.iter().filter_map(|r| r.commit_seq).chain(state.chain.first().and_then(|s| s.commit_seq)).max();
+        self.seen = (pointer, high.unwrap_or(0));
         Ok(())
     }
 }

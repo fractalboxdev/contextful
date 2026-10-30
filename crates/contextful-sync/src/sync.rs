@@ -1689,6 +1689,12 @@ impl Syncer {
                 if local.as_deref() == Some(digest.as_str()) {
                     return Ok(Fetched::Kept);
                 }
+                // The counter covers a run before its manifest makes it readable, so no commit
+                // assigns a value at or below it, whatever ends the pull (`store.reserve.pull-reseed`).
+                let _commit = match project_table(&self.project, key).filter(|_| !replica && is_run_manifest(key)) {
+                    Some(table) => Some(self.store.raise_commit_seq(&table, &path, &merged)?),
+                    None => None,
+                };
                 write(&path, &merged)?;
                 record.note(rel, &path, digest);
                 Ok(Fetched::Downloaded)
@@ -1905,6 +1911,18 @@ impl Syncer {
         self.record_skipped(&manifest, &skipped, &reaches, generation.is_some())?;
         for (rel_key, path, pointer) in advancing {
             let bytes = serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            // The counter covers the snapshot's rows before the pointer names it (`store.reserve.pull-reseed`).
+            let _commit = match project_table(&self.project, &rel_key).filter(|_| !replica) {
+                Some(table) => {
+                    let snapshot = self.store.snapshot_dir(&table, &pointer.snapshot_id)?.join(MANIFEST_FILE);
+                    match std::fs::read(&snapshot) {
+                        Ok(stored) => Some(self.store.raise_commit_seq(&table, &snapshot, &stored)?),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                        Err(e) => return Err(io(&snapshot, e)),
+                    }
+                }
+                None => None,
+            };
             write(&path, &self.store.seal_metadata_bytes(&path, &bytes)?)?;
             report.pointers.push(rel_key);
         }
