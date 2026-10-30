@@ -25,6 +25,7 @@ mod m25;
 mod e2e;
 mod issue98;
 mod issue98_body;
+mod orchestrate;
 mod otlp;
 mod harness;
 mod container_recovery;

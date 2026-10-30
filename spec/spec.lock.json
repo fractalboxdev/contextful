@@ -13139,7 +13139,10 @@
       "statement": "Every orchestrator runs a delegate under {{surface.delegate.binding}} inside the engine's journaled step within a provider step. No adapter dispatches a delegate as a separate provider step.",
       "why": "because a delegate reached outside the engine's step escapes the entry key, the fence and the item budget",
       "file": "spec/30-run.md",
-      "line": 645
+      "line": 645,
+      "scenarios": [
+        "WHEN a job step's process dies while its second item's `call` is unanswered and the provider replays the step, THEN the delegate receives that call alone again, under its first idempotency key."
+      ]
     },
     {
       "id": "run.orchestrate.step-command",
@@ -67335,6 +67338,15 @@
         "proved": false
       }
     ],
+    "run.orchestrate.delegate-inside": [
+      {
+        "kind": "test",
+        "path": "crates/acceptance/tests/integration/orchestrate.rs",
+        "name": "the_in_tree_filler_passes_the_orchestrator_suite",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "run.orchestrate.one-retry-layer": [
       {
         "kind": "test",
@@ -67358,6 +67370,24 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/step.rs",
         "name": "a_chunk_step_killed_after_half_its_pages_resumes_and_lands_the_runners_bytes",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.role": [
+      {
+        "kind": "test",
+        "path": "crates/acceptance/tests/integration/orchestrate.rs",
+        "name": "the_in_tree_filler_passes_the_orchestrator_suite",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.orchestrate.semantics": [
+      {
+        "kind": "test",
+        "path": "crates/acceptance/tests/integration/orchestrate.rs",
+        "name": "the_in_tree_filler_passes_the_orchestrator_suite",
         "verdict": "performed",
         "proved": false
       }
