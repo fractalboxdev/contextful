@@ -250,6 +250,9 @@ pub enum ConnectorError {
     /// A refused put of a refreshed token, or an answering adapter with no write half. (`connector.rotate.write-back-denied`)
     #[error("SecretRotationWriteDenied: {0}")]
     SecretRotationWriteDenied(String),
+    /// A token endpoint answering a refresh with a redirect, a `4xx` other than `429`, or no access token. (`connector.rotate.refresh-refused`)
+    #[error("SecretRefreshRejected: {0}")]
+    SecretRefreshRejected(String),
     /// A request to a host the declaration does not cover. (`connector.attach.unpermitted-request`)
     #[error("SecretUnpermittedRequest: {0}")]
     SecretUnpermittedRequest(String),

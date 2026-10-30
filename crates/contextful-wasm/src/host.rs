@@ -117,6 +117,13 @@ pub struct Cursor {
 /// material through the cache window. A failure sends the request nowhere and fails the call.
 pub trait Hydrate: Send + Sync {
     fn hydrate(&self) -> Result<HeaderValue, Failure>;
+
+    /// The vendor answered `401` to a request carrying `sent`. `true` when the header
+    /// now renders a replacement, so the host resends that request once
+    /// (`connector.rotate.rejected-once`); a failure fails the call.
+    fn rejected(&self, _sent: &HeaderValue) -> Result<bool, Failure> {
+        Ok(false)
+    }
 }
 
 /// What a session grants its guest.

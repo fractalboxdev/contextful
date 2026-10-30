@@ -20625,6 +20625,17 @@
       "line": 89
     },
     {
+      "id": "connector.resolve.file-backend",
+      "contract": "connector",
+      "operation": "resolve",
+      "subject": "file-backend",
+      "kind": "behavior",
+      "statement": "The `file` backend answers `secret://<name>` with the bytes of file `<name>` under `CONTEXTFUL_SECRETS_DIR`, less one trailing newline, versioned by their SHA-256; an absent file is a miss.",
+      "why": "because a version derived from the bytes conditions a put on exactly what the run read, with no counter kept beside the file",
+      "file": "spec/41-secrets.md",
+      "line": 91
+    },
+    {
       "id": "connector.resolve.aws-secrets-manager",
       "contract": "connector",
       "operation": "resolve",
@@ -20633,7 +20644,7 @@
       "statement": "The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "connector.resolve.inline-outside-development",
@@ -20644,7 +20655,7 @@
       "statement": "Outside the development profile of {{topology.package.version-profile}}, a manifest string under a {{connector.reference.credential-key}} holding no `secret://` or `env://` reference and passing {{connector.reference.material-in-a-declaration}} raises `SecretInlineCredential` at declaration read, naming file and key path, never the value.",
       "why": "because a token pasted into a committed manifest reaches version control, CI logs and every clone, outside any adapter's custody",
       "file": "spec/41-secrets.md",
-      "line": 92
+      "line": 94
     },
     {
       "id": "connector.lease.scope-declaration",
@@ -20655,7 +20666,7 @@
       "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as credential leases, each optionally as `name=scope`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 111
+      "line": 113
     },
     {
       "id": "connector.lease.head-of-chain",
@@ -20666,7 +20677,7 @@
       "statement": "For a declared name, the resolver uses the lease provider without falling back to later adapters. A shadowing adapter raises under {{connector.resolve.shadowed-name}}.",
       "why": "A-connector#rotation-writes-forward",
       "file": "spec/41-secrets.md",
-      "line": 112
+      "line": 114
     },
     {
       "id": "connector.lease.undeclared-name-defers",
@@ -20677,7 +20688,7 @@
       "statement": "An undeclared name sends the lease provider no request and leaves precedence among the other adapters untouched.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 114
+      "line": 116
     },
     {
       "id": "connector.lease.empty-scope-set",
@@ -20688,7 +20699,7 @@
       "statement": "Selecting the lease backend with no scope declared raises `SecretLeaseScopesEmpty` at startup.",
       "why": "P3",
       "file": "spec/41-secrets.md",
-      "line": 115
+      "line": 117
     },
     {
       "id": "connector.lease.lease",
@@ -20699,7 +20710,7 @@
       "statement": "The resolver holds a credential lease's value and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/41-secrets.md",
-      "line": 117
+      "line": 119
     },
     {
       "id": "connector.lease.malformed-lease",
@@ -20710,7 +20721,7 @@
       "statement": "A credential lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 119
+      "line": 121
     },
     {
       "id": "connector.lease.cache-window",
@@ -20721,7 +20732,7 @@
       "statement": "A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's own expiry.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 121
+      "line": 123
     },
     {
       "id": "connector.lease.retirement-margin",
@@ -20732,7 +20743,7 @@
       "statement": "An entry retires 10 percent of its window ahead of expiry, the margin capped at 30 s.",
       "why": "because a request sent near the boundary still lands inside the grant",
       "file": "spec/41-secrets.md",
-      "line": 122
+      "line": 124
     },
     {
       "id": "connector.lease.endpoint",
@@ -20743,7 +20754,7 @@
       "statement": "The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{ \"scope\": \"<lease scope>\" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch seconds or an RFC 3339 instant, at top level or under `lease`.",
       "why": "because a batched answer ties one scope's refusal to every name in it and mints material no request has asked for",
       "file": "spec/41-secrets.md",
-      "line": 124
+      "line": 126
     },
     {
       "id": "connector.lease.unknown-scope",
@@ -20754,7 +20765,7 @@
       "statement": "A `404` raises `SecretLeaseScopeUnknown` as a configuration fault. The resolver does not fall back to a stored credential for a declared name.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/41-secrets.md",
-      "line": 126
+      "line": 128
     },
     {
       "id": "connector.lease.mint-rejected",
@@ -20765,7 +20776,7 @@
       "statement": "A `401` or `403` raises `SecretMintRejected`, classed `auth_expired`.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 128
+      "line": 130
     },
     {
       "id": "connector.lease.rate-limited",
@@ -20776,7 +20787,7 @@
       "statement": "A `429` passes its `Retry-After` to the run's retry, classed `rate_limited`.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 130
+      "line": 132
     },
     {
       "id": "connector.lease.request-rejected",
@@ -20787,7 +20798,7 @@
       "statement": "Any other `4xx` raises `SecretLeaseRequestRejected` as a permanent configuration fault.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 132
+      "line": 134
     },
     {
       "id": "connector.lease.transient-class",
@@ -20798,7 +20809,7 @@
       "statement": "A `5xx` and a transport error are transient. The mint client retries nothing itself; the run's retry schedule is the one retry layer.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 134
+      "line": 136
     },
     {
       "id": "connector.lease.vendor-requests-on-failure",
@@ -20809,7 +20820,7 @@
       "statement": "A run holding an expired credential lease whose provider is unreachable issues 0 requests to the vendor.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 136
+      "line": 138
     },
     {
       "id": "connector.lease.calls-per-resolver",
@@ -20820,7 +20831,7 @@
       "statement": "A resolver issues at most 1 calls to the mint endpoint per declared name per lease window.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 138
+      "line": 140
     },
     {
       "id": "connector.lease.bootstrap-credential",
@@ -20831,7 +20842,7 @@
       "statement": "The engine authenticates to the mint endpoint with one standing `secret://` credential, hydrated only through the adapters the chain held before the lease provider joined.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/41-secrets.md",
-      "line": 139
+      "line": 141
     },
     {
       "id": "connector.lease.bootstrap-unserved",
@@ -20842,7 +20853,7 @@
       "statement": "A bootstrap name no adapter behind the lease provider answers raises `SecretBootstrapUnresolved`, naming the reference.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/41-secrets.md",
-      "line": 141
+      "line": 143
     },
     {
       "id": "connector.lease.bootstrap-declared-leased",
@@ -20853,7 +20864,7 @@
       "statement": "Listing the bootstrap name among the leased scopes raises `SecretBootstrapLeased` at startup.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/41-secrets.md",
-      "line": 143
+      "line": 145
     },
     {
       "id": "connector.lease.mint-transport",
@@ -20864,7 +20875,7 @@
       "statement": "The mint client reaches its endpoint over TLS or loopback and ignores system proxy configuration.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 145
+      "line": 147
     },
     {
       "id": "connector.lease.redirect",
@@ -20875,7 +20886,7 @@
       "statement": "A `3xx` from the mint endpoint raises `SecretLeaseRedirect`; the mint credential is not replayed at the target.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 147
+      "line": 149
     },
     {
       "id": "connector.attach.no-material-to-a-guest",
@@ -20886,7 +20897,7 @@
       "statement": "No host import hands credential bytes to guest code; a guest names a request and receives a response.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 182
+      "line": 184
     },
     {
       "id": "connector.attach.unpermitted-request",
@@ -20897,7 +20908,7 @@
       "statement": "A request whose host the declaration does not cover raises `SecretUnpermittedRequest` and fails the guest call even where guest code discards the error.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 184
+      "line": 186
     },
     {
       "id": "connector.attach.transport-port",
@@ -20908,7 +20919,7 @@
       "statement": "The mediated client reaches the network only through a transport interface. The send method connects to a vetted address, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 186
+      "line": 188
     },
     {
       "id": "connector.attach.resolve-once",
@@ -20919,7 +20930,7 @@
       "statement": "After {{connector.meter.pre-send-hook}} admits the hop, the transport interface resolves the name once per request, the client checks each address under {{connector.attach.private-address}}, and the host connects to the address it vetted.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 188
+      "line": 190
     },
     {
       "id": "connector.attach.private-address",
@@ -20930,7 +20941,7 @@
       "statement": "A host name resolving to a private, link-local, unique-local, loopback or cloud-metadata address raises `ConnectorPrivateAddress`, unless the configured host is itself a loopback name or literal.",
       "why": "because an allowlisted name pointed at an internal range is SSRF",
       "file": "spec/41-secrets.md",
-      "line": 190
+      "line": 192
     },
     {
       "id": "connector.attach.private-range-admitted",
@@ -20941,7 +20952,7 @@
       "statement": "An address inside a CIDR range listed in `CONTEXTFUL_EGRESS_PRIVATE_RANGES` passes {{connector.attach.private-address}}; the host name allowlist still applies.",
       "why": "because a VPC-bound deployment reaches its sources, interface endpoints and PrivateLink services at private addresses",
       "file": "spec/41-secrets.md",
-      "line": 192
+      "line": 194
     },
     {
       "id": "connector.attach.private-range-rejected",
@@ -20952,7 +20963,7 @@
       "statement": "A listed range overlapping loopback, link-local `169.254.0.0/16` or `fe80::/10`, or the metadata address `fd00:ec2::254`, raises `ConnectorPrivateRangeRejected` at startup, naming the range.",
       "why": "because admitting the metadata or loopback range reopens the SSRF path the private-address check closes",
       "file": "spec/41-secrets.md",
-      "line": 194
+      "line": 196
     },
     {
       "id": "connector.attach.bound-host",
@@ -20963,7 +20974,7 @@
       "statement": "A credential-bound source declares one non-wildcard host, checked at validation and session open. A wildcard entry or table-bound endpoint host beside a bound credential raises `SecretWildcardHost`.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 196
+      "line": 198
     },
     {
       "id": "connector.attach.per-request-hydration",
@@ -20974,7 +20985,7 @@
       "statement": "A guest session stores hydration handles and plain static headers. The host calls each handle for every permitted request and releases the hydrated header when the request completes.",
       "why": "because session-held credential material outlives the request and delays rotation",
       "file": "spec/41-secrets.md",
-      "line": 198
+      "line": 200
     },
     {
       "id": "connector.attach.literal-attach-value",
@@ -20985,7 +20996,7 @@
       "statement": "An attach value embedding no reference raises `SecretLiteralAttachValue`.",
       "why": "because a constant header belongs in the guest's request construction",
       "file": "spec/41-secrets.md",
-      "line": 200
+      "line": 202
     },
     {
       "id": "connector.attach.redirect-pinning",
@@ -20996,7 +21007,7 @@
       "statement": "With or without credentials, a source follows a hop only at the configured host and port on the same or stronger transport, cleartext-to-TLS included, and stores response bodies from that origin alone.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 202
+      "line": 204
     },
     {
       "id": "connector.attach.weakened-hop",
@@ -21007,7 +21018,7 @@
       "statement": "A redirect or vendor-supplied next link moving from TLS to cleartext, or to another host or port, raises `SecretRedirectOffOrigin`, and the read fails.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 204
+      "line": 206
     },
     {
       "id": "connector.attach.header-selects-client",
@@ -21018,7 +21029,7 @@
       "statement": "A source declaring any header, literal or hydrated, uses the hardened client and bypasses the system proxy; a source declaring no header keeps the proxy. No outbound client sends `Referer`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 206
+      "line": 208
     },
     {
       "id": "connector.attach.cleartext-endpoint",
@@ -21029,7 +21040,7 @@
       "statement": "The host marks a reference-hydrated header sensitive. Sending the header to a cleartext endpoint raises `SecretCleartextEndpoint`, except on IPv4 or IPv6 loopback.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "connector.attach.sensitive-header-record",
@@ -21040,7 +21051,7 @@
       "statement": "A run records which header names carried a credential, by name only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "connector.attach.url-scrubbing",
@@ -21051,7 +21062,7 @@
       "statement": "Before a URL enters an error message, log line or stored column, the host removes query, fragment and userinfo. Scheme, host, port and path remain.",
       "why": "A-authority#redaction-no-copy",
       "file": "spec/41-secrets.md",
-      "line": 210
+      "line": 212
     },
     {
       "id": "connector.attach.credential-in-a-url",
@@ -21062,7 +21073,7 @@
       "statement": "A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.",
       "why": "A-authority#redaction-no-copy",
       "file": "spec/41-secrets.md",
-      "line": 212
+      "line": 214
     },
     {
       "id": "connector.attach.mediation-covers-every-egress",
@@ -21073,7 +21084,7 @@
       "statement": "A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/41-secrets.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "connector.attach.exec-environment",
@@ -21084,7 +21095,7 @@
       "statement": "At spawn, an exec step hydrates its env template through the source resolver into the environment cleared by {{run.exec.no-shell}}. This attachment bypasses host mediation and enters {{connector.record.provider-attribution}}.",
       "why": "because the derive driver hands a vendor child its own credential, and a loopback attaching proxy remains an open design",
       "file": "spec/41-secrets.md",
-      "line": 216
+      "line": 218
     },
     {
       "id": "connector.rotate.division-of-labor",
@@ -21095,7 +21106,7 @@
       "statement": "A credential store contributes versioned storage, a trigger and room for an opaque `expires_at` hint beside the ciphertext. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.",
       "why": "A-connector#rotation-writes-forward",
       "file": "spec/41-secrets.md",
-      "line": 225
+      "line": 227
     },
     {
       "id": "connector.rotate.static-key",
@@ -21106,7 +21117,7 @@
       "statement": "A static key in an operator-managed secret store turns over with no engine step: a run hydrates the current version at its next cache miss.",
       "why": "because the 300 s cache bound already caps staleness, and a per-manager change feed adds a listener and failure domain to every adapter",
       "file": "spec/41-secrets.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "connector.rotate.oauth-credential",
@@ -21117,7 +21128,7 @@
       "statement": "The host refreshes an OAuth credential at {{connector.lease.retirement-margin}} from its declared expiry. The host puts the refreshed version to the answering adapter, conditioned on the hydrated version, then clears the name's cache entry.",
       "why": "A-connector#rotation-writes-forward",
       "file": "spec/41-secrets.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "connector.rotate.operator-entered",
@@ -21128,7 +21139,7 @@
       "statement": "An operator re-enters a development or keychain secret by updating the reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "connector.rotate.leased-credential",
@@ -21139,7 +21150,7 @@
       "statement": "The resolver re-mints a leased credential before its window ends without writing it back. If minting fails, the source uses no credential, including an older value.",
       "why": "P4",
       "file": "spec/41-secrets.md",
-      "line": 232
+      "line": 234
     },
     {
       "id": "connector.rotate.write-back-denied",
@@ -21150,7 +21161,7 @@
       "statement": "A refused put or answering adapter without a write method raises `SecretRotationWriteDenied`. The host discards the refreshed token without serving it, and the run fails closed.",
       "why": "A-connector#rotation-writes-forward",
       "file": "spec/41-secrets.md",
-      "line": 234,
+      "line": 236,
       "scenarios": [
         "WHEN the answering adapter refuses the put of a refreshed token, THEN the run fails and no request carries the refreshed token."
       ]
@@ -21164,7 +21175,7 @@
       "statement": "If another writer stores a version first, the losing put rehydrates that version without raising an error.",
       "why": "A-connector#rotation-writes-forward",
       "file": "spec/41-secrets.md",
-      "line": 236,
+      "line": 238,
       "scenarios": [
         "WHEN another writer stored a newer version first, THEN the next hydration returns that version and the rotation raises nothing."
       ]
@@ -21178,7 +21189,131 @@
       "statement": "Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 238
+      "line": 240
+    },
+    {
+      "id": "connector.rotate.write-halves",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "write-halves",
+      "kind": "behavior",
+      "statement": "Of the linked adapters only `file` carries a write method; `env`, `lease` and `aws-secrets-manager` answer reads alone.",
+      "why": "because a Secrets Manager put conditions on no current version, so a racing refresh overwrites a newer refresh token unseen",
+      "file": "spec/41-secrets.md",
+      "line": 241
+    },
+    {
+      "id": "connector.rotate.file-put",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "file-put",
+      "kind": "behavior",
+      "statement": "The `file` backend's put holds an exclusive lock, compares the file's digest with the hydrated version, and replaces the file by atomic rename with owner-only permissions; a file without write permission refuses the put.",
+      "why": "because a rename leaves a reader the old bytes or the new ones whole, and the lock orders two processes refreshing one name",
+      "file": "spec/41-secrets.md",
+      "line": 243
+    },
+    {
+      "id": "connector.rotate.auth-policy",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "auth-policy",
+      "kind": "behavior",
+      "statement": "A connector manifest's `[auth]` table declares the host's OAuth refresh as {{type:contextful_core::connector::manifest::RawAuth}}: a token endpoint, a client id, a scope, and `${secret://<name>}` references for the client secret, refresh token and access token.",
+      "why": "because the connector's author knows its vendor's token endpoint and scope, while the host alone holds the credentials a refresh exchanges",
+      "file": "spec/41-secrets.md",
+      "line": 250,
+      "group": "oauth"
+    },
+    {
+      "id": "connector.rotate.auth-refused",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "auth-refused",
+      "kind": "behavior",
+      "statement": "An `[auth]` table missing a key or holding another, an endpoint neither TLS nor loopback or carrying userinfo, a value other than one reference, or one name bound twice refuses under {{connector.package.manifest-keys}}, naming the key.",
+      "why": "because a refresh posting its client secret in cleartext, or reading one name as two credentials, leaks or corrupts what the store holds",
+      "file": "spec/41-secrets.md",
+      "line": 252,
+      "group": "oauth"
+    },
+    {
+      "id": "connector.rotate.access-token",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "access-token",
+      "kind": "behavior",
+      "statement": "The access token name renders from the host's held token alone: no adapter answers it, no file, journal or record receives it, and the host refreshes when it holds none or at {{connector.rotate.oauth-credential}}.",
+      "why": "A-connector#rotation-writes-forward",
+      "file": "spec/41-secrets.md",
+      "line": 254,
+      "group": "oauth"
+    },
+    {
+      "id": "connector.rotate.refresh-grant",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "refresh-grant",
+      "kind": "behavior",
+      "statement": "A refresh posts one form of `grant_type=refresh_token`, the refresh token, `scope`, `client_id` and the client secret to the token endpoint through the mediated client, following no redirect.",
+      "why": "because the form carries the client secret, which a redirect replays at a host the manifest never named",
+      "file": "spec/41-secrets.md",
+      "line": 256,
+      "group": "oauth"
+    },
+    {
+      "id": "connector.rotate.refresh-answer",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "refresh-answer",
+      "kind": "behavior",
+      "statement": "A success carries `access_token`, a positive `expires_in` as its declared expiry, and a replacement `refresh_token` the host puts under {{connector.rotate.oauth-credential}}; an answer without a replacement puts nothing.",
+      "why": "A-connector#rotation-writes-forward",
+      "file": "spec/41-secrets.md",
+      "line": 258,
+      "group": "oauth"
+    },
+    {
+      "id": "connector.rotate.refresh-refused",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "refresh-refused",
+      "kind": "refusal",
+      "statement": "A redirect, a `4xx` other than `429`, or a success carrying no `access_token` raises `SecretRefreshRejected`, classed `auth_expired`, naming the scrubbed endpoint and no token.",
+      "why": "because a refused grant names a dead refresh token or a misdeclared client, which no retry repairs",
+      "file": "spec/41-secrets.md",
+      "line": 260,
+      "group": "oauth"
+    },
+    {
+      "id": "connector.rotate.one-retry-layer",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "one-retry-layer",
+      "kind": "behavior",
+      "statement": "The token client sends each refresh once: a `429` passes its `Retry-After` and a `5xx` or transport error is transient, so the run's retry schedule is the one retry layer.",
+      "why": "P6",
+      "file": "spec/41-secrets.md",
+      "line": 262,
+      "group": "oauth",
+      "scenarios": [
+        "WHEN the token endpoint answers `503`, THEN each run attempt sends it one request and the vendor receives none."
+      ]
+    },
+    {
+      "id": "connector.rotate.rejected-once",
+      "contract": "connector",
+      "operation": "rotate",
+      "subject": "rejected-once",
+      "kind": "behavior",
+      "statement": "A vendor `401` to a request carrying the held access token refreshes it once and resends that request once; a second `401` returns to the connector, and a `401` to a replaced token resends without a refresh.",
+      "why": "because a token revoked before its declared expiry reads as expired to the vendor alone, and a second refusal names a grant no refresh repairs",
+      "file": "spec/41-secrets.md",
+      "line": 264,
+      "group": "oauth",
+      "scenarios": [
+        "WHEN the vendor answers `401` to the first access token, THEN the host refreshes once, writes the replacement refresh token forward, resends the request and the run lands its rows."
+      ]
     },
     {
       "id": "connector.record.operator-record",
@@ -21189,7 +21324,7 @@
       "statement": "An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces with their binding names, and rotation location, as descriptive metadata; recording it requires no credential value or decryption key.",
       "why": "A-connector#credential-custody-stays",
       "file": "spec/41-secrets.md",
-      "line": 249
+      "line": 278
     },
     {
       "id": "connector.record.provider-custody",
@@ -21200,7 +21335,7 @@
       "statement": "The selected provider owns credential values, versions and rotation state; an external-manager binding requires no ciphertext copy in the repository.",
       "why": "A-connector#credential-custody-stays",
       "file": "spec/41-secrets.md",
-      "line": 251,
+      "line": 280,
       "scenarios": [
         "WHEN a binding selects an external manager with no encrypted repository entry, THEN the manager remains the sole owner of its value and versions."
       ]
@@ -21214,7 +21349,7 @@
       "statement": "A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 253,
+      "line": 282,
       "scenarios": [
         "WHEN a configured binding has no operator record, THEN inventory includes the binding with unknown descriptive fields."
       ]
@@ -21228,7 +21363,7 @@
       "statement": "An operator record marks grants as unknown when the operator has not established them.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 254
+      "line": 283
     },
     {
       "id": "connector.record.inventory",
@@ -21239,7 +21374,7 @@
       "statement": "`contextful secrets list` displays configured logical bindings with their configured adapters, operator metadata and available provider observations. The command reads no credential values and claims no complete provider inventory.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 255
+      "line": 284
     },
     {
       "id": "connector.record.observation-provenance",
@@ -21250,7 +21385,7 @@
       "statement": "Each provider-observed field names its adapter and observation time; operator assertions remain separately labelled, including when they disagree with provider observations.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 256,
+      "line": 285,
       "scenarios": [
         "WHEN an operator expiry differs from an observed expiry, THEN inventory shows both with their distinct provenance."
       ]
@@ -21264,7 +21399,7 @@
       "statement": "Inventory reports unsupported, denied or failed metadata reads as unavailable with a reason. Inventory neither substitutes operator assertions for provider observations nor hydrates values to obtain metadata.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 257,
+      "line": 286,
       "scenarios": [
         "WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value."
       ]
@@ -21278,7 +21413,7 @@
       "statement": "Inventory reports an absent expiry as unknown. `no expiry` requires an explicit assertion or observation. Inventory computes days remaining only for a dated expiry and retains its provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 258,
+      "line": 287,
       "scenarios": [
         "WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining."
       ]
@@ -21292,7 +21427,7 @@
       "statement": "The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 259
+      "line": 288
     },
     {
       "id": "connector.record.configured-is-not-observed",
@@ -21303,7 +21438,7 @@
       "statement": "A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 260,
+      "line": 289,
       "scenarios": [
         "WHEN a binding configures multiple adapters and has no run attribution, THEN inventory reports configuration without asserting an answering adapter."
       ]
@@ -21317,7 +21452,7 @@
       "statement": "A run's commit-phase and failure rows carry `credential_providers`. The field maps each hydrated logical name to the answering adapter, using names only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 261
+      "line": 290
     },
     {
       "id": "connector.record.record-table",
@@ -21328,7 +21463,7 @@
       "statement": "An operator record is a `[secret.<name>]` table in the discovered `contextful.toml` taking {{type:contextful_core::connector::record::OperatorRecord}}, each key optional; `expires = \"never\"` is the one explicit no-expiry assertion.",
       "why": "A-connector#credential-custody-stays",
       "file": "spec/41-secrets.md",
-      "line": 262
+      "line": 291
     },
     {
       "id": "connector.record.record-rejected",
@@ -21339,7 +21474,7 @@
       "statement": "A `[secret.<name>]` table outside discovered `contextful.toml`, without a manifest-bound `secret://` name, or containing an unknown key, mistyped value or credential-shaped string raises `SecretRecordRejected` during declaration read. The error names file, name and key path, excluding values.",
       "why": "because a misspelled name otherwise describes nothing while the real binding reads undescribed, and an echoed value carries a pasted token into CI logs",
       "file": "spec/41-secrets.md",
-      "line": 264,
+      "line": 293,
       "scenarios": [
         "WHEN `contextful.toml` holds `[secret.vendor-tokne]` beside a binding named `vendor-token`, THEN the declaration read refuses and the message carries no record value."
       ]
@@ -21353,7 +21488,7 @@
       "statement": "Resolution, attachment, rotation and pipeline content hashing read no operator record. Editing a record changes no plan, run or hydrated value.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 266,
+      "line": 295,
       "scenarios": [
         "WHEN an operator record's description changes, THEN the pipeline retains its content hash."
       ]
@@ -21367,7 +21502,7 @@
       "statement": "An adapter's observation interface returns presence, version, creation and expiry for a name, or unavailable with a reason. The interface holds no hydrated value. Inventory holds only observation interfaces.",
       "why": "A-connector#credential-custody-stays",
       "file": "spec/41-secrets.md",
-      "line": 267,
+      "line": 296,
       "scenarios": [
         "WHEN inventory lists a lease-served binding, THEN its lease observation reads unsupported and the mint endpoint receives 0 requests."
       ]
@@ -21381,7 +21516,7 @@
       "statement": "`secrets list` exits 0 whatever its marks; `--json` prints one object per binding per line: name, configured adapters, latest answered adapter with run id and instant, operator fields, and observations with adapter and time.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 269
+      "line": 298
     },
     {
       "id": "connector.principal-secrets.name-binding",
@@ -21392,7 +21527,7 @@
       "statement": "A connection binds one opaque secret name to its admitted tenant and principal; a run hydrates only the name bound to its connection.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 287,
+      "line": 316,
       "scenarios": [
         "WHEN two principals connect one OAuth client, THEN each run resolves only its own refresh-token name."
       ]
@@ -21406,7 +21541,7 @@
       "statement": "A principal secret adapter resolves a name to credential material and a version. The adapter's write method conditionally stores a replacement version under the same name.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 288
+      "line": 317
     },
     {
       "id": "connector.principal-secrets.write-serialization",
@@ -21417,7 +21552,7 @@
       "statement": "Concurrent refreshes of one name serialize across resolvers through the adapter's conditional version; the losing refresh rehydrates the winner under {{connector.rotate.conditional-put}}.",
       "why": "A-connector#picker-files-bind",
       "file": "spec/41-secrets.md",
-      "line": 289,
+      "line": 318,
       "scenarios": [
         "WHEN two refreshes race on one name, THEN one version wins and the other resolver rehydrates it."
       ]
@@ -21431,7 +21566,7 @@
       "statement": "A lease endpoint holding refresh tokens answers the connection's name under {{connector.lease.lease}}; Contextful retains neither the refresh token nor its replacement.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 291
+      "line": 320
     },
     {
       "id": "connector.principal-secrets.disconnect",
@@ -21442,7 +21577,7 @@
       "statement": "Deleting a connection revokes its principal secret name before another run hydrates it. If revocation fails, the connection stays paused.",
       "why": "because a deleted connection must not regain vendor access from a cached lease",
       "file": "spec/41-secrets.md",
-      "line": 292
+      "line": 321
     },
     {
       "id": "connector.drive-picks.picker-source",
@@ -34045,6 +34180,7 @@
     "authority.verify.local transport": "A pipe or Unix socket admits a credential through a holder proof or the peer's uid.",
     "connector.package.build": "The `connector pin` verb builds a guest on one fixed platform from its manifest's one build input.",
     "connector.package.components": "A component source loads under its manifest's grant, runs on the native or interpreted target, and holds to fixed resource bounds.",
+    "connector.rotate.oauth": "The OAuth refresh a connector manifest declares, which the host runs for a component source's attach templates.",
     "connector.source.documents": "The `file` source and the document decoder land one row per page or heading, keyed by slug and ordinal.",
     "connector.source.drive": "The drive source walks selected Drive folders and lands one row per file and one per PDF page.",
     "connector.source.formats": "A body's declared `format` selects its decoder: JSON, delimited text, a feed, an office container or a workbook.",
@@ -34590,7 +34726,9 @@
       "connector.rotate.division-of-labor",
       "connector.rotate.oauth-credential",
       "connector.rotate.write-back-denied",
-      "connector.rotate.conditional-put"
+      "connector.rotate.conditional-put",
+      "connector.rotate.access-token",
+      "connector.rotate.refresh-answer"
     ],
     "A-connector#unreadable-objects-files": [
       "connector.source.object-unreadable",
@@ -37805,6 +37943,18 @@
       "connector.lease.retirement-margin"
     ],
     [
+      "connector.rotate.auth-refused",
+      "connector.package.manifest-keys"
+    ],
+    [
+      "connector.rotate.access-token",
+      "connector.rotate.oauth-credential"
+    ],
+    [
+      "connector.rotate.refresh-answer",
+      "connector.rotate.oauth-credential"
+    ],
+    [
       "connector.record.configured-is-not-observed",
       "connector.record.provider-attribution"
     ],
@@ -38951,10 +39101,46 @@
         },
         {
           "name": "dedup_window_secs"
+        },
+        {
+          "name": "auth"
         }
       ],
       "clauses": [
         "connector.package.manifest-keys"
+      ]
+    },
+    "contextful_core::connector::manifest::RawAuth": {
+      "file": "crates/contextful-core/src/connector/manifest.rs",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "token_endpoint",
+          "doc": "The token endpoint each refresh posts to, TLS or loopback."
+        },
+        {
+          "name": "client_id",
+          "doc": "The OAuth client identifier."
+        },
+        {
+          "name": "client_secret",
+          "doc": "The client secret, one `${secret://<name>}` reference."
+        },
+        {
+          "name": "refresh_token",
+          "doc": "The refresh token, one `${secret://<name>}` reference whose adapter stores each replacement."
+        },
+        {
+          "name": "access_token",
+          "doc": "The access token, one `${secret://<name>}` reference attach templates name and the host alone answers."
+        },
+        {
+          "name": "scope",
+          "doc": "The scope each refresh requests."
+        }
+      ],
+      "clauses": [
+        "connector.rotate.auth-policy"
       ]
     },
     "contextful_core::connector::record::OperatorRecord": {
@@ -42762,6 +42948,10 @@
           "SecretRedirectOffOrigin": {
             "clause": "connector.attach.weakened-hop",
             "gloss": "A hop or next link weakening the transport or leaving the configured host and port."
+          },
+          "SecretRefreshRejected": {
+            "clause": "connector.rotate.refresh-refused",
+            "gloss": "A token endpoint answering a refresh with a redirect, a `4xx` other than `429`, or no access token."
           },
           "SecretRotationWriteDenied": {
             "clause": "connector.rotate.write-back-denied",
@@ -54898,6 +55088,24 @@
         "proved": false
       }
     ],
+    "connector.principal-secrets.adapter-port": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/file_secrets.rs",
+        "name": "a_file_put_replaces_the_hydrated_version_alone",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.principal-secrets.write-serialization": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/file_secrets.rs",
+        "name": "two_resolvers_refreshing_one_file_resolve_one_version",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.record.configured-is-not-observed": [
       {
         "kind": "test",
@@ -55173,6 +55381,15 @@
         "proved": false
       }
     ],
+    "connector.resolve.file-backend": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/file_secrets.rs",
+        "name": "the_file_backend_answers_by_file_and_versions_by_digest",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.resolve.first-hit-wins": [
       {
         "kind": "test",
@@ -55263,6 +55480,47 @@
         "proved": false
       }
     ],
+    "connector.rotate.access-token": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/oauth.rs",
+        "name": "an_expired_access_token_refreshes_once_and_the_run_lands_its_rows",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "the_access_token_is_held_until_its_margin_and_each_replacement_is_written_forward",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.auth-policy": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/oauth.rs",
+        "name": "an_expired_access_token_refreshes_once_and_the_run_lands_its_rows",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/rotate.rs",
+        "name": "an_auth_table_declares_the_refresh_policy",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.auth-refused": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/rotate.rs",
+        "name": "an_auth_table_off_its_shape_refuses_naming_the_key",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.rotate.conditional-put": [
       {
         "kind": "test",
@@ -55288,6 +55546,15 @@
         "proved": false
       }
     ],
+    "connector.rotate.file-put": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/file_secrets.rs",
+        "name": "a_file_put_replaces_the_hydrated_version_alone",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.rotate.leased-credential": [
       {
         "kind": "test",
@@ -55300,8 +55567,45 @@
     "connector.rotate.oauth-credential": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/oauth.rs",
+        "name": "an_expired_access_token_refreshes_once_and_the_run_lands_its_rows",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "the_access_token_is_held_until_its_margin_and_each_replacement_is_written_forward",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/rotate.rs",
         "name": "a_refresh_puts_forward_to_the_answering_adapter_conditioned_on_the_hydrated_version",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.one-retry-layer": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/oauth.rs",
+        "name": "each_refresh_stays_under_one_retry_layer",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/rotate.rs",
+        "name": "a_throttled_or_failing_refresh_returns_to_the_runs_retry",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "each_refresh_is_one_request_under_the_runs_retry",
         "verdict": "performed",
         "proved": false
       }
@@ -55311,6 +55615,77 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/rotate.rs",
         "name": "an_environment_secret_turns_over_only_by_re_entry",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.refresh-answer": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/rotate.rs",
+        "name": "a_refresh_answer_reads_the_access_token_its_expiry_and_a_replacement",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "the_access_token_is_held_until_its_margin_and_each_replacement_is_written_forward",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.refresh-grant": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/rotate.rs",
+        "name": "the_refresh_form_carries_the_grant_the_scope_and_the_client",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "each_refresh_is_one_request_under_the_runs_retry",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.refresh-refused": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/connector/rotate.rs",
+        "name": "a_refused_refresh_raises_refresh_rejected",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "each_refresh_is_one_request_under_the_runs_retry",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.rejected-once": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/oauth.rs",
+        "name": "an_expired_access_token_refreshes_once_and_the_run_lands_its_rows",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "a_rejection_refreshes_once_and_a_stale_rejection_reuses_the_replacement",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-wasm/tests/integration/attach.rs",
+        "name": "a_rejected_credential_refreshes_once_and_the_request_goes_out_once_more",
         "verdict": "performed",
         "proved": false
       }
@@ -55336,8 +55711,31 @@
     "connector.rotate.write-back-denied": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/oauth.rs",
+        "name": "a_refused_write_back_fails_the_run",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/oauth.rs",
+        "name": "a_refused_write_back_holds_no_access_token",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/rotate.rs",
         "name": "a_refused_put_fails_closed_and_the_refreshed_token_is_never_served",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.rotate.write-halves": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-outbound/tests/integration/file_secrets.rs",
+        "name": "only_the_file_adapter_carries_a_write_half",
         "verdict": "performed",
         "proved": false
       }

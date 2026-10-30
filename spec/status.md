@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 4 | 19 | 358 | 80 | 25 | 4 | 358 | 1 | 0 | 358 |
 | `authority` | 2 | 16 | 291 | 79 | 28 | 8 | 291 | 4 | 0 | 291 |
-| `connector` | 3 | 19 | 356 | 85 | 23 | 13 | 327 | 2 | 0 | 327 |
+| `connector` | 3 | 19 | 367 | 86 | 23 | 13 | 340 | 2 | 0 | 340 |
 | `corpus` | 1 | 11 | 126 | 51 | 13 | 0 | 126 | 0 | 0 | 126 |
 | `disclosure` | 3 | 17 | 205 | 65 | 14 | 8 | 196 | 0 | 0 | 196 |
 | `read` | 2 | 20 | 307 | 53 | 30 | 14 | 296 | 0 | 0 | 296 |
@@ -15,11 +15,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 9 | 21 | 385 | 72 | 26 | 13 | 385 | 13 | 0 | 385 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 195 | 0 | 0 | 195 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 92 | 0 | 0 | 92 |
-| **total** | 30 | 182 | 2947 | 720 | 243 | 83 | 2889 | 24 | 0 | |
+| **total** | 30 | 182 | 2958 | 721 | 243 | 83 | 2902 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 11.
+Clauses restating a code type: 12.
 
 ## Milestones
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 260 | 260 | passing | closed |
 | 2 — The store | 9 | 195 | 195 | passing | closed |
 | 3 — The run path | 12 | 294 | 294 | passing | closed |
-| 4 — Ingest | 25 | 572 | 572 | passing | closed |
+| 4 — Ingest | 25 | 583 | 583 | passing | closed |
 | 5 — The read face under enforcement | 17 | 306 | 306 | passing | closed |
 | 6 — Sync and replicas | 10 | 176 | 176 | passing | closed |
 | 7 — Memory | 6 | 87 | 87 | passing | closed |
@@ -47,7 +47,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 17 — Delegated bodies | 1 | 15 | 15 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 | 19 — Drive connections | 2 | 22 | 13 | open | open |
-| 20 — Drive permission custody | 2 | 11 | 0 | absent | open |
+| 20 — Drive permission custody | 2 | 11 | 2 | open | open |
 | 21 — Sheet rows | 1 | 8 | 0 | absent | open |
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |

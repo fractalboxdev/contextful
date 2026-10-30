@@ -958,11 +958,13 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             check_compaction(&spec, &fold_coverage(&manifests(&declaration)?)?)?;
             let w = wire_at(&l.project, &project.now)?;
             let vars: BTreeMap<String, String> = std::env::vars().collect();
-            let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
+            let assembly = contextful_outbound::secrets::assemble_all(&vars, w.clock.clone())?;
+            let resolver = Arc::new(assembly.resolver);
+            let credentials = component::Credentials { resolver: resolver.clone(), writers: assembly.writers, clock: w.clock.clone() };
             match &checked {
                 Checked::Http(config, _) => resolver.preflight(config.headers.values())?,
                 Checked::Report(declaration) => resolver.preflight(declaration.headers.values())?,
-                Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
+                Checked::Component(decl) => component::preflight(decl, crate::connector::admit(decl, &l.project.dir)?.auth.as_ref(), &resolver)?,
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
                 Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) | Checked::Receive(_) => {}
@@ -1149,7 +1151,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                             })
                         }
                         Checked::Component(decl) => match recorded.as_ref().or(loaded.as_ref()) {
-                            Some(c) => c.source(decl, t.name(), &resolver, &run_id)?,
+                            Some(c) => c.source(decl, t.name(), &credentials, &run_id)?,
                             None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
                         },
                         Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
