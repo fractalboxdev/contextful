@@ -246,6 +246,8 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
   *A-surface#delegated-body-deploy*
 - `status` — A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.
   *because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix*
+- `submit-unfilled` — A `store-driven` fire whose delegate binds `mode = "submit"` raises `DelegateSubmitUnfilled`, naming `call` as the mode that dispatches, before any execution opens, so no item receives a receipt.
+  *because no engine path drives the worker protocol for a delegated item, and a refusal before admission leaves every item due once the binding names `call`*
 - `call-timeout` — A `call` delegate's `timeout` defaults to 300 s.
 - `call-timeout-ceiling` — A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.
   *because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one*

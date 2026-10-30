@@ -273,6 +273,33 @@ fn a_response_after_the_timeout_closes_the_attempt_transient_and_lands_nothing()
     assert_eq!(delegate.received(ROUTE).len(), sent, "first fire:\n{first}\nsecond fire:\n{second}");
 }
 
+/// A `store-driven` fire whose delegate binds `mode = "submit"` raises `DelegateSubmitUnfilled`, naming
+/// `call` as the mode that dispatches, before any execution opens, so no item receives a receipt.
+// spec: surface.delegate.submit-unfilled@38c08f4d
+#[test]
+fn a_fire_refuses_a_submit_binding_naming_call_and_leaves_every_item_due() {
+    let delegate = Server::start(|request| {
+        let envelope = verified(request);
+        signed(&rows_for(&envelope), &envelope)
+    });
+    let call = manifest(&delegate.url(ROUTE), "30s", 1);
+    let submit = call.replace("mode = \"call\"", "mode = \"submit\"");
+    assert_ne!(submit, call, "the manifest binds a mode");
+    let (dir, public, token) = project(&submit);
+    let p = dir.path();
+    let refused = fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z");
+    let message = text(&refused);
+    assert!(!refused.status.success(), "{message}");
+    assert!(message.contains("DelegateSubmitUnfilled") && message.contains("mode = \"call\""), "{message}");
+    assert!(delegate.received(ROUTE).is_empty(), "a refused fire sends no request");
+
+    // No item took a receipt: rebound to `call`, the next fire sends one request per item.
+    std::fs::write(p.join("contextful.toml"), &call).unwrap();
+    ok(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z"));
+    assert_eq!(delegate.received(ROUTE).len(), 2, "one request per item");
+    assert_eq!(select(p, "SELECT entity_id, pass_id FROM screen_result ORDER BY pass_id"), [["e-1", "p-1"], ["e-2", "p-2"]]);
+}
+
 #[test]
 fn job_validate_refuses_a_public_host_an_over_ceiling_timeout_and_an_unbound_delegate() {
     let dir = tempfile::tempdir().unwrap();

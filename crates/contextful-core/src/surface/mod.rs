@@ -27,6 +27,9 @@ pub enum SurfaceError {
     /// (`surface.delegate.call-timeout-ceiling`)
     #[error("DelegateTimeoutRefused: {0}")]
     DelegateTimeoutRefused(String),
+    /// (`surface.delegate.submit-unfilled`)
+    #[error("DelegateSubmitUnfilled: {0}")]
+    DelegateSubmitUnfilled(String),
     /// (`surface.reconcile.pointer-malformed`)
     #[error("ControlPointerMalformed: {0}")]
     ControlPointerMalformed(String),
@@ -133,6 +136,7 @@ impl SurfaceError {
             | SurfaceError::DelegateHostRefused(_)
             | SurfaceError::DelegateAnswerRejected(_)
             | SurfaceError::DelegateTimeoutRefused(_)
+            | SurfaceError::DelegateSubmitUnfilled(_)
             | SurfaceError::ExternalStepUnbound(_)
             | SurfaceError::ExternalStepCollision(_)
             | SurfaceError::Invalid(_) => 422,
