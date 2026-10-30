@@ -193,7 +193,8 @@ fn a_malformed_search_declaration_fails_validation_before_any_request() {
 
 /// A fire failing permanently on its third pull holds its execution; the next fire replays the two journaled pulls of
 /// `rust lang` without asking the provider again, then reads `web assembly` live and ends, landing what an
-/// uninterrupted fire lands.
+/// uninterrupted fire lands. The live pull fills `{since}` from the interrupted fire's instant, a day before the
+/// resuming fire's.
 // spec: run.journal.replay-lands@0cc34691
 #[test]
 fn a_resumed_search_fire_replays_its_journaled_result_sets_without_asking_the_provider() {
@@ -205,10 +206,9 @@ fn a_resumed_search_fire_replays_its_journaled_result_sets_without_asking_the_pr
     assert_eq!(provider.vendor.targets().len(), 3, "{:?}", provider.vendor.targets());
 
     provider.heal();
-    let out = ok(&fire(dir.path(), "f2", "2030-01-10T00:01:00Z"));
+    let out = ok(&fire(dir.path(), "f2", "2030-01-11T00:00:00Z"));
     assert!(out.contains("4 rows"), "{out}");
-    // The live pull fills `{since}` from the resuming fire's instant.
-    assert_eq!(provider.vendor.targets()[3..], ["/search?q=web%20assembly&since=2030-01-08T00%3A01%3A00Z"], "the replay re-reads no recorded page");
+    assert_eq!(provider.vendor.targets()[3..], ["/search?q=web%20assembly&since=2030-01-08T00%3A00%3A00Z"], "the replay re-reads no recorded page");
     assert_eq!(
         landed(dir.path()),
         pairs(&[("rust", "https://r1.test"), ("rust", "https://r2.test"), ("rust", "https://r3.test"), ("wasm", "https://w1.test")])

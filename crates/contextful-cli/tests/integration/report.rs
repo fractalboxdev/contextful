@@ -28,6 +28,8 @@ struct Script {
     status: BTreeMap<String, String>,
     /// Accounts whose create answers 503.
     unavailable: Vec<String>,
+    /// Accounts whose create answers 400.
+    refused: Vec<String>,
 }
 
 struct Vendor {
@@ -81,6 +83,7 @@ impl Vendor {
                 let script = state.lock().unwrap();
                 let (status, answer) = match (method.as_str(), path.as_slice()) {
                     ("POST", ["v1", account, "reports"]) if script.unavailable.iter().any(|a| a == account) => (503, "{}".to_string()),
+                    ("POST", ["v1", account, "reports"]) if script.refused.iter().any(|a| a == account) => (400, "{}".to_string()),
                     ("POST", ["v1", account, "reports"]) => {
                         created += 1;
                         let id = format!("r-{created}");
@@ -305,4 +308,54 @@ fn a_malformed_report_declaration_fails_validation_naming_its_key() {
         assert!(stderr(&out).contains(key), "{key}: {}", stderr(&out));
     }
     assert!(vendor.seen().is_empty(), "validation reaches no vendor: {:?}", vendor.seen());
+}
+
+/// A project over `a1` and `a2` whose fire `f1` failed once its journal held both of `a1`'s pages: `f0` ended with
+/// `a1`'s run still building, its id committed, and `a2`'s create answered 400 in `f1`.
+fn interrupted(vendor: &Vendor) -> tempfile::TempDir {
+    let dir = project(&manifest(vendor, &["a1", "a2"], "poll_budget = 1", &result_url(vendor)));
+    ok(&fire(dir.path(), "f0", "2030-01-10T06:00:00Z"));
+    vendor.script.lock().unwrap().refused.push("a2".into());
+    let failed = fire(dir.path(), "f1", "2030-01-10T07:00:00Z");
+    assert!(!failed.status.success(), "a 400 fails the fire: {}", String::from_utf8_lossy(&failed.stdout));
+    let pages: Vec<String> = vendor.seen().into_iter().filter(|s| s.target.contains("/rows")).map(|s| s.target).collect();
+    assert_eq!(pages, ["/v1/reports/r-1/rows", "/v1/reports/r-1/rows?after=p2"], "the journal holds a1's two pages");
+    vendor.script.lock().unwrap().refused.clear();
+    dir
+}
+
+/// A fire resumed after its journal holds a finished partition's pages replays them and reads on from the next
+/// partition: it creates and polls no report for `a1` again, and lands each row once.
+// spec: run.journal.replay-lands@0cc34691
+#[test]
+fn a_resumed_report_fire_replays_a_finished_partition_without_creating_or_polling_its_report_again() {
+    let vendor = Vendor::start(Script { pending: BTreeMap::from([("a1".into(), 1)]), ..Script::default() });
+    let dir = interrupted(&vendor);
+    let before = vendor.seen().len();
+
+    let out = ok(&fire(dir.path(), "f2", "2030-01-10T08:00:00Z"));
+    let resumed: Vec<(String, String)> = vendor.seen()[before..].iter().map(|s| (s.method.clone(), s.target.clone())).collect();
+    assert!(out.contains("6 rows"), "{out}{resumed:?}");
+    assert!(!resumed.is_empty(), "the resumed fire reads a2 live");
+    assert_eq!(resumed[0], ("POST".to_string(), "/v1/a2/reports".to_string()), "{resumed:?}");
+    assert!(resumed.iter().all(|(_, target)| !target.contains("/a1/") && !target.contains("/r-1")), "{resumed:?}");
+    let landed: Vec<(String, String)> = landed(dir.path()).iter().map(|r| (r[0].as_str().unwrap_or_default().into(), r[1].as_str().unwrap_or_default().into())).collect();
+    let once: Vec<(String, String)> = ["a1", "a2"].iter().flat_map(|a| ["ad-1", "ad-2", "ad-3"].map(|ad| (format!("{a}|day|age"), format!("{a}-{ad}")))).collect();
+    assert_eq!(landed, once, "each row lands once");
+}
+
+/// The first live pull after a resume opens its window on the interrupted fire's day, not the resuming fire's, so the
+/// resumed read creates the report an uninterrupted fire creates.
+// spec: run.journal.replay-lands@0cc34691
+#[test]
+fn a_resumed_report_fire_opens_its_live_window_on_the_interrupted_fires_day() {
+    let vendor = Vendor::start(Script { pending: BTreeMap::from([("a1".into(), 1)]), ..Script::default() });
+    let dir = interrupted(&vendor);
+
+    let out = ok(&fire(dir.path(), "f2", "2030-01-12T06:00:00Z"));
+    assert!(out.contains("6 rows"), "{out}");
+    let creates = vendor.creates();
+    let last = creates.last().expect("the resumed fire creates a2's report");
+    assert_eq!(last.target, "/v1/a2/reports", "{creates:?}");
+    assert_eq!((last.body["since"].clone(), last.body["until"].clone()), ("2030-01-07".into(), "2030-01-10".into()), "{creates:?}");
 }

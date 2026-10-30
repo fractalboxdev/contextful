@@ -183,6 +183,10 @@ struct Position {
     /// recorded batches left the read (`run.journal.replay-lands`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reading: Option<String>,
+    /// The `{since}` the read fills for a query holding no watermark, from its first pull's
+    /// instant; absent between reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    floor: Option<String>,
 }
 
 /// The later of two instants, either absent.
@@ -200,7 +204,8 @@ pub struct SearchSource {
     config: SearchConfig,
     resolver: Arc<Resolver>,
     client: Client,
-    /// The `{since}` of a query holding no watermark: the fire's instant less `freshness`.
+    /// The `{since}` of a query holding no watermark in a read starting at this source's
+    /// first pull: the fire's instant less `freshness`.
     floor: String,
     /// Audit entries the next batch carries.
     audit: Vec<String>,
@@ -245,7 +250,12 @@ impl SearchSource {
         serde_json::from_slice(&response.body).map_err(|e| Failure::new(FailureTag::Permanent, format!("the search provider answered `{}` with a body that is not JSON: {e}", scrub(&url))))
     }
 
-    fn batch(&mut self, rows: Vec<Value>, position: &Position, more: bool) -> Result<Vec<u8>, Failure> {
+    /// A batch carrying the audit entries recorded since the last one; the last batch of a
+    /// read drops the read's floor.
+    fn batch(&mut self, rows: Vec<Value>, position: &mut Position, more: bool) -> Result<Vec<u8>, Failure> {
+        if !more {
+            position.floor = None;
+        }
         let audit = std::mem::take(&mut self.audit);
         serde_json::to_vec(&json!({"rows": rows, "cursor": position, "more": more, "audit": audit})).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
@@ -261,6 +271,7 @@ impl Source for SearchSource {
             return Err(Failure::deterministic(FailureTag::Config, format!("search position version {} is newer than {POSITION_VERSION}", position.version)));
         }
         position.version = POSITION_VERSION;
+        let floor = position.floor.get_or_insert_with(|| self.floor.clone()).clone();
         loop {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during search read"));
@@ -271,17 +282,17 @@ impl Source for SearchSource {
             };
             let Some((name, text)) = next.map(|(n, t)| (n.clone(), t.clone())) else {
                 position.reading = None;
-                return self.batch(Vec::new(), &position, false);
+                return self.batch(Vec::new(), &mut position, false);
             };
             let mut held = position.queries.get(&name).cloned().unwrap_or_default();
-            let mut pass = held.pass.clone().unwrap_or_else(|| Pass { since: held.watermark.clone().unwrap_or_else(|| self.floor.clone()), cursor: None, high: None, landed: 0 });
+            let mut pass = held.pass.clone().unwrap_or_else(|| Pass { since: held.watermark.clone().unwrap_or_else(|| floor.clone()), cursor: None, high: None, landed: 0 });
             let page = match self.page(&text, &pass) {
                 Ok(page) => page,
                 Err(failure) if retryable(&failure) => {
                     self.audit.push(format!("search query `{name}` held at its committed position: {failure}"));
                     position.reading = self.after(&name);
                     if position.reading.is_none() {
-                        return self.batch(Vec::new(), &position, false);
+                        return self.batch(Vec::new(), &mut position, false);
                     }
                     continue;
                 }
@@ -320,7 +331,7 @@ impl Source for SearchSource {
                 }
             };
             position.queries.insert(name, held);
-            return self.batch(rows, &position, more);
+            return self.batch(rows, &mut position, more);
         }
     }
 }
