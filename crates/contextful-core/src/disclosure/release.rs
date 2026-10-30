@@ -252,6 +252,7 @@ pub fn release(
     ledger: &dyn BudgetLedger,
     entropy: &mut dyn Entropy,
 ) -> Result<Release, ReleaseError> {
+    super::cohort::admit_governance(policy, &breakdown.grain)?;
     let contributor = policy.contributor_key.as_str();
     if !breakdown.columns.iter().any(|c| c == contributor) {
         return Err(DisclosureError::ContributorKeyAbsent(format!("the statement emits no `{contributor}` column")).into());

@@ -185,6 +185,12 @@ pub enum DisclosureError {
     /// A cross-owner hashed join is keyed on a static pepper. (`disclosure.set-mode.hashed-join`)
     #[error("DisclosureStaticPepper: {0}")]
     StaticPepper(String),
+    /// A cohort key's grain resolves to one person. (`disclosure.bound-cohort.singleton-cohort`)
+    #[error("DisclosureSingletonCohort: {0}")]
+    SingletonCohort(String),
+    /// A per-person table declares exact figures. (`disclosure.bound-cohort.exact-figures`)
+    #[error("DisclosureExactPerPerson: {0}")]
+    ExactPerPerson(String),
 }
 
 impl DisclosureError {
@@ -210,6 +216,8 @@ impl DisclosureError {
             DisclosureError::ForbiddenColumnPublished(_) => "DisclosureForbiddenColumnPublished",
             DisclosureError::CleanRoomPreconditionUnmet(_) => "DisclosureCleanRoomPreconditionUnmet",
             DisclosureError::StaticPepper(_) => "DisclosureStaticPepper",
+            DisclosureError::SingletonCohort(_) => "DisclosureSingletonCohort",
+            DisclosureError::ExactPerPerson(_) => "DisclosureExactPerPerson",
         }
     }
 }
