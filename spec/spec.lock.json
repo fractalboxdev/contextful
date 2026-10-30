@@ -32785,7 +32785,7 @@
       "operation": "measure",
       "subject": "ledger",
       "kind": "behavior",
-      "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
+      "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, bench target, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/83-gate.md",
       "line": 142
@@ -49346,6 +49346,13 @@
         "kind": "test",
         "path": "tools/eval/tests/integration/ledger.rs",
         "name": "an_entry_carries_its_clause_metric_tier_method_and_threshold",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "tools/eval/tests/integration/ledger.rs",
+        "name": "a_bench_method_names_a_bench_target_of_a_workspace_package",
         "verdict": "performed",
         "proved": false
       }

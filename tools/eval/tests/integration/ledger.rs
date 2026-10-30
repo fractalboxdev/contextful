@@ -1,7 +1,7 @@
 use contextful_eval::ledger::*;
 use contextful_eval::baseline::Direction;
 
-/// A tree holding one clause, one integration test, one case set and no probe.
+/// A tree holding one clause, one integration test, one bench target, one case set and no probe.
 struct Tree;
 
 impl World for Tree {
@@ -13,6 +13,9 @@ impl World for Tree {
     }
     fn cases(&self, path: &str) -> bool {
         path == "evals/cases/deep-recall.jsonl"
+    }
+    fn bench(&self, path: &str) -> Result<(), String> {
+        (path == "contextful_engine::journal_races").then_some(()).ok_or_else(|| "no such bench target".into())
     }
     fn probe(&self, _: &str) -> bool {
         false
@@ -46,8 +49,9 @@ fn reasons(l: &Ledger) -> Vec<String> {
     l.unresolved(&Tree).into_iter().map(|e| e.to_string()).collect()
 }
 
-/// `evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.
-// spec: assurance.measure.ledger@7d30a989
+/// `evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, bench target, case set or probe,
+/// and a threshold.
+// spec: assurance.measure.ledger@0f1f580f
 #[test]
 fn an_entry_carries_its_clause_metric_tier_method_and_threshold() {
     let l = ledger(ENTRY);
@@ -120,6 +124,30 @@ fn a_threshold_compares_by_its_operator() {
     assert!(t(Op::Lt, 64.0).holds(63.0) && !t(Op::Lt, 64.0).holds(64.0));
     assert!(t(Op::Gt, 0.0).holds(0.1) && !t(Op::Gt, 0.0).holds(0.0));
     assert_eq!(t(Op::Ge, 0.95).to_string(), ">= 0.95");
+}
+
+/// `evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, bench target, case set or probe, and a threshold.
+// spec: assurance.measure.ledger@0f1f580f
+#[test]
+fn a_bench_method_names_a_bench_target_of_a_workspace_package() {
+    let bench = "[entry.journal-race-wall]\nclause = \"run.journal.entry-key\"\nmetric = \"journal.race.wall_us.p50\"\nkind   = \"bench\"\ntier   = \"trend\"\ndirection = \"lower_is_better\"\nmethod = { bench = \"contextful_engine::journal_races\" }\n";
+    let l = ledger(bench);
+    assert_eq!(l.entry.len(), 1);
+    assert_eq!(l.entry["journal-race-wall"].method(), Some(Method::Bench("contextful_engine::journal_races")));
+    assert!(reasons(&l).is_empty(), "{:?}", reasons(&l));
+    assert_eq!(l.runnable(Tier::Trend).map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["journal-race-wall"]);
+    assert!(l.render().contains("| trend | bench `contextful_engine::journal_races` | — | recorded |"), "{}", l.render());
+    assert_eq!(bench_target("contextful_engine::journal_races"), Some(("contextful-engine".into(), "journal_races".into())));
+    assert_eq!(bench_target("contextful_engine::journal::races"), None);
+
+    for (to, needle) in [("contextful_engine::journal_racers", "no such bench target"), ("journal_races", "`<crate>::<bench target>`")] {
+        let r = reasons(&ledger(&bench.replace("contextful_engine::journal_races", to)));
+        assert_eq!(r.len(), 1, "{to}: {r:?}");
+        assert!(r[0].starts_with("MeasureEntryUnresolved: `journal-race-wall`") && r[0].contains(needle), "{to}: {r:?}");
+    }
+    let both = reasons(&ledger(&bench.replace("method = { bench", "method = { probe = \"heap-open\", bench")));
+    assert_eq!(both.len(), 1, "{both:?}");
+    assert!(both[0].contains("exactly one of `test`, `bench`, `cases`, `probe` or `issue`"), "{both:?}");
 }
 
 #[test]

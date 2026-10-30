@@ -66,6 +66,9 @@ pub struct MethodSpec {
     /// An integration test, `<crate>::<module path>::<function>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
+    /// A bench target of a workspace package, `<crate>::<target>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bench: Option<String>,
     /// A case set under `evals/cases/`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cases: Option<String>,
@@ -81,6 +84,7 @@ pub struct MethodSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method<'a> {
     Test(&'a str),
+    Bench(&'a str),
     Cases(&'a str),
     Probe(&'a str),
     Issue(u64),
@@ -188,13 +192,14 @@ impl Entry {
     /// The one method key set, or `None` when zero or several are.
     pub fn method(&self) -> Option<Method<'_>> {
         let m = &self.method;
-        let set = [m.test.is_some(), m.cases.is_some(), m.probe.is_some(), m.issue.is_some()];
+        let set = [m.test.is_some(), m.bench.is_some(), m.cases.is_some(), m.probe.is_some(), m.issue.is_some()];
         if set.iter().filter(|s| **s).count() != 1 {
             return None;
         }
         m.test
             .as_deref()
             .map(Method::Test)
+            .or(m.bench.as_deref().map(Method::Bench))
             .or(m.cases.as_deref().map(Method::Cases))
             .or(m.probe.as_deref().map(Method::Probe))
             .or(m.issue.map(Method::Issue))
@@ -216,6 +221,8 @@ pub trait World {
     fn clause(&self, id: &str) -> bool;
     /// Why the integration test at `path` resolves to nothing, or `Ok` when it names one.
     fn test(&self, path: &str) -> Result<(), String>;
+    /// Why the bench target at `path` resolves to nothing, or `Ok` when its package declares it.
+    fn bench(&self, path: &str) -> Result<(), String>;
     /// Whether the case set at `path` exists.
     fn cases(&self, path: &str) -> bool;
     /// Whether a probe binary named `name` exists.
@@ -231,6 +238,13 @@ pub fn test_target(path: &str) -> Option<(String, String)> {
         return None;
     }
     Some((krate.replace('_', "-"), rest.to_string()))
+}
+
+/// A bench path's package and target: `contextful_context::land_fold` is
+/// `contextful-context` and `land_fold`.
+pub fn bench_target(path: &str) -> Option<(String, String)> {
+    let (package, name) = test_target(path)?;
+    (!name.contains("::")).then_some((package, name))
 }
 
 fn slug(s: &str) -> bool {
@@ -278,6 +292,7 @@ impl Ledger {
         for (id, e) in &self.entry {
             let method = match e.method() {
                 Some(Method::Test(t)) => format!("test `{t}`"),
+                Some(Method::Bench(b)) => format!("bench `{b}`"),
                 Some(Method::Cases(c)) => format!("cases `{c}`"),
                 Some(Method::Probe(p)) => format!("probe `{p}`"),
                 Some(Method::Issue(n)) => format!("issue {n}"),
@@ -323,7 +338,7 @@ fn resolve(id: &str, e: &Entry, world: &dyn World) -> Result<(), String> {
     if e.metric.split('.').any(|s| s == JUDGE_SEGMENT) && e.tier != Tier::Scheduled {
         return Err(format!("metric `{}` is a judged figure, which runs on the scheduled tier alone, not {}", e.metric, e.tier));
     }
-    let method = e.method().ok_or("a method names exactly one of `test`, `cases`, `probe` or `issue`")?;
+    let method = e.method().ok_or("a method names exactly one of `test`, `bench`, `cases`, `probe` or `issue`")?;
     if !matches!(method, Method::Issue(_)) && e.tier == Tier::Gate && e.target.is_none() {
         return Err("a gate-tier entry carries a target".into());
     }
@@ -341,6 +356,8 @@ fn resolve(id: &str, e: &Entry, world: &dyn World) -> Result<(), String> {
     }
     match method {
         Method::Test(t) => world.test(t).map_err(|r| format!("test `{t}`: {r}")),
+        Method::Bench(b) if bench_target(b).is_none() => Err(format!("bench `{b}` is no `<crate>::<bench target>` path")),
+        Method::Bench(b) => world.bench(b).map_err(|r| format!("bench `{b}`: {r}")),
         Method::Cases(c) if !world.cases(c) => Err(format!("case set `{c}` does not exist")),
         Method::Probe(p) if !world.probe(p) => Err(format!("probe `{p}` is no binary of tools/probe")),
         Method::Issue(0) => Err("issue 0 names no issue".into()),

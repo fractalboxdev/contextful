@@ -6,7 +6,8 @@
 #   kind    test | eval | size | bench
 #   tier    gate (decides the evaluate stage) | trend (records) | scheduled (nightly job)
 #   direction  higher_is_better | lower_is_better, required for every trend entry
-#   method  { test = "<crate>::<module>::<function>" } | { cases = "evals/cases/<set>.jsonl" }
+#   method  { test = "<crate>::<module>::<function>" } | { bench = "<crate>::<bench target>" }
+#           | { cases = "evals/cases/<set>.jsonl" }
 #           | { probe = "<tools/probe binary>" } | { issue = <n> }, which reports open and gates nothing
 #   target  { op = "==" | "<=" | ">=" | "<" | ">", value = <absolute figure> }
 #   seed    the seed every generated fixture derives from
@@ -914,6 +915,50 @@ tier   = "trend"
 direction = "lower_is_better"
 method = { probe = "fold-passages-peak-rss" }
 seed   = 0x5eed_00f5
+
+# One landing session lands 1,000 single-row runs on one table and leaves every run
+# unfolded; one read counts them all, then one pass folds them. Larger sizes run on demand
+# through the bench's size arguments and record nothing.
+[entry.land-session-p50-1k]
+clause = "run.land.session"
+metric = "land.session.runs_1k.wall_us.p50"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { bench = "contextful_context::land_fold" }
+
+[entry.land-session-p95-1k]
+clause = "run.land.session"
+metric = "land.session.runs_1k.wall_us.p95"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { bench = "contextful_context::land_fold" }
+
+[entry.land-session-schema-reads-1k]
+clause = "run.land.session-schema"
+metric = "land.session.runs_1k.schema_reads"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { bench = "contextful_context::land_fold" }
+target = { op = "==", value = 1 }
+
+[entry.read-unfolded-p50-1k]
+clause = "store.fold.includes-runs"
+metric = "read.unfolded.runs_1k.wall_ms.p50"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { bench = "contextful_context::land_fold" }
+
+[entry.fold-unfolded-bytes-1k]
+clause = "store.fold.pass"
+metric = "fold.unfolded.runs_1k.written_bytes"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { bench = "contextful_context::land_fold" }
 
 [entry.commit-lock-refusals-w8]
 clause = "store.reserve.commit-order"

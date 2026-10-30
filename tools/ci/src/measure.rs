@@ -30,11 +30,12 @@ fn load(root: &Path) -> Result<Option<Ledger>> {
 }
 
 /// The tree as the ledger resolver sees it: the lock file's clauses, each workspace
-/// package's integration tests, the case sets and the probe binaries.
+/// package's integration tests and bench targets, the case sets and the probe binaries.
 struct Tree {
     root: PathBuf,
     clauses: Vec<String>,
     packages: BTreeMap<String, PathBuf>,
+    benches: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Tree {
@@ -57,7 +58,16 @@ impl Tree {
                 Some((name.to_string(), dir))
             })
             .collect();
-        Ok(Tree { root: root.to_path_buf(), clauses, packages })
+        let benches = meta["packages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| {
+                let targets = p["targets"].as_array()?.iter().filter(|t| t["kind"].as_array().is_some_and(|k| k.iter().any(|k| k == "bench")));
+                Some((p["name"].as_str()?.to_string(), targets.filter_map(|t| t["name"].as_str()).map(str::to_string).collect()))
+            })
+            .collect();
+        Ok(Tree { root: root.to_path_buf(), clauses, packages, benches })
     }
 }
 
@@ -91,6 +101,18 @@ impl World for Tree {
             Ok(())
         } else {
             Err(format!("{} defines no `fn {function}`", file.strip_prefix(&self.root).unwrap_or(file).display()))
+        }
+    }
+
+    /// A bench resolves when its package is a workspace member declaring a bench target of
+    /// that name.
+    fn bench(&self, path: &str) -> Result<(), String> {
+        let (package, name) = ledger::bench_target(path).ok_or("a bench path is `<crate>::<bench target>`")?;
+        let targets = self.benches.get(&package).ok_or_else(|| format!("`{package}` is no workspace package"))?;
+        if targets.contains(&name) {
+            Ok(())
+        } else {
+            Err(format!("`{package}` declares no bench target `{name}`"))
         }
     }
 
@@ -237,6 +259,22 @@ fn measure(root: &Path, tiers: &[Tier], keep: &dyn Fn(&Entry) -> bool) -> Result
                         ran_tests.insert(t.to_string());
                     }
                 }
+                // One bench run records every entry naming it, as one test run does.
+                Some(Method::Bench(b)) => {
+                    if !ran_tests.contains(b) {
+                        if let Err(err) = run_bench(root, b, &records) {
+                            eprintln!("measure: {id} ({tier}) failed: {err}");
+                            if *tier == Tier::Trend {
+                                let _ = std::fs::remove_file(record::path(&records, id));
+                            } else {
+                                failed.insert(id.clone());
+                                exited.get_or_insert(err);
+                            }
+                            continue;
+                        }
+                        ran_tests.insert(b.to_string());
+                    }
+                }
                 Some(Method::Cases(c)) => bail!("`{id}`: the case-set method `{c}` has no runner in this tree"),
                 Some(Method::Probe(p)) => {
                     if let Err(err) = run_probe(root, p, &records) {
@@ -331,6 +369,21 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
 /// The cargo arguments running `package`'s integration tests, before the test filter.
 fn test_args(package: &str) -> Vec<String> {
     ["test", "-q", "-p", package, "--test", "integration"].into_iter().map(str::to_string).collect()
+}
+
+/// Run one bench target under the bench profile, collecting records into `records`.
+fn run_bench(root: &Path, path: &str, records: &Path) -> Result<()> {
+    let (package, name) = ledger::bench_target(path).context("an unresolvable bench path")?;
+    let status = Command::new("cargo")
+        .args(["bench", "--locked", "-q", "-p", &package, "--bench", &name])
+        .env("CARGO_TARGET_DIR", crate::build_target(root, "evaluate"))
+        .env(MEASURE_DIR_VAR, records)
+        .current_dir(root)
+        .status()?;
+    if !status.success() {
+        return Err(crate::exited(format!("cargo bench -p {package} --bench {name}"), status));
+    }
+    Ok(())
 }
 
 /// Run one probe binary in its own process, collecting records into `records`.
@@ -566,11 +619,12 @@ const NATIVE_GATE: &str = "assurance.baseline.native-gate";
 /// stage's groups, then the probes (`assurance.gate.evaluate-stage`).
 pub const EVALUATE_PARTS: [&str; 6] = ["foundation", "runtime", "read", "cli", "ci", "probe"];
 
-/// The part measuring `entry`: its test's package group, or `probe`; `None` for a method
+/// The part measuring `entry`: its test's or bench's package group, or `probe`; `None` for a method
 /// no part runs, which every part then reaches.
 fn evaluate_part(entry: &Entry) -> Option<&'static str> {
     match entry.method() {
         Some(Method::Test(t)) => ledger::test_target(t).map(|(package, _)| crate::workspace_part(&package)),
+        Some(Method::Bench(b)) => ledger::bench_target(b).map(|(package, _)| crate::workspace_part(&package)),
         Some(Method::Probe(_)) => Some("probe"),
         _ => None,
     }

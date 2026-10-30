@@ -139,7 +139,7 @@ unsettled: Which cache hit rate holds `test-first` and `workspace` under the per
 
 The target ledger: each tracked target, the clause it serves, how it is measured and its record per commit.
 
-- `ledger` — `evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.
+- `ledger` — `evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, bench target, case set or probe, and a threshold.
 - `unresolved-entry` — An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
   *P7*
 - `open-entry` — An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.

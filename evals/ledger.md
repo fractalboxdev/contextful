@@ -2,7 +2,7 @@
 
 # Target ledger
 
-168 entries: 119 gated, 35 recorded, 7 scheduled, 7 open.
+173 entries: 119 gated, 40 recorded, 7 scheduled, 7 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -71,6 +71,7 @@
 | `fold-passages-peak-rss` | `store.fold.bounded-memory` | `fold.passages.peak_rss` | trend | probe `fold-passages-peak-rss` | — | recorded |
 | `fold-peak-heap-growth` | `store.fold.bounded-memory` | `fold.peak_heap_growth_10x` | gate | probe `fold-peak-heap` | `<= 1.5` | gated |
 | `fold-single-publisher` | `store.fold.pointer-commit` | `fold.publishes_per_start_etag` | gate | test `contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing` | `== 1` | gated |
+| `fold-unfolded-bytes-1k` | `store.fold.pass` | `fold.unfolded.runs_1k.written_bytes` | trend | bench `contextful_context::land_fold` | — | recorded |
 | `fold-vector-rows-indexed` | `store.index.sidecar-segments` | `fold.vector.rows_indexed_per_row_landed` | gate | test `contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded` | `<= 1.5` | gated |
 | `guard-catalogue` | `run.guard-secrets.matchers` | `guard.recall_per_kind.min` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 1` | gated |
 | `guard-compound-keys` | `run.guard-secrets.assignment-key` | `guard.compound_keys.masked_rate` | gate | test `contextful_core::pipeline::guard::a_compound_key_assignment_is_masked_keeping_its_key` | `== 1` | gated |
@@ -95,6 +96,9 @@
 | `journal-effect-once` | `run.journal.entry-key` | `journal.effects_per_key.max` | gate | test `contextful_engine::journal::racers_on_one_key_run_the_effect_once_and_read_equal_bytes` | `== 1` | gated |
 | `journal-holder-liveness` | `run.journal.claim-takeover` | `journal.takeover.effects` | gate | test `contextful_engine::journal::a_claim_whose_holder_lapsed_is_taken_over` | `== 1` | gated |
 | `journal-storage-bounded` | `run.journal.blob-sweep` | `journal.sweep.stale_blobs` | gate | test `contextful_engine::journal::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | `== 0` | gated |
+| `land-session-p50-1k` | `run.land.session` | `land.session.runs_1k.wall_us.p50` | trend | bench `contextful_context::land_fold` | — | recorded |
+| `land-session-p95-1k` | `run.land.session` | `land.session.runs_1k.wall_us.p95` | trend | bench `contextful_context::land_fold` | — | recorded |
+| `land-session-schema-reads-1k` | `run.land.session-schema` | `land.session.runs_1k.schema_reads` | trend | bench `contextful_context::land_fold` | `== 1` | recorded |
 | `lexical-deep-recall` | `read.retrieve.candidate-window` | `slices.deep_recall.retrieval.lexical.hit_rate_at_k` | gate | test `contextful_context::read::fulltext::a_term_on_one_row_behind_10000_newer_rows_returns_for_limit_10` | `== 1` | gated |
 | `lexical-sidecar-cost` | `read.retrieve.fulltext-probe` | `lexical.postings_scored_per_query` | scheduled | test `contextful_context::index::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term` | — | scheduled |
 | `memory-evidence-gate` | `read.recall.evidence-unresolved` | `recall.unresolved_admitted` | gate | test `contextful_core::memory::recall::unresolvable_evidence_suppresses_the_claim` | `== 0` | gated |
@@ -123,6 +127,7 @@
 | `push-shared-node-sibling-tombstones` | `store.merge.scoped-union` | `sync.push.sibling_runs_tombstoned` | gate | test `contextful_sync::push::sibling_disks_sharing_a_node_id_count_tombstoned_runs` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
+| `read-unfolded-p50-1k` | `store.fold.includes-runs` | `read.unfolded.runs_1k.wall_ms.p50` | trend | bench `contextful_context::land_fold` | — | recorded |
 | `recall-evidence-latency` | `read.recall.evidence-gate-bound` | `recall.keyed.evidence_gate_p99_us` | trend | test `contextful_memory::recall::keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound` | — | recorded |
 | `receive-backpressure-w256` | `run.land.receive-backpressure` | `land.receive.backpressure_refusals.w256` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |
 | `receive-group-bucket-puts` | `run.land.receive-group` | `land.receive.bucket_puts_per_1000_updates` | gate | test `contextful_cli::storage::queued_receive_batches_push_once_per_group` | `<= 1000` | gated |
