@@ -489,7 +489,7 @@ impl<V: ReportVendor> Source for ReportSource<V> {
                     position.partitions.insert(key.clone(), held);
                     self.failed = Some(Failure::deterministic(
                         FailureTag::Permanent,
-                        format!("ConnectorReportFailed: report run `{id}` of partition `{key}` answered a declared failed state"),
+                        ConnectorError::ConnectorReportFailed(format!("report run `{id}` of partition `{key}` answered a declared failed state")).to_string(),
                     ));
                     return self.batch(Vec::new(), &position, true);
                 }

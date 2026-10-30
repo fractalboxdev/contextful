@@ -16,6 +16,12 @@ fn report_and_image_refusals_lead_with_their_identifiers() {
 }
 
 #[test]
+fn a_failed_report_run_leads_with_its_identifier() {
+    let error = ConnectorError::ConnectorReportFailed("report run `r-1` answered a declared failed state".into());
+    assert_eq!(error.to_string(), "ConnectorReportFailed: report run `r-1` answered a declared failed state");
+}
+
+#[test]
 fn picked_drive_refusals_lead_with_their_identifiers() {
     for (error, id) in [
         (ConnectorError::ConnectorDriveFilesInvalid("picked".into()), "ConnectorDriveFilesInvalid"),
