@@ -66,6 +66,7 @@ Outbound credential references, the `secret://` scheme and value templates.
   *because a whole-value key sits in the node's own configuration, where `env://NAME` already reads the environment directly*
 - `material-in-a-declaration` — A credential-shaped literal standing where a reference belongs raises `SecretMaterialInDeclaration` at validation, naming the key.
   *A-connector#credentials-references-workload*
+- `credential-key` — A credential key ignores case and reads `-` as `_`: `authorization`, `proxy_authorization`, `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `access_key_id`, `secret_access_key`, `private_key`, or a name ending `_password`, `_secret`, `_token` or `_api_key`.
 - `name-is-the-join` — Declarations, provider entries, cache keys, records and run provider attribution identify the same credential by its logical name.
 
 ## resolve
@@ -88,6 +89,8 @@ The provider interface, adapter order, request-time resolution, credential buffe
 - `unresolved-name` — If no assembled adapter answers a reference, the resolver raises `SecretUnresolvedReference`, naming the reference. The error occurs at preflight for static bindings and at the call otherwise.
   *P2*
 - `aws-secrets-manager` — The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.
+- `inline-outside-development` — Outside the development profile of {{topology.package.version-profile}}, a manifest string under a {{connector.reference.credential-key}} holding no `secret://` or `env://` reference and passing {{connector.reference.material-in-a-declaration}} raises `SecretInlineCredential` at declaration read, naming file and key path, never the value.
+  *because a token pasted into a committed manifest reaches version control, CI logs and every clone, outside any adapter's custody*
 
 ```mermaid
 flowchart LR
@@ -100,8 +103,6 @@ flowchart LR
   SH -->|"no"| W["redacting wrapper"]
   W -->|"cached up to 300 s"| C["resolved material"]
 ```
-
-unsettled: Does a profile other than development refuse plaintext credential material bound at a call site? owner: connector affects: connector.resolve
 
 ## lease
 

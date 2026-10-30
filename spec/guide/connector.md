@@ -62,6 +62,10 @@ adapter answering a name serves it for the run ({{connector.resolve.first-hit-wi
 second adapter that also holds the name fails the lookup, so no adapter shadows another
 silently ({{connector.resolve.shadowed-name}}).
 
+A token typed into the manifest, such as `X-Api-Key = "abc123"`, is a plaintext
+credential. A profile build refuses it at read, naming the key path but not the token; a
+development build, compiled with no profile, reads it ({{connector.resolve.inline-outside-development}}).
+
 Hydration places the resolved value into an outbound request. The host hydrates per
 request, and no record or log line holds the value
 ({{connector.resolve.hydration-is-just-in-time}}). A cached value lives at most 300 s

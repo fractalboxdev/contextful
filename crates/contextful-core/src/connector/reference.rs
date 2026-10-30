@@ -142,6 +142,47 @@ pub fn check_material(key: &str, value: &str) -> Result<Template, ConnectorError
     Ok(t)
 }
 
+/// Keys whose value is credential material wherever they sit in a manifest or document
+/// (`connector.reference.credential-key`).
+pub const CREDENTIAL_KEYS: [&str; 11] = [
+    "authorization",
+    "proxy_authorization",
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "access_key_id",
+    "secret_access_key",
+    "private_key",
+];
+
+/// Suffixes that make a key a credential key: `client_secret`, `refresh_token` and
+/// `session_token` among them.
+pub const CREDENTIAL_SUFFIXES: [&str; 4] = ["_password", "_secret", "_token", "_api_key"];
+
+/// Whether `key` is a credential key: case ignored, and a header spelling folded onto a
+/// config spelling, so `X-Api-Token` reads as `x_api_token`.
+pub fn is_credential_key(key: &str) -> bool {
+    let k = key.to_ascii_lowercase().replace('-', "_");
+    CREDENTIAL_KEYS.contains(&k.as_str()) || CREDENTIAL_SUFFIXES.iter().any(|s| k.ends_with(s))
+}
+
+/// A value naming where material lives rather than holding it: a whole-value locator, or a
+/// template holding a `${secret://<name>}` placeholder.
+pub fn is_reference(value: &str) -> bool {
+    let v = value.trim();
+    is_locator(v) || Template::parse(v).is_ok_and(|t| t.has_reference())
+}
+
+/// A whole value spelled `secret://<name>`, `env://<name>` or `env:<NAME>`.
+pub fn is_locator(v: &str) -> bool {
+    v.starts_with(SCHEME)
+        || v.starts_with("env://")
+        || v.strip_prefix("env:").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+}
+
 /// `value` with each well-formed `${secret://<name>}` blanked to spaces of its length, so
 /// the material scan reads literal text and any malformed placeholder alone.
 fn without_references(value: &str) -> String {

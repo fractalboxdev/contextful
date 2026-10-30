@@ -205,6 +205,9 @@ pub enum ConnectorError {
     /// A template carrying `${env://NAME}` or a bare `${NAME}`. (`connector.reference.foreign-placeholder`)
     #[error("SecretForeignPlaceholder: {0}")]
     SecretForeignPlaceholder(String),
+    /// A plaintext credential written inline in a manifest outside the development profile. (`connector.resolve.inline-outside-development`)
+    #[error("SecretInlineCredential: {0}")]
+    SecretInlineCredential(String),
     /// The mint endpoint answering a redirect. (`connector.lease.redirect`)
     #[error("SecretLeaseRedirect: {0}")]
     SecretLeaseRedirect(String),

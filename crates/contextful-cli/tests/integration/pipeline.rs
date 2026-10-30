@@ -2392,7 +2392,10 @@ fn a_credential_in_the_document_is_refused() {
     let dir = project(&with("tok-9f8e7d6c5b4a"));
     let out = cf(dir.path(), &["pipeline", "import", "--project", "research"]);
     let err = stderr(&out);
-    assert!(!out.status.success() && err.contains("SecretMaterialInDocument") && err.contains("X-Api-Token"), "{err}");
+    // A profile build refuses the declaration read first (`connector.resolve.inline-outside-development`).
+    let development = !cfg!(any(feature = "contextful-full", feature = "contextful-edge", feature = "contextful-control"));
+    let refusal = if development { "SecretMaterialInDocument" } else { "SecretInlineCredential" };
+    assert!(!out.status.success() && err.contains(refusal) && err.contains("X-Api-Token"), "{err}");
     assert!(!err.contains("tok-9f8e7d6c5b4a"), "{err}");
     assert!(!dir.path().join(CONTROL).exists(), "no version claimed");
     let dir = project(&with("${secret://vendor-token}"));

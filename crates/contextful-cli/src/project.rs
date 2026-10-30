@@ -66,6 +66,10 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
         }
     };
     let located = Located { project, declaration: declaration.unwrap_or(default) };
+    // A manifest the command cannot read is the command's own error to report.
+    if let Ok(files) = contextful_context::project::manifests(&located.declaration) {
+        check_inline(&files)?;
+    }
     crate::sync::register_lazy(&located);
     Ok(located)
 }
@@ -73,7 +77,18 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
 /// The manifest files, in reading order: the declaration when it is a file, then
 /// `pipelines/` sorted (`run.declare.manifest-file`).
 pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
-    Ok(contextful_context::project::manifests(declaration)?)
+    let files = contextful_context::project::manifests(declaration)?;
+    check_inline(&files)?;
+    Ok(files)
+}
+
+/// Refuse a plaintext credential written inline in any of `files` unless this build is the
+/// development profile (`connector.resolve.inline-outside-development`).
+fn check_inline(files: &[ManifestFile]) -> Result<()> {
+    for f in files {
+        contextful_core::connector::resolve::check_inline(crate::PROFILE, &f.path, &f.text)?;
+    }
+    Ok(())
 }
 
 /// Every `pipelines/*.toml` and `pipelines/*.json` beside the declaration, in path order.
