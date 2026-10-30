@@ -2,27 +2,8 @@
 //! to registered connectors, never the credential or the artifact itself.
 
 use super::SurfaceError;
-use crate::connector::reference::{check_material, Template};
+use crate::connector::reference::{check_material, is_credential_key, is_locator, is_reference};
 use crate::connector::ConnectorError;
-
-/// Keys whose value is credential material wherever they sit in the document.
-const CREDENTIAL_KEYS: [&str; 12] = [
-    "password",
-    "passwd",
-    "secret",
-    "token",
-    "api_key",
-    "apikey",
-    "access_key_id",
-    "secret_access_key",
-    "session_token",
-    "client_secret",
-    "refresh_token",
-    "private_key",
-];
-
-/// Suffixes that make a key a credential key.
-const CREDENTIAL_SUFFIXES: [&str; 4] = ["_password", "_secret", "_token", "_api_key"];
 
 /// Keys that carry an artifact's bytes rather than a reference to a registered connector.
 const UPLOAD_KEYS: [&str; 4] = ["wasm_bytes", "artifact_bytes", "component_bytes", "upload"];
@@ -80,25 +61,6 @@ fn material(path: &[String]) -> SurfaceError {
         "`{}` holds credential material; the document holds a reference such as `${{secret://<name>}}`, and the secret backend holds the value",
         shown(path)
     ))
-}
-
-fn is_credential_key(key: &str) -> bool {
-    // Header spellings fold onto config spellings: `X-Api-Token` reads as `x_api_token`.
-    let k = key.to_ascii_lowercase().replace('-', "_");
-    CREDENTIAL_KEYS.contains(&k.as_str()) || CREDENTIAL_SUFFIXES.iter().any(|s| k.ends_with(s))
-}
-
-/// A value naming where material lives rather than holding it.
-fn is_reference(value: &str) -> bool {
-    let v = value.trim();
-    is_locator(v) || Template::parse(v).is_ok_and(|t| t.has_reference())
-}
-
-/// A whole value spelled `secret://<name>`, `env://<name>` or `env:<NAME>`.
-fn is_locator(v: &str) -> bool {
-    v.starts_with("secret://")
-        || v.starts_with("env://")
-        || v.strip_prefix("env:").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
 }
 
 fn is_wasm_bytes(items: &[toml::Value]) -> bool {

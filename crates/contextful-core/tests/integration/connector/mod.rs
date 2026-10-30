@@ -12,6 +12,7 @@ mod model_ref;
 mod package;
 mod probe;
 mod reference;
+mod resolve;
 mod widen;
 mod record;
 mod source;

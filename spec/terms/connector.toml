@@ -85,6 +85,7 @@ ConnectorDriveListingExceeded   = { clause = "connector.source.drive-list-bound"
 ConnectorPrivateRangeRejected   = { clause = "connector.attach.private-range-rejected", gloss = "An admitted private range overlaps loopback, link-local or the metadata address." }
 ConnectorPrivateAddress         = { clause = "connector.attach.private-address", gloss = "A permitted host name resolving to a private, link-local, loopback or metadata address." }
 SecretForeignPlaceholder        = { clause = "connector.reference.foreign-placeholder", gloss = "A template carrying `${env://NAME}` or a bare `${NAME}`." }
+SecretInlineCredential          = { clause = "connector.resolve.inline-outside-development", gloss = "A plaintext credential written inline in a manifest outside the development profile." }
 SecretMalformedTemplate         = { clause = "connector.reference.malformed-placeholder", gloss = "An unclosed, empty or nested placeholder." }
 SecretMaterialInDeclaration     = { clause = "connector.reference.material-in-a-declaration", gloss = "A credential-shaped literal where a reference belongs." }
 SecretNameShadowed              = { clause = "connector.resolve.shadowed-name", gloss = "A logical name answered by two assembled adapters." }

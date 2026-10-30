@@ -175,3 +175,34 @@ fn record_validity_ignores_the_selected_backend() {
         assert!(!out.status.success() && err.contains("SecretRecordRejected") && err.contains("secret.lease-mint"), "{envs:?}: {err}");
     }
 }
+
+/// Whether this test build selected no profile bundle, so `contextful --version` names `development`.
+fn development() -> bool {
+    !cfg!(any(feature = "contextful-full", feature = "contextful-edge", feature = "contextful-control"))
+}
+
+/// Outside the development profile, an inline credential refuses at declaration read, naming the file and key
+/// path and never the value; a development build reads it, and a reference reads under every build.
+#[test]
+fn an_inline_credential_refuses_at_declaration_read_outside_development() {
+    const INLINE: &str = "hunter2-inline";
+    let extra = format!(
+        "[[pipeline]]\nid = \"speech\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\n[pipeline.source.config]\n\
+         endpoint = \"https://api.speech.example/v1\"\n[pipeline.source.config.headers]\nX-Api-Key = \"{INLINE}\"\n"
+    );
+    let dir = project(&manifest("https://api.vendor.example/v1/orders", &extra));
+    for args in [&["pipeline", "validate"][..], &["secrets", "list", "--project", "research"][..]] {
+        let out = cf(dir.path(), &[], args);
+        let (stdout, err) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        if development() {
+            assert!(out.status.success(), "{args:?}: {err}");
+        } else {
+            let named = err.contains("SecretInlineCredential") && err.contains("contextful.toml") && err.contains("pipeline.1.source.config.headers.X-Api-Key");
+            assert!(!out.status.success() && named, "{args:?}: {err}");
+        }
+        assert!(!stdout.contains(INLINE) && !err.contains(INLINE), "{args:?}: {stdout}{err}");
+    }
+    let referenced = project(&manifest("https://api.vendor.example/v1/orders", ""));
+    let validated = ok(&cf(referenced.path(), &[], &["pipeline", "validate"]));
+    assert!(validated.contains("orders: valid"), "{validated}");
+}
