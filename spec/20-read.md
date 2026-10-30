@@ -283,7 +283,7 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
   *because a null lexical score passes the floor, so a text-only query otherwise returns such a table's newest rows whatever it asks*
 - `text-free-table-scores-null` — A table without scored text columns has a null lexical score rather than zero. Only vector scores admit that table's rows.
   *P4*
-- `candidate-window` — The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.
+- `candidate-window` — The candidate window is 8 times the requested limit or 200 rows, whichever is larger. A filled window reports a recency-ordered slice. Where a vector sidecar answers, the window bounds no semantic recall: {{read.retrieve.sidecar-generates-candidates}} adds candidates beyond it.
   *P4*
 - `reserved-columns-project-null` — Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union.
 - `unsatisfiable-arm-drops` — In `filter`, a scalar tests column equality; a value list tests membership. Rows match every condition. A table lacking a named column contributes no rows, including unfiltered rows.

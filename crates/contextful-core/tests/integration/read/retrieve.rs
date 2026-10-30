@@ -94,8 +94,9 @@ fn a_row_with_no_snippet_scores_null_and_passes_the_floor() {
     assert!(passes_floor(relevance_floor(&tokens, None), lexical_score(&tokens, None), None));
 }
 
-/// The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.
-// spec: read.retrieve.candidate-window@74ab93d6
+/// The candidate window is 8 times the requested limit or 200 rows, whichever is larger. A filled window reports a recency-ordered slice. Where a vector sidecar answers,
+/// the window bounds no semantic recall: {{read.retrieve.sidecar-generates-candidates}} adds candidates beyond it.
+// spec: read.retrieve.candidate-window@7d6b94fe
 #[test]
 fn the_candidate_window_is_the_larger_of_a_multiple_and_a_floor() {
     assert_eq!((CANDIDATE_WINDOW_FACTOR, CANDIDATE_WINDOW_FLOOR), (8, 200));
