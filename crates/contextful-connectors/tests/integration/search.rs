@@ -49,6 +49,37 @@ fn a_search_read_pages_one_query_and_commits_its_watermark() {
     assert!(contextful_connectors::BUILT_IN.contains(&NAME), "the `search` source is compiled in");
 }
 
+/// A source opened afresh at the position a finished query's batch carries reads the next query, as a pull after
+/// replayed ones does, and its last query's batch ends the read.
+// spec: run.journal.replay-lands@0cc34691
+#[test]
+fn a_fresh_source_at_a_recorded_position_reads_the_next_query() {
+    let provider = Server::start(|r| match (r.query("q").as_deref(), r.query("cursor").as_deref()) {
+        (Some("alpha"), None) => Response::json(200, r#"{"results": [{"url": "https://a1.test", "published_at": "2030-01-01T05:00:00Z"}], "next": "c2"}"#),
+        (Some("alpha"), Some(_)) => Response::json(200, r#"{"results": [{"url": "https://a2.test", "published_at": "2030-01-01T04:00:00Z"}]}"#),
+        _ => Response::json(200, r#"{"results": [{"url": "https://b1.test", "published_at": "2030-01-01T06:00:00Z"}]}"#),
+    });
+    let mut declared = config(&provider.url(""));
+    declared["queries"] = json!({"a": "alpha", "b": "beta"});
+    let config = SearchConfig::parse(&declared).unwrap();
+    let now = Instant::parse("2030-01-02T00:00:00Z").unwrap();
+    let open = || SearchSource::mediated(config.clone(), resolver(vec![("provider-key", "key-1")]), &Mediation::default(), now).unwrap();
+
+    let mut first = open();
+    let pull = |source: &mut SearchSource, position: Option<Value>| -> Value { serde_json::from_slice(&source.pull(&request(position), &Never).unwrap()).unwrap() };
+    let page_one = pull(&mut first, None);
+    let page_two = pull(&mut first, page_one.get("cursor").cloned());
+    assert_eq!(page_two["more"], true, "{page_two}");
+
+    let resumed = pull(&mut open(), page_two.get("cursor").cloned());
+    let rows = resumed["rows"].as_array().cloned().unwrap_or_default();
+    assert_eq!(rows.len(), 1, "{resumed}");
+    assert_eq!(rows[0]["search_query"], "b", "{resumed}");
+    assert_eq!(resumed["more"], false, "the last query's batch ends the read: {resumed}");
+    let alpha: Vec<_> = provider.received("/search").into_iter().filter(|r| r.query("q").as_deref() == Some("alpha")).collect();
+    assert_eq!(alpha.len(), 2, "the resumed source reads no recorded page again: {alpha:?}");
+}
+
 /// A cleartext provider off loopback refuses as `ConnectorProviderOriginRejected`; a placeholder in the host fails
 /// validation.
 #[test]

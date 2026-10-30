@@ -56012,6 +56012,13 @@
     "connector.resolve.unresolved-name": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/search.rs",
+        "name": "an_unresolved_provider_key_fails_the_search_fire_before_any_request",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/resolve.rs",
         "name": "an_unanswered_reference_refuses_at_preflight_and_at_the_call",
         "verdict": "performed",
@@ -66874,6 +66881,20 @@
       }
     ],
     "run.journal.replay-lands": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/search.rs",
+        "name": "a_resumed_search_fire_replays_its_journaled_result_sets_without_asking_the_provider",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-connectors/tests/integration/search.rs",
+        "name": "a_fresh_source_at_a_recorded_position_reads_the_next_query",
+        "verdict": "performed",
+        "proved": false
+      },
       {
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
