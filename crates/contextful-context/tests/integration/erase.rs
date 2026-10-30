@@ -810,6 +810,7 @@ fn normal_publication_waits_for_the_erasure_frontier_before_mutating_working_fil
 }
 
 // spec: disclosure.erase.physical-removal@47a3ae2f
+// spec: disclosure.erase.dead-letters@e25d1f2a
 // spec: read.reference.frontier@38efed50
 // spec: read.reference.index-visibility@e09069b7
 /// An admitted reference in the independently verified cumulative erasure index returns `available: false` and
@@ -836,6 +837,11 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:01:00Z")).unwrap();
     fixture.land(&table, "run-0002", json!([{ "id":"b", "subject":"bob", "text":"retained updated"}]), "2030-01-01T00:02:00Z").unwrap();
     contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:03:00Z")).unwrap();
+    // Each dead letter cites the source row its content came from (`disclosure.erase.dead-letters`).
+    let letters = decl("name = \"notes_dead_letter\"");
+    let cite = |run: &str, seq: i64| json!([{ "table":"notes", "run":run, "seq":seq }]).to_string();
+    fixture.land(&letters, "run-0003", json!([{ "reason":"MemoryExtractExhausted", "response":"private letter", "evidence":cite("run-0001", 0) },
+        { "reason":"MemoryExtractExhausted", "response":"kept letter", "evidence":cite("run-0001", 1) }]), "2030-01-01T00:04:00Z").unwrap();
     let reads = crate::read::Reads::new();
     let mut grant = crate::read::read(&["*"], None);
     grant.actions = vec![Action::Forget];
@@ -884,6 +890,8 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
         }
     }
     check_bytes(erased.store.root());
+    let kept = contextful_context::rows::table_rows(&erased.store, &letters, &["response", "evidence"]).unwrap();
+    assert_eq!(serde_json::to_value(kept).unwrap(), json!([{ "response":"kept letter", "evidence":cite("run-0001", 1) }]), "another subject's dead letter survives unchanged");
     let historical = contextful_context::rows::table_rows(&erased.store, &table, &["subject"]).unwrap();
     assert!(!historical.is_empty(), "the exclusion below ranges over no element");
     assert!(historical.iter().all(|row| row["subject"] == "bob"));
@@ -929,6 +937,44 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     assert!(face.reference(&session, "notes", "run-0001", 0, Default::default()).is_err(), "a deleted cumulative index converts erased into missing");
     std::fs::write(&index, certified).unwrap();
     assert_eq!(face.reference(&session, "notes", "run-0001", 0, Default::default()).unwrap().to_json()["rows"], json!([[false, "erased"]]));
+}
+
+/// A Forget grant naming only `notes` erases the dead letters citing its erased rows, and
+/// resumes collection over the frontier holding `notes_dead_letter`.
+// spec: disclosure.erase.dead-letter-grant@a8e02728
+#[test]
+#[cfg(feature = "read")]
+fn a_forget_grant_on_a_table_covers_its_dead_letters() {
+    use contextful_context::erase::{erase, recover_admitted_erasure, EraseRequest, EraseSelector};
+    use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+    use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nsubject_id = \"subject\"");
+    let letters = decl("name = \"notes_dead_letter\"");
+    fixture.land(&table, "run-0001", json!([{ "subject":"alice", "text":"private" }, { "subject":"bob", "text":"retained" }]), "2030-01-01T00:00:00Z").unwrap();
+    let cite = |seq: i64| json!([{ "table":"notes", "run":"run-0001", "seq":seq }]).to_string();
+    fixture.land(&letters, "run-0002", json!([{ "response":"private letter", "evidence":cite(0) }, { "response":"kept letter", "evidence":cite(1) }]), "2030-01-01T00:01:00Z").unwrap();
+    contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+    let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+    let audit_key = contextful_context::project::audit_key(&fixture.store, &project).unwrap();
+    let reads = crate::read::Reads::new();
+    let mut grant = crate::read::read(&["notes"], None);
+    grant.actions = vec![Action::Forget];
+    let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+    let admission = ForgetAdmission::admit(&authority, &["notes"]).unwrap();
+    let now = crate::read::at("2030-01-01T00:05:00Z");
+    let revocation = RevocationState::default();
+    let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation));
+    let declarations = [table.clone()];
+    let tables = ["notes".to_string()];
+    let audit_dir = project.audit_dir();
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+    let erased = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("alice"), admission:&admission,
+        signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
+    let kept = contextful_context::rows::table_rows(&erased.store, &letters, &["response"]).unwrap();
+    assert_eq!(serde_json::to_value(kept).unwrap(), json!([{ "response":"kept letter" }]), "the grant on `notes` erases its dead letters");
+    assert_eq!(recover_admitted_erasure(&erased.store, &authority, &boundary).unwrap(), Some(erased.transaction_id), "recovery admits the dead-letter table through `notes`");
 }
 
 /// A key-set request binds its selectors to the declared keys of {{store.declare.erasure-metadata}} and carries an opaque subject hash instead of a raw subject identity.

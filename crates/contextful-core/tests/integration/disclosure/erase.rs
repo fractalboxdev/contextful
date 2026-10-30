@@ -339,3 +339,26 @@ fn a_tenant_selection_removes_matching_rows_from_every_partitioned_table() {
     let selection = select_tenant(&surviving, &rows, &columns, "acme").unwrap();
     assert_eq!(selection.removes("ledger"), &[true, false], "a survival declaration keeps a tenant's own rows through its purge");
 }
+
+/// A dead letter citing a removed row joins the selection; one citing a kept row, or
+/// citing nothing, stays; evidence that does not decode refuses.
+// spec: disclosure.erase.dead-letters@e25d1f2a
+#[test]
+fn a_dead_letter_citing_a_removed_row_joins_the_selection() {
+    use contextful_core::disclosure::erase::{select_dead_letters, ErasureError};
+    let notes = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"notes\"\nsubject_id = \"subject\"\n").unwrap();
+    let row = |value: serde_json::Value| value.as_object().unwrap().clone();
+    let cite = |seq: i64| json!([{ "table": "notes", "run": "run-1", "seq": seq }]).to_string();
+    let letters = vec!["notes_dead_letter".to_string()];
+    let mut rows: RetainedRows = BTreeMap::from([
+        ("notes".to_string(), vec![row(json!({"subject": "alice", "_run_id": "run-1", "_row_seq": 0})), row(json!({"subject": "bob", "_run_id": "run-1", "_row_seq": 1}))]),
+        ("notes_dead_letter".to_string(), vec![row(json!({"response": "alice's", "evidence": cite(0)})), row(json!({"response": "bob's", "evidence": cite(1)})), row(json!({"response": "uncited"}))]),
+    ]);
+    let mut selected = select_subject(&notes, &rows, &["notes".to_string()], "alice").unwrap();
+    select_dead_letters(&mut selected, &rows, &letters).unwrap();
+    assert_eq!(selected.removes("notes_dead_letter"), [true, false, false]);
+    assert_eq!(selected.affected_tables().collect::<Vec<_>>(), ["notes", "notes_dead_letter"]);
+    rows.get_mut("notes_dead_letter").unwrap().push(row(json!({"response": "garbled", "evidence": "not json"})));
+    let mut selected = select_subject(&notes, &rows, &["notes".to_string()], "alice").unwrap();
+    assert!(matches!(select_dead_letters(&mut selected, &rows, &letters), Err(ErasureError::ErasureScopeUnsupported(_))));
+}

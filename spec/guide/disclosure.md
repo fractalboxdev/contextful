@@ -120,5 +120,9 @@ The reader leaves the organization, and an operator erases the reader's rows. Er
 erased rows in the same operation ({{disclosure.erase.cascade}}), and the files holding
 them are rewritten or collected ({{disclosure.erase.physical-removal}}).
 
+A dead letter
+repeats the content of the rows its failed batch carried, so each letter citing an erased
+row leaves with it ({{disclosure.erase.dead-letters}}).
+
 A tenant purge returns a signed receipt naming a salted pseudonym, not the tenant
 identifier ({{disclosure.receipt.pseudonym}}).

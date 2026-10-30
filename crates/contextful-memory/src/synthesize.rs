@@ -12,7 +12,8 @@ use contextful_core::grant::Action;
 use contextful_core::memory::declare::{MemoryTable, Shape};
 use contextful_core::memory::resolve::{check_edge, resolve_mention, Entity};
 use contextful_core::memory::revise::{claim_id, revise, tier, Claim, Grounding, WritePath};
-use contextful_core::memory::synthesize::{credential_free, feedback, judge, template_hash, Attempt, DeadLetter, Extraction, Inference, Message, OUTPUT_SCHEMA};
+use contextful_core::disclosure::erase::DEAD_LETTER_EVIDENCE;
+use contextful_core::memory::synthesize::{credential_free, feedback, judge, template_hash, Attempt, DeadLetter, EvidenceRef, Extraction, Inference, Message, OUTPUT_SCHEMA};
 use contextful_core::memory::MemoryError;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
@@ -141,6 +142,15 @@ fn row_seq(row: &Map<String, Value>) -> i64 {
     row.get(ROW_SEQ).and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or_default()
 }
 
+/// Every dead letter of `batch` cites the batch's source rows, so erasing one of them
+/// rewrites the letter (`read.synthesize.dead-letter-evidence`).
+fn cite(dead: &mut [Value], batch: &Batch) {
+    let evidence = Value::String(serde_json::to_string(&batch.evidence).expect("evidence serializes"));
+    for letter in dead.iter_mut().filter_map(Value::as_object_mut) {
+        letter.insert(DEAD_LETTER_EVIDENCE.into(), evidence.clone());
+    }
+}
+
 /// One batch: rows bound for one fenced prompt, and the cursor it leaves once committed.
 struct Batch {
     items: Vec<infer::DataItem>,
@@ -151,6 +161,8 @@ struct Batch {
     truncated: usize,
     /// The label of each row the batch carries.
     labels: Vec<infer::Provenance>,
+    /// The reference of each row the batch carries, which its dead letters cite.
+    evidence: Vec<EvidenceRef>,
 }
 
 impl Batch {
@@ -214,7 +226,7 @@ impl Pass<'_> {
         runs.dedup();
         runs.retain(|r| !start.get(r).is_some_and(|p| p.complete));
         let mut out: Vec<Batch> = Vec::new();
-        let mut current = Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0, labels: Vec::new() };
+        let mut current = Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0, labels: Vec::new(), evidence: Vec::new() };
         let mut bytes = 0;
         for run in runs {
             let mut rows = objects(&self.face.rows(session, self.source, Some(&run))?);
@@ -225,12 +237,13 @@ impl Pass<'_> {
                 let (item, cut) = data_item(self.source, row);
                 let len = infer::block_len(&item, VALUE_CHARS);
                 if !current.items.is_empty() && bytes + len > PROMPT_BYTES {
-                    out.push(std::mem::replace(&mut current, Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0, labels: Vec::new() }));
+                    out.push(std::mem::replace(&mut current, Batch { items: Vec::new(), cursor: cursor.clone(), spans: Vec::new(), truncated: 0, labels: Vec::new(), evidence: Vec::new() }));
                     bytes = 0;
                 }
                 bytes += len;
                 current.items.push(item);
                 current.labels.push(row_label(row));
+                current.evidence.push(EvidenceRef::row(self.source, row.get(RUN_ID).and_then(Value::as_str).unwrap_or_default(), row_seq(row)));
                 current.truncated += usize::from(cut);
                 let n = i as u64 + 1;
                 match current.spans.last_mut() {
@@ -310,6 +323,7 @@ impl Pass<'_> {
                 // The exhausted batch's dead letter lands under its own run, so a later
                 // success of the same batch still commits.
                 let failed = Landing { run_id: format!("{}-x{}", landing.run_id, self.now.unix_nanos()), ..*landing };
+                cite(&mut dead, batch);
                 failed.commit(self.face, &target.name, &[], &dead)?;
                 return Err(e);
             }
@@ -372,6 +386,7 @@ impl Pass<'_> {
             }
         }
         report.dead_lettered += dead.len();
+        cite(&mut dead, batch);
         landing.commit(self.face, &target.name, &writes, &dead)
     }
 

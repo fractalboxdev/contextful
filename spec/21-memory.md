@@ -73,6 +73,8 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
 - `extract-attempts` — For a schema-invalid response, the synthesis pass retries extraction with validation feedback. Each batch receives at most 3 attempts in total.
 - `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
   *A-read#memory-writes-validate*
+- `dead-letter-evidence` — Every dead letter a synthesis batch writes carries `evidence`, the `{table, run, seq}` reference of each source row the batch carries.
+  *because a dead letter repeats its batch's content, and erasure finds that content through the rows it came from*
 - `pass-cursor` — Through the writing credential's session, synthesis reads committed source rows absent from its cursor, in batches under {{read.synthesize.prompt-bound}}. The cursor records each batch after its claims commit.
 - `prompt-bound` — A batch packs marked rows up to 32 KiB; a marked row over that bound travels in a batch of its own.
   *because one oversized row neither stalls the pass nor drags its neighbours past the bound*

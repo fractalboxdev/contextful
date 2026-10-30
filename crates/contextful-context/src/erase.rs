@@ -5,7 +5,7 @@ use crate::error::IoPath;
 use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
-use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
+use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_dead_letters, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
 use contextful_core::ports::{Clock, SigningPort};
 use contextful_core::store::declare::{DeclarationSet, TableDecl};
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS_DIR};
@@ -242,7 +242,15 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         let mut batches: BTreeMap<String, Vec<(PathBuf, Vec<RecordBatch>)>> = BTreeMap::new();
         let mut rows = RetainedRows::new();
         let mut directories = BTreeMap::new();
-        for decl in plan.declarations {
+        // The dead-letter table beside each declared table, when the store holds one the
+        // declarations do not, joins the publication (`disclosure.erase.dead-letters`). The
+        // Forget admission of its declared table covers it (`disclosure.erase.dead-letter-grant`).
+        let letters: Vec<String> = bound.tables()?.into_iter()
+            .filter(|name| plan.declarations.iter().all(|decl| decl.name != *name)
+                && plan.declarations.iter().any(|decl| contextful_core::run::ports::dead_letter_table(&decl.name) == *name))
+            .collect();
+        let declarations: Vec<TableDecl> = plan.declarations.iter().cloned().chain(letters.iter().map(TableDecl::named)).collect();
+        for decl in &declarations {
             let directory = bound.table_dir(&decl.name)?;
             let mut retained = Vec::new();
             let mut parts = Vec::new();
@@ -261,7 +269,8 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
             rows.insert(decl.name.clone(), retained);
             batches.insert(decl.name.clone(), parts);
         }
-        let (selected, subject_hash) = (plan.select)(&rows)?;
+        let (mut selected, subject_hash) = (plan.select)(&rows)?;
+        select_dead_letters(&mut selected, &rows, &letters)?;
         if plan.allow_empty && selected.affected_tables().next().is_none() {
             return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new() });
         }
@@ -285,7 +294,7 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         let mut counts = BTreeMap::new();
         let store_id = crate::project::store_id(bound.root()).map_err(|_| incomplete("the erasure store identity is unavailable"))?;
         for name in &targets {
-            let decl = plan.declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
+            let decl = declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
             let source = &directories[*name];
             let old_inventory = crate::erasure_frontier::retirement_inventory(source)?;
             let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.components().map(|component| component.as_os_str().to_str().ok_or_else(|| incomplete("the retired path is not text"))).collect::<Result<Vec<_>>>()?.join("/");
@@ -416,7 +425,9 @@ pub fn recover_admitted_erasure(
                 names
             }
         };
-        let tables: Vec<&str> = names.iter().map(String::as_str).collect();
+        let held = bound.tables()?;
+        let mut tables: Vec<&str> = names.iter().map(|name| forget_scope(name, &held)).collect();
+        tables.sort(); tables.dedup();
         let admitted = ForgetAdmission::admit(authority, &tables)?;
         boundary(admitted.authority()).map_err(|error| ContextError::Invalid(error.to_string()))?;
         bound.canonical_audit_key()?;
@@ -424,6 +435,15 @@ pub fn recover_admitted_erasure(
         Ok(())
     })?;
     Ok(transaction)
+}
+
+/// The table whose Forget admission covers `name`: a dead-letter table's own table when the
+/// store holds it, else `name` (`disclosure.erase.dead-letter-grant`).
+fn forget_scope<'n>(name: &'n str, held: &[String]) -> &'n str {
+    match name.strip_suffix(contextful_core::run::ports::DEAD_LETTER_SUFFIX) {
+        Some(owner) if held.iter().any(|table| table == owner) => owner,
+        _ => name,
+    }
 }
 
 fn validate_staged_origins(staged: &[PathBuf], tables: &[String]) -> Result<()> {
