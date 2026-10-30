@@ -7,8 +7,10 @@ pub mod aws_secrets;
 pub mod aws_sqs;
 pub mod client;
 pub mod egress;
+pub mod file_secrets;
 pub mod infer;
 pub mod limiter;
+pub mod oauth;
 pub mod probe;
 #[cfg(feature = "transport-ureq")]
 pub mod role;

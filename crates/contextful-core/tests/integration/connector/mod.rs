@@ -15,4 +15,5 @@ mod reference;
 mod resolve;
 mod widen;
 mod record;
+mod rotate;
 mod source;

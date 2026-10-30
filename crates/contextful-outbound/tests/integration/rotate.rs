@@ -71,8 +71,8 @@ fn rig(manager: &Arc<Manager>, clock: &SetClock) -> (Arc<Resolver>, Rotator) {
     (resolver.clone(), Rotator::new(resolver, writers))
 }
 
-fn refreshed(value: &'static str, hint: Option<Instant>) -> impl FnOnce(&Hydrated) -> Result<(Hydrated, Option<Instant>), Failure> {
-    move |_| Ok((Hydrated::new(value), hint))
+fn refreshed(value: &'static str, hint: Option<Instant>) -> impl FnOnce(&Hydrated) -> Result<Option<(Hydrated, Option<Instant>)>, Failure> {
+    move |_| Ok(Some((Hydrated::new(value), hint)))
 }
 
 /// An OAuth credential refreshes at the retirement-margin point, puts the new version to the
@@ -106,7 +106,7 @@ fn the_host_drives_the_refresh_and_the_store_only_stores() {
     rotator
         .rotate(&name("vendor-token"), |current| {
             *seen.lock().unwrap() = current.reveal().to_string();
-            Ok((Hydrated::new("new-token"), None))
+            Ok(Some((Hydrated::new("new-token"), None)))
         })
         .unwrap();
     assert_eq!(seen.lock().unwrap().as_str(), "old-token");

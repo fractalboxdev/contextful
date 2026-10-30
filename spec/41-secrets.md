@@ -88,6 +88,8 @@ The provider interface, adapter order, request-time resolution, credential buffe
 - `cache-ttl` — A cache entry lives at most 300 s.
 - `unresolved-name` — If no assembled adapter answers a reference, the resolver raises `SecretUnresolvedReference`, naming the reference. The error occurs at preflight for static bindings and at the call otherwise.
   *P2*
+- `file-backend` — The `file` backend answers `secret://<name>` with the bytes of file `<name>` under `CONTEXTFUL_SECRETS_DIR`, less one trailing newline, versioned by their SHA-256; an absent file is a miss.
+  *because a version derived from the bytes conditions a put on exactly what the run read, with no counter kept beside the file*
 - `aws-secrets-manager` — The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.
 - `inline-outside-development` — Outside the development profile of {{topology.package.version-profile}}, a manifest string under a {{connector.reference.credential-key}} holding no `secret://` or `env://` reference and passing {{connector.reference.material-in-a-declaration}} raises `SecretInlineCredential` at declaration read, naming file and key path, never the value.
   *because a token pasted into a committed manifest reaches version control, CI logs and every clone, outside any adapter's custody*
@@ -236,11 +238,38 @@ Credential rotation responsibilities and mechanisms.
 - `conditional-put` — If another writer stores a version first, the losing put rehydrates that version without raising an error.
   *A-connector#rotation-writes-forward*
 - `turnover-preserves-the-name` — Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.
+- `write-halves` — Of the linked adapters only `file` carries a write method; `env`, `lease` and `aws-secrets-manager` answer reads alone.
+  *because a Secrets Manager put conditions on no current version, so a racing refresh overwrites a newer refresh token unseen*
+- `file-put` — The `file` backend's put holds an exclusive lock, compares the file's digest with the hydrated version, and replaces the file by atomic rename with owner-only permissions; a file without write permission refuses the put.
+  *because a rename leaves a reader the old bytes or the new ones whole, and the lock orders two processes refreshing one name*
+
+### oauth
+
+The OAuth refresh a connector manifest declares, which the host runs for a component source's attach templates.
+
+- `auth-policy` — A connector manifest's `[auth]` table declares the host's OAuth refresh as {{type:contextful_core::connector::manifest::RawAuth}}: a token endpoint, a client id, a scope, and `${secret://<name>}` references for the client secret, refresh token and access token.
+  *because the connector's author knows its vendor's token endpoint and scope, while the host alone holds the credentials a refresh exchanges*
+- `auth-refused` — An `[auth]` table missing a key or holding another, an endpoint neither TLS nor loopback or carrying userinfo, a value other than one reference, or one name bound twice refuses under {{connector.package.manifest-keys}}, naming the key.
+  *because a refresh posting its client secret in cleartext, or reading one name as two credentials, leaks or corrupts what the store holds*
+- `access-token` — The access token name renders from the host's held token alone: no adapter answers it, no file, journal or record receives it, and the host refreshes when it holds none or at {{connector.rotate.oauth-credential}}.
+  *A-connector#rotation-writes-forward*
+- `refresh-grant` — A refresh posts one form of `grant_type=refresh_token`, the refresh token, `scope`, `client_id` and the client secret to the token endpoint through the mediated client, following no redirect.
+  *because the form carries the client secret, which a redirect replays at a host the manifest never named*
+- `refresh-answer` — A success carries `access_token`, a positive `expires_in` as its declared expiry, and a replacement `refresh_token` the host puts under {{connector.rotate.oauth-credential}}; an answer without a replacement puts nothing.
+  *A-connector#rotation-writes-forward*
+- `refresh-refused` — A redirect, a `4xx` other than `429`, or a success carrying no `access_token` raises `SecretRefreshRejected`, classed `auth_expired`, naming the scrubbed endpoint and no token.
+  *because a refused grant names a dead refresh token or a misdeclared client, which no retry repairs*
+- `one-retry-layer` — The token client sends each refresh once: a `429` passes its `Retry-After` and a `5xx` or transport error is transient, so the run's retry schedule is the one retry layer.
+  *P6*
+- `rejected-once` — A vendor `401` to a request carrying the held access token refreshes it once and resends that request once; a second `401` returns to the connector, and a `401` to a replaced token resends without a refresh.
+  *because a token revoked before its declared expiry reads as expired to the vendor alone, and a second refusal names a grant no refresh repairs*
 
 #### Scenarios
 
 - `connector.rotate.write-back-denied`: WHEN the answering adapter refuses the put of a refreshed token, THEN the run fails and no request carries the refreshed token.
 - `connector.rotate.conditional-put`: WHEN another writer stored a newer version first, THEN the next hydration returns that version and the rotation raises nothing.
+- `connector.rotate.rejected-once`: WHEN the vendor answers `401` to the first access token, THEN the host refreshes once, writes the replacement refresh token forward, resends the request and the run lands its rows.
+- `connector.rotate.one-retry-layer`: WHEN the token endpoint answers `503`, THEN each run attempt sends it one request and the vendor receives none.
 
 ## record
 

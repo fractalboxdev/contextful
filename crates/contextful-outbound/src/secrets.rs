@@ -1,6 +1,6 @@
 //! The credential resolver: the provider chain, its cache, and the adapters this build
-//! links — the process environment, the lease provider and, under its feature, AWS
-//! Secrets Manager.
+//! links — the process environment, the lease provider, the `file` directory and, under
+//! its feature, AWS Secrets Manager.
 
 use crate::client::{Client, HeaderValue};
 use contextful_core::connector::attach::{is_loopback_host, scrub, Allowlist};
@@ -327,7 +327,7 @@ pub struct Assembly {
     pub resolver: Resolver,
     /// Observe halves in chain order (`connector.record.observe-port`).
     pub observers: Vec<Arc<dyn Observe>>,
-    /// Write halves by adapter name; the environment and lease adapters have none.
+    /// Write halves by adapter name; only `file` has one (`connector.rotate.write-halves`).
     pub writers: BTreeMap<String, Arc<dyn VersionedStore>>,
     /// The mint reference's logical name, when the lease backend is selected.
     pub bootstrap: Option<SecretName>,
@@ -344,6 +344,7 @@ impl Assembly {
 pub const LINKED: &[&str] = &[
     "lease",
     "env",
+    crate::file_secrets::NAME,
     #[cfg(feature = "aws-secrets-manager")]
     crate::aws_secrets::NAME,
 ];
@@ -361,7 +362,7 @@ pub fn assemble_all(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send
     let backends: Vec<String> = vars.get(BACKEND).map_or(vec!["env".to_string()], |b| b.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
     let mut behind: Vec<Arc<dyn Provider>> = Vec::new();
     let mut observers: Vec<Arc<dyn Observe>> = Vec::new();
-    let writers: BTreeMap<String, Arc<dyn VersionedStore>> = BTreeMap::new();
+    let mut writers: BTreeMap<String, Arc<dyn VersionedStore>> = BTreeMap::new();
     for b in &backends {
         match b.as_str() {
             "env" => {
@@ -370,6 +371,12 @@ pub fn assemble_all(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send
                 observers.push(env);
             }
             "lease" => {}
+            crate::file_secrets::NAME => {
+                let files = Arc::new(crate::file_secrets::FileSecrets::from_vars(vars)?);
+                behind.push(files.clone());
+                observers.push(files.clone());
+                writers.insert(crate::file_secrets::NAME.to_string(), files);
+            }
             #[cfg(feature = "aws-secrets-manager")]
             crate::aws_secrets::NAME => {
                 let manager = Arc::new(crate::aws_secrets::AwsSecretsManager::from_vars(vars, clock.clone())?);
@@ -419,11 +426,12 @@ impl Rotator {
     }
 
     /// Refresh `name` through `refresh`, which receives the current material and returns
-    /// the new material and its expiry. A refused put, or an answering adapter with no
-    /// write half, fails closed with the refreshed token dropped unserved
+    /// the replacement and its expiry, or `None` when nothing replaces it. A refused put, or
+    /// an answering adapter with no write half, fails closed with the refreshed token
+    /// dropped unserved, the second before `refresh` runs
     /// (`connector.rotate.write-back-denied`); a put losing to another writer re-hydrates
     /// the stored version (`connector.rotate.conditional-put`).
-    pub fn rotate(&self, name: &SecretName, refresh: impl FnOnce(&Hydrated) -> Result<(Hydrated, Option<Instant>), Failure>) -> Result<(), Failure> {
+    pub fn rotate(&self, name: &SecretName, refresh: impl FnOnce(&Hydrated) -> Result<Option<(Hydrated, Option<Instant>)>, Failure>) -> Result<(), Failure> {
         let denied = |m: String| Failure::deterministic(FailureTag::Permanent, ConnectorError::SecretRotationWriteDenied(m).to_string());
         let answered = || self.resolver.attribution().get(name.as_str()).cloned();
         let adapter = match answered() {
@@ -438,7 +446,7 @@ impl Rotator {
         };
         let current = self.resolver.hydrate(name)?;
         let if_version = self.resolver.hydrated_version(name);
-        let (fresh, expires_hint) = refresh(&current)?;
+        let Some((fresh, expires_hint)) = refresh(&current)? else { return Ok(()) };
         match writer.put(name, &fresh, if_version.as_deref(), expires_hint) {
             Ok(_) => {
                 self.resolver.forget(name);

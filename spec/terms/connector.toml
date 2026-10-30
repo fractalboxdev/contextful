@@ -106,6 +106,7 @@ SecretRedirectOffOrigin         = { clause = "connector.attach.weakened-hop", gl
 SecretCleartextEndpoint         = { clause = "connector.attach.cleartext-endpoint", gloss = "A sensitive header bound for a cleartext endpoint outside loopback." }
 SecretCredentialInUrl           = { clause = "connector.attach.credential-in-a-url", gloss = "A configured endpoint carrying userinfo." }
 SecretRotationWriteDenied       = { clause = "connector.rotate.write-back-denied", gloss = "A refused put of a refreshed token, or an answering adapter with no write half." }
+SecretRefreshRejected           = { clause = "connector.rotate.refresh-refused", gloss = "A token endpoint answering a refresh with a redirect, a `4xx` other than `429`, or no access token." }
 SecretRecordRejected            = { clause = "connector.record.record-rejected", gloss = "An operator record naming no configured binding, or carrying an unknown key, mistyped value or credential-shaped string." }
 InferHostedToolUnderHorizon = { clause = "connector.infer.hosted-tools", gloss = "A model call under a credential horizon declares a provider-hosted tool." }
 

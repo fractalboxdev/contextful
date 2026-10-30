@@ -6,6 +6,38 @@
 
 use anyhow::Result;
 use contextful_core::connector::component::ComponentSource;
+use contextful_core::connector::rotate::{AuthPolicy, VersionedStore};
+use contextful_core::ports::Clock;
+use contextful_core::run::Failure;
+use contextful_outbound::Resolver;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+/// What a component session's credentials draw on: the source's resolver, the assembled
+/// chain's write halves, and the clock the run reads.
+#[cfg_attr(not(feature = "component-host"), allow(dead_code, reason = "a build without a component host opens no session"))]
+pub struct Credentials {
+    pub resolver: Arc<Resolver>,
+    pub writers: BTreeMap<String, Arc<dyn VersionedStore>>,
+    pub clock: Arc<dyn Clock + Send + Sync>,
+}
+
+/// Hydrate every reference `decl` binds ahead of the first request, so an unresolved name
+/// refuses at preflight (`connector.resolve.unresolved-name`): its attach templates, less
+/// the access token its manifest's `[auth]` has the host alone answer, and the `[auth]`
+/// references (`connector.rotate.access-token`).
+pub fn preflight(decl: &ComponentSource, auth: Option<&AuthPolicy>, resolver: &Resolver) -> Result<(), Failure> {
+    for name in decl.attach.iter().flat_map(|(_, t)| t.names()) {
+        if auth.is_none_or(|a| *name != a.access_token) {
+            resolver.hydrate(name)?;
+        }
+    }
+    if let Some(a) = auth {
+        resolver.hydrate(&a.client_secret)?;
+        resolver.hydrate(&a.refresh_token)?;
+    }
+    Ok(())
+}
 
 /// The instruction set components compile for (`connector.package.component-target`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -30,6 +62,8 @@ mod hosted {
     use contextful_core::connector::component::ComponentSource;
     use contextful_core::connector::attach::{scrub, Allowlist};
     use contextful_core::connector::manifest::Declared;
+    use contextful_core::connector::reference::Hydrated;
+    use contextful_core::connector::rotate::AuthPolicy;
     use contextful_core::connector::package::{content_hash, Digest, Form, OciReference, PinRequirement};
     use contextful_core::connector::reference::Template;
     use contextful_core::connector::ConnectorError;
@@ -38,6 +72,7 @@ mod hosted {
     use contextful_core::run::Failure;
     use contextful_outbound::client::{Client, HeaderValue};
     use contextful_outbound::egress::Transport;
+    use contextful_outbound::oauth::Refresher;
     use contextful_outbound::Resolver;
     use contextful_wasm::{ComponentHost, Connector, Grant, GuestSource, Hydrate, Limits, Session, Target, WORLD};
     use std::io::Write;
@@ -67,16 +102,50 @@ mod hosted {
         }
     }
 
-    /// One `attach` template, rendered through the source's resolver on every request.
+    /// One `attach` template, rendered through the source's resolver on every request. The
+    /// access token an `[auth]` table names renders from the source's refresher alone
+    /// (`connector.rotate.access-token`).
     struct Rendered {
         resolver: Arc<Resolver>,
         template: Template,
+        refresher: Option<Arc<Refresher>>,
+    }
+
+    impl Rendered {
+        /// The template filled with `access` in place of the refresher's name.
+        fn render_with(&self, access: &mut dyn FnMut() -> Result<Arc<Hydrated>, Failure>) -> Result<Hydrated, Failure> {
+            let access_name = self.refresher.as_ref().map(|r| r.access_name().clone());
+            self.template.render(|n| if access_name.as_ref() == Some(n) { access() } else { self.resolver.hydrate(n) })
+        }
+
+        fn render(&self) -> Result<Hydrated, Failure> {
+            match &self.refresher {
+                Some(r) => self.render_with(&mut || r.access()),
+                None => self.resolver.render(&self.template),
+            }
+        }
+
+        /// The refresher, when this template names its access token.
+        fn refreshing(&self) -> Option<&Arc<Refresher>> {
+            self.refresher.as_ref().filter(|r| self.template.names().any(|n| n == r.access_name()))
+        }
     }
 
     impl Hydrate for Rendered {
         fn hydrate(&self) -> Result<HeaderValue, Failure> {
-            let v = self.resolver.render(&self.template)?;
+            let v = self.render()?;
             Ok(if self.template.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) })
+        }
+
+        /// A `401` to a header carrying the held access token refreshes it once; a header
+        /// already carrying a replacement resends under it (`connector.rotate.rejected-once`).
+        fn rejected(&self, sent: &HeaderValue) -> Result<bool, Failure> {
+            let Some(refresher) = self.refreshing() else { return Ok(false) };
+            refresher.rejected(|held| {
+                let held = Arc::new(Hydrated::new(held.reveal().to_string()));
+                self.render_with(&mut || Ok(held.clone())).is_ok_and(|v| v.reveal() == sent.text())
+            })?;
+            Ok(true)
         }
     }
 
@@ -91,6 +160,8 @@ mod hosted {
         require_pin: bool,
         /// The manifest's `dedup_window_secs` (`connector.declare-capability.dedup-window`).
         dedup_window_secs: Option<u64>,
+        /// The manifest's `[auth]` refresh policy (`connector.rotate.auth-policy`).
+        auth: Option<AuthPolicy>,
         limits: Limits,
         content_hash: String,
         /// The admitted bytes, kept for the admission store a replay resolves its pin from.
@@ -271,7 +342,7 @@ mod hosted {
             }
         }
         let decl = &pinned;
-        let (declared, require_pin, dedup_window_secs) = (manifest.declared, manifest.require_wasm_pin, manifest.dedup_window_secs);
+        let (declared, require_pin, dedup_window_secs, auth) = (manifest.declared, manifest.require_wasm_pin, manifest.dedup_window_secs, manifest.auth);
         let limits = limits(decl)?;
         let target = match target {
             ComponentTarget::Native => Target::Native,
@@ -282,7 +353,7 @@ mod hosted {
         let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, PinRequirement { store: store_pin, manifest: require_pin }).map_err(failure)?;
         connector.admit(&declared).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
-        Ok(Loaded { name: name.to_string(), host, connector, declared, require_pin, dedup_window_secs, limits, content_hash, wasm })
+        Ok(Loaded { name: name.to_string(), host, connector, declared, require_pin, dedup_window_secs, auth, limits, content_hash, wasm })
     }
 
     impl Loaded {
@@ -322,7 +393,18 @@ mod hosted {
             let (connector, digest) = host.load_artifact(&pinned.artifact, wasm, requirement).map_err(failure)?;
             connector.admit(&self.declared).map_err(failure)?;
             let content_hash = content_hash(&digest, decl.guest.as_ref());
-            Ok(Loaded { name: self.name.clone(), host, connector, declared: self.declared.clone(), require_pin: self.require_pin, dedup_window_secs: self.dedup_window_secs, limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
+            Ok(Loaded {
+                name: self.name.clone(),
+                host,
+                connector,
+                declared: self.declared.clone(),
+                require_pin: self.require_pin,
+                dedup_window_secs: self.dedup_window_secs,
+                auth: self.auth.clone(),
+                limits: limits(decl)?,
+                content_hash,
+                wasm: wasm.to_vec(),
+            })
         }
 
         /// The connector a run of this component pins.
@@ -341,24 +423,33 @@ mod hosted {
             self.host.open(&self.connector, grant, &self.limits, decl.guest.as_ref()).map_err(failure)
         }
 
-        /// A session reading `table` for `run_id`, each `attach` header hydrated from
-        /// `resolver` per request, while the request is built. A manifest declaring a scope
-        /// probe has it called with the first attach header before the session opens
-        /// (`connector.declare-capability.scope-probe`).
-        pub fn source(&self, decl: &ComponentSource, table: &str, resolver: &Arc<Resolver>, run_id: &str) -> Result<Box<dyn Source>> {
-            let hydrate: Vec<(String, Arc<dyn Hydrate>)> = decl
+        /// A session reading `table` for `run_id`, each `attach` header hydrated from the
+        /// source's resolver per request, while the request is built, and the access token
+        /// an `[auth]` table names from one refresher (`connector.rotate.access-token`). A
+        /// manifest declaring a scope probe has it called with the first attach header before
+        /// the session opens (`connector.declare-capability.scope-probe`).
+        pub fn source(&self, decl: &ComponentSource, table: &str, credentials: &super::Credentials, run_id: &str) -> Result<Box<dyn Source>> {
+            let resolver = &credentials.resolver;
+            let refresher = self
+                .auth
+                .clone()
+                .map(|policy| Refresher::new(policy, resolver.clone(), credentials.writers.clone(), credentials.clock.clone()).map(Arc::new))
+                .transpose()
+                .map_err(failure)?;
+            let rendered: Vec<(String, Arc<Rendered>)> = decl
                 .attach
                 .iter()
-                .map(|(header, t)| (header.clone(), Arc::new(Rendered { resolver: resolver.clone(), template: t.clone() }) as Arc<dyn Hydrate>))
+                .map(|(header, t)| (header.clone(), Arc::new(Rendered { resolver: resolver.clone(), template: t.clone(), refresher: refresher.clone() })))
                 .collect();
             if let Some(probe) = &self.declared.scope_probe {
-                let Some((name, template)) = decl.attach.iter().find(|(_, t)| t.has_reference()) else {
+                let Some((name, r)) = rendered.iter().find(|(_, r)| r.template.has_reference()) else {
                     bail!("connector `{}` declares a scope probe and its source binds no credential to probe with", self.name);
                 };
-                let credential = resolver.render(template).map_err(failure)?;
+                let credential = r.render().map_err(failure)?;
                 let client = Client::new(decl.allow.clone(), probe.endpoint.clone()).without_body();
                 contextful_outbound::probe::probe_through(&client, &decl.allow, probe, (name.as_str(), credential)).map_err(failure)?;
             }
+            let hydrate = rendered.into_iter().map(|(header, r)| (header, r as Arc<dyn Hydrate>)).collect();
             Ok(Box::new(GuestSource::new(self.open(decl, hydrate, Some(run_id.to_string()))?, table)))
         }
 
@@ -586,7 +677,7 @@ mod absent {
             match *self {}
         }
 
-        pub fn source(&self, _decl: &ComponentSource, _table: &str, _resolver: &std::sync::Arc<Resolver>, _run_id: &str) -> Result<Box<dyn Source>> {
+        pub fn source(&self, _decl: &ComponentSource, _table: &str, _credentials: &super::Credentials, _run_id: &str) -> Result<Box<dyn Source>> {
             match *self {}
         }
 

@@ -5,6 +5,7 @@
 use super::attach::Allowlist;
 use super::probe::ScopeProbe;
 use super::package::Digest;
+use super::rotate::AuthPolicy;
 use super::ConnectorError;
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
@@ -24,6 +25,26 @@ struct Raw {
     #[serde(default)]
     capabilities: RawCapabilities,
     dedup_window_secs: Option<u64>,
+    auth: Option<RawAuth>,
+}
+
+/// `[auth]`: the OAuth refresh policy the host runs for the connector
+/// (`connector.rotate.auth-policy`). Every key is required.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAuth {
+    /// The token endpoint each refresh posts to, TLS or loopback.
+    token_endpoint: String,
+    /// The OAuth client identifier.
+    client_id: String,
+    /// The client secret, one `${secret://<name>}` reference.
+    client_secret: String,
+    /// The refresh token, one `${secret://<name>}` reference whose adapter stores each replacement.
+    refresh_token: String,
+    /// The access token, one `${secret://<name>}` reference attach templates name and the host alone answers.
+    access_token: String,
+    /// The scope each refresh requests.
+    scope: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,6 +107,8 @@ pub struct Manifest {
     /// The seconds the connector's destination deduplicates a repeated idempotency key
     /// (`connector.declare-capability.dedup-window`).
     pub dedup_window_secs: Option<u64>,
+    /// The `[auth]` table's OAuth refresh policy (`connector.rotate.auth-policy`).
+    pub auth: Option<AuthPolicy>,
 }
 
 fn rejected(key: impl std::fmt::Display, why: impl std::fmt::Display) -> ConnectorError {
@@ -119,6 +142,7 @@ impl Manifest {
         let caps = raw.capabilities;
         let hosts = if caps.allow_hosts.is_empty() { Allowlist(Vec::new()) } else { Allowlist::parse(&caps.allow_hosts)? };
         let scope_probe = caps.scope_probe.map(|p| ScopeProbe::new(&p.endpoint, &p.scopes_header, &p.expect)).transpose()?;
+        let auth = raw.auth.map(|a| AuthPolicy::new(&a.token_endpoint, &a.client_id, &a.client_secret, &a.refresh_token, &a.access_token, &a.scope)).transpose()?;
         Ok(Manifest {
             name: raw.name,
             version: raw.version,
@@ -129,6 +153,7 @@ impl Manifest {
             build,
             declared: Declared { hosts, clock: caps.clock, scope_probe },
             dedup_window_secs: raw.dedup_window_secs,
+            auth,
         })
     }
 

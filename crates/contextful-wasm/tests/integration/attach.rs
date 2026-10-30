@@ -176,3 +176,77 @@ fn a_failed_hydration_sends_nothing_and_fails_the_call() {
     assert_eq!(mint.asked.load(Ordering::SeqCst), 1);
     assert!(server.received().is_empty(), "the vendor received a request without its credential");
 }
+
+/// An OAuth access token stand-in: `rejected` replaces the token a `401` named, once per token,
+/// or fails as a refused write-back does.
+#[derive(Default)]
+struct Refreshing {
+    generation: AtomicUsize,
+    rejections: AtomicUsize,
+    refuse: bool,
+}
+
+impl Hydrate for Refreshing {
+    fn hydrate(&self) -> Result<HeaderValue, Failure> {
+        Ok(HeaderValue::Sensitive(Arc::new(Hydrated::new(format!("Bearer token-{}", self.generation.load(Ordering::SeqCst) + 1)))))
+    }
+
+    fn rejected(&self, sent: &HeaderValue) -> Result<bool, Failure> {
+        self.rejections.fetch_add(1, Ordering::SeqCst);
+        if self.refuse {
+            return Err(Failure::deterministic(FailureTag::Permanent, "SecretRotationWriteDenied: the store refused the put"));
+        }
+        if sent.text() == format!("Bearer token-{}", self.generation.load(Ordering::SeqCst) + 1) {
+            self.generation.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(true)
+    }
+}
+
+/// A vendor `401` to a request carrying a refreshable header refreshes it once and resends the
+/// request once; a second `401` returns to the guest, and a header with no refresh resends nothing.
+// spec: connector.rotate.rejected-once@161fc964
+#[test]
+fn a_rejected_credential_refreshes_once_and_the_request_goes_out_once_more() {
+    let server = Server::start(|r| match r.header("authorization") {
+        Some("Bearer token-2") => Response::text(200, "ok"),
+        _ => Response::text(401, "expired"),
+    });
+    let refreshing = Arc::new(Refreshing::default());
+    let grant = Grant { hydrate: vec![("Authorization".into(), refreshing.clone() as Arc<dyn Hydrate>)], ..loopback() };
+    let mut s = open_with(grant, &Limits::default(), None).unwrap();
+    s.open(&format!("fetch {}", server.url("/v1")), None).unwrap();
+    assert_eq!(text(&s.next().unwrap().unwrap()), "200 ok");
+    let got = server.received();
+    assert_eq!(got.iter().map(|r| r.header("authorization")).collect::<Vec<_>>(), [Some("Bearer token-1"), Some("Bearer token-2")]);
+    assert!(format!("{:?}", s.traffic()).find("token-").is_none(), "the record names no value");
+
+    let refused = Server::start(|_| Response::text(401, "expired"));
+    let always = Arc::new(Refreshing::default());
+    let grant = Grant { hydrate: vec![("Authorization".into(), always.clone() as Arc<dyn Hydrate>)], ..loopback() };
+    let mut s = open_with(grant, &Limits::default(), None).unwrap();
+    s.open(&format!("fetch {}", refused.url("/v1")), None).unwrap();
+    assert_eq!(text(&s.next().unwrap().unwrap()), "401 expired");
+    assert_eq!((refused.received().len(), always.rejections.load(Ordering::SeqCst)), (2, 1));
+
+    let plain = Server::start(|_| Response::text(401, "expired"));
+    let grant = Grant { hydrate: bearer(), ..loopback() };
+    let mut s = open_with(grant, &Limits::default(), None).unwrap();
+    s.open(&format!("fetch {}", plain.url("/v1")), None).unwrap();
+    assert_eq!(text(&s.next().unwrap().unwrap()), "401 expired");
+    assert_eq!(plain.received().len(), 1);
+}
+
+/// A refresh failing after a `401` fails the call with its failure and resends nothing, even
+/// when the guest swallows the request.
+#[test]
+fn a_failed_refresh_fails_the_call_and_resends_nothing() {
+    let server = Server::start(|_| Response::text(401, "expired"));
+    let refreshing = Arc::new(Refreshing { refuse: true, ..Refreshing::default() });
+    let grant = Grant { hydrate: vec![("Authorization".into(), refreshing as Arc<dyn Hydrate>)], ..loopback() };
+    let mut s = open_with(grant, &Limits::default(), None).unwrap();
+    s.open(&format!("swallow {}", server.url("/v1")), None).unwrap();
+    let f = s.next().unwrap_err();
+    assert!(f.message.starts_with("SecretRotationWriteDenied"), "{f}");
+    assert_eq!(server.received().len(), 1);
+}

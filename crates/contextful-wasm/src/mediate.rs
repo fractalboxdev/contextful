@@ -228,11 +228,29 @@ impl WasiHttpHooks for Mediator {
             // the rendered header lives only as long as this one request.
             let answer = tokio::task::spawn_blocking(move || {
                 let _slot = slot;
-                let mut headers = headers;
-                for (name, h) in &hydrate {
-                    headers.push((name.clone(), h.hydrate().map_err(Unhydrated)?));
+                let render = || -> Result<Vec<(String, HeaderValue)>, Unsent> {
+                    let mut all = headers.clone();
+                    for (name, h) in &hydrate {
+                        all.push((name.clone(), h.hydrate().map_err(Unhydrated)?));
+                    }
+                    Ok(all)
+                };
+                let sent = render()?;
+                let resp = client.send(&method, &url, &sent, body.as_deref()).map_err(Sent)?;
+                if resp.status != 401 {
+                    return Ok(resp);
                 }
-                client.send(&method, &url, &headers, body.as_deref()).map_err(Sent)
+                // A rejected credential refreshes once and the request goes out once more;
+                // a second `401` returns to the guest (`connector.rotate.rejected-once`).
+                let mut replaced = false;
+                for ((_, h), (_, value)) in hydrate.iter().zip(&sent[headers.len()..]) {
+                    replaced |= h.rejected(value).map_err(Unhydrated)?;
+                }
+                drop(sent);
+                if !replaced {
+                    return Ok(resp);
+                }
+                client.send(&method, &url, &render()?, body.as_deref()).map_err(Sent)
             })
             .await
             .map_err(|e| Error::InternalError(Some(e.to_string())))?;
