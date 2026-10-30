@@ -57285,6 +57285,13 @@
         "name": "a_read_drains_a_fixed_page_count_one_batch_per_page",
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-connectors/tests/integration/report.rs",
+        "name": "a_fresh_source_at_a_recorded_position_continues_its_read",
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "connector.source.page-loop": [
@@ -66941,8 +66948,29 @@
     "run.journal.replay-lands": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_resumed_report_fire_replays_a_finished_partition_without_creating_or_polling_its_report_again",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_resumed_report_fire_opens_its_live_window_on_the_interrupted_fires_day",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-cli/tests/integration/search.rs",
         "name": "a_resumed_search_fire_replays_its_journaled_result_sets_without_asking_the_provider",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-connectors/tests/integration/report.rs",
+        "name": "a_fresh_source_at_a_recorded_position_continues_its_read",
         "verdict": "performed",
         "proved": false
       },

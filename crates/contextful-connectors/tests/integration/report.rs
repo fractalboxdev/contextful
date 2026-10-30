@@ -198,6 +198,36 @@ fn a_read_drains_a_fixed_page_count_one_batch_per_page() {
     assert_eq!(batches.last().unwrap()["more"], json!(false));
 }
 
+/// A source opened afresh, on a later day, at the position a mid-read batch carries continues that read, as a pull
+/// after replayed ones does: it reaches no partition the read finished, opens windows on the read's own day, and
+/// drains only what remains of the read's page count.
+// spec: run.journal.replay-lands@0cc34691
+// spec: connector.source.page-drain@791759b5
+#[test]
+fn a_fresh_source_at_a_recorded_position_continues_its_read() {
+    let scripts = || vec![("a1", Script { pages: pages(1), ..Script::default() }), ("a2", Script { pages: pages(5), ..Script::default() })];
+    let config = config(&["a1", "a2"], json!({"pages_per_read": 3}));
+    let (vendor, _) = Vendor::new(scripts());
+    let mut first = ReportSource::new(config.clone(), vendor, TODAY).unwrap();
+    let created = pull(&mut first, None).unwrap();
+    let finished = pull(&mut first, created.get("cursor").cloned()).unwrap();
+    assert_eq!(finished["cursor"]["partitions"][key("a1")]["watermark"], json!(TODAY), "{finished}");
+    assert_eq!(finished["more"], json!(true), "{finished}");
+
+    let (vendor, log) = Vendor::new(scripts());
+    let mut resumed = ReportSource::new(config, vendor, "2030-01-12").unwrap();
+    let batches = read(&mut resumed, finished.get("cursor").cloned());
+    let log = log.lock().unwrap();
+    assert_eq!(log.creates.len(), 1, "{:?}", log.creates);
+    assert_eq!(log.creates[0].0, "a2", "the finished partition creates no second run");
+    assert_eq!(log.creates[0].1.end, TODAY, "the window ends on the read's own day");
+    assert_eq!(log.pages, vec![("a2".to_string(), None), ("a2".to_string(), Some("c1".to_string()))], "one of the read's three pages is spent");
+    assert_eq!(rows(&batches).len(), 2);
+    let last = batches.last().unwrap();
+    assert_eq!(last["more"], json!(false));
+    assert!(last["cursor"].get("reading").is_none(), "a finished read's position carries no progress: {last}");
+}
+
 // spec: connector.source.page-cursor-missing@18e97cfe
 #[test]
 fn an_announced_page_naming_no_cursor_is_refused() {

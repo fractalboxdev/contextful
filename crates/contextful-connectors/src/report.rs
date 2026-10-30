@@ -246,6 +246,27 @@ struct Position {
     version: u64,
     #[serde(default)]
     partitions: BTreeMap<String, Held>,
+    /// The read's progress; absent between reads. The position, not the source instance,
+    /// carries it, so a pull after replayed ones resumes where the recorded batches left the
+    /// read (`run.journal.replay-lands`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reading: Option<Reading>,
+}
+
+/// One read's progress across its pulls.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+struct Reading {
+    /// The day the read's windows end on: its first pull's day, `YYYY-MM-DD`.
+    day: String,
+    /// The pages the read has drained.
+    #[serde(default)]
+    pages: usize,
+    /// Partitions the read has finished or held.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    finished: BTreeSet<String>,
+    /// Partitions whose run the read has recreated.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    recreated: BTreeSet<String>,
 }
 
 enum Step {
@@ -265,13 +286,12 @@ enum Step {
 pub struct ReportSource<V> {
     config: ReportConfig,
     vendor: V,
+    /// The day a read starting at this source's first pull ends its windows on.
     today: i64,
-    pages: usize,
-    finished: BTreeSet<String>,
-    /// Partitions whose held run this read has polled.
+    /// Partitions whose held run this source instance has polled. A resumed process polls a
+    /// held run again before its next page: a run can expire between processes, and the
+    /// rows URL a done poll names lives in the vendor's memory.
     polled: BTreeSet<String>,
-    /// Partitions whose run this read has recreated.
-    recreated: BTreeSet<String>,
     /// Audit entries the next batch carries.
     audit: Vec<String>,
     /// The failure the next pull raises, once the batch dropping a failed run commits.
@@ -297,10 +317,7 @@ impl<V: ReportVendor> ReportSource<V> {
             config,
             vendor,
             today,
-            pages: 0,
-            finished: BTreeSet::new(),
             polled: BTreeSet::new(),
-            recreated: BTreeSet::new(),
             audit: Vec::new(),
             failed: None,
         })
@@ -331,24 +348,24 @@ impl<V: ReportVendor> ReportSource<V> {
 
     /// The window a run for a partition holding `held` covers: a caught-up partition
     /// re-opens its lookback, and the window is never narrower than the lookback.
-    fn window(&self, held: &Held) -> Window {
+    fn window(&self, held: &Held, today: i64) -> Window {
         let lookback = i64::from(self.config.lookback_days);
         let width = lookback.max(i64::from(self.config.window_days));
         let start = match held.watermark.as_deref().and_then(day_of) {
-            Some(mark) => mark.min(self.today) - lookback,
-            None => self.today - width,
+            Some(mark) => mark.min(today) - lookback,
+            None => today - width,
         };
-        Window { start: date_of(start), end: date_of(self.today) }
+        Window { start: date_of(start), end: date_of(today) }
     }
 
     /// One advance of a partition. A held run is polled before its first page this read,
     /// cursor or not, so a run that expired between reads is recreated over its window and
     /// restarts from its first page; a second expiry in one read holds the partition.
-    fn step(&mut self, partition: &Partition, held: &mut Held) -> Result<Step, VendorFault> {
+    fn step(&mut self, partition: &Partition, held: &mut Held, reading: &mut Reading, today: i64) -> Result<Step, VendorFault> {
         let key = partition.key();
         let run = match held.run.clone() {
             None => {
-                let window = self.window(held);
+                let window = self.window(held, today);
                 let id = self.vendor.create(partition, &window)?;
                 held.run = Some(HeldRun { id, window });
                 held.cursor = None;
@@ -368,7 +385,7 @@ impl<V: ReportVendor> ReportSource<V> {
                     RunState::Pending => {}
                     RunState::Failed => return Ok(Step::Failed(run.id)),
                     RunState::Expired => {
-                        if !self.recreated.insert(key) {
+                        if !reading.recreated.insert(key) {
                             return Ok(Step::ExpiredAgain);
                         }
                         let id = self.vendor.create(partition, &run.window)?;
@@ -431,16 +448,18 @@ impl<V: ReportVendor> ReportSource<V> {
             .collect()
     }
 
-    /// A batch carrying the audit entries recorded since the last one.
-    fn batch(&mut self, rows: Vec<Value>, position: &Position, more: bool) -> Result<Vec<u8>, Failure> {
+    /// A batch carrying the audit entries recorded since the last one; its position carries
+    /// the read's progress while the read goes on.
+    fn batch(&mut self, rows: Vec<Value>, mut position: Position, reading: Reading, more: bool) -> Result<Vec<u8>, Failure> {
+        position.reading = more.then_some(reading);
         let audit = std::mem::take(&mut self.audit);
         serde_json::to_vec(&json!({"rows": rows, "cursor": position, "more": more, "audit": audit})).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 
     /// Record a partition held at its committed position.
-    fn hold(&mut self, key: String, reason: &str) {
+    fn hold(&mut self, reading: &mut Reading, key: String, reason: &str) {
         self.audit.push(format!("report partition `{key}` held at its committed position: {reason}"));
-        self.finished.insert(key);
+        reading.finished.insert(key);
     }
 }
 
@@ -463,26 +482,30 @@ impl<V: ReportVendor> Source for ReportSource<V> {
         if let Some(failure) = self.failed.take() {
             return Err(failure);
         }
+        let mut reading = position.reading.take().unwrap_or_else(|| Reading { day: date_of(self.today), ..Reading::default() });
+        let today = day_of(&reading.day)
+            .filter(|_| reading.day.len() == 10)
+            .ok_or_else(|| Failure::deterministic(FailureTag::Config, format!("report position: `{}` is not a YYYY-MM-DD day", reading.day)))?;
         loop {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during report read"));
             }
-            if self.pages >= self.config.pages_per_read {
-                return self.batch(Vec::new(), &position, false);
+            if reading.pages >= self.config.pages_per_read {
+                return self.batch(Vec::new(), position, reading, false);
             }
-            let Some(partition) = self.config.partitions.iter().find(|p| !self.finished.contains(&p.key())).cloned() else {
-                return self.batch(Vec::new(), &position, false);
+            let Some(partition) = self.config.partitions.iter().find(|p| !reading.finished.contains(&p.key())).cloned() else {
+                return self.batch(Vec::new(), position, reading, false);
             };
             let key = partition.key();
             let committed = position.partitions.get(&key).cloned().unwrap_or_default();
             let mut held = committed.clone();
-            match self.step(&partition, &mut held) {
+            match self.step(&partition, &mut held, &mut reading, today) {
                 Ok(Step::Created) => {
                     position.partitions.insert(key, held);
-                    return self.batch(Vec::new(), &position, true);
+                    return self.batch(Vec::new(), position, reading, true);
                 }
-                Ok(Step::Pending) => return self.batch(Vec::new(), &position, false),
-                Ok(Step::ExpiredAgain) => self.hold(key, "the vendor answered Expired for a run this read recreated"),
+                Ok(Step::Pending) => return self.batch(Vec::new(), position, reading, false),
+                Ok(Step::ExpiredAgain) => self.hold(&mut reading, key, "the vendor answered Expired for a run this read recreated"),
                 // The batch dropping the failed run commits first, so the next fire creates
                 // a new one; the pull after it fails the read.
                 Ok(Step::Failed(id)) => {
@@ -493,7 +516,7 @@ impl<V: ReportVendor> Source for ReportSource<V> {
                         FailureTag::Permanent,
                         ConnectorError::ConnectorReportFailed(format!("report run `{id}` of partition `{key}` answered a declared failed state")).to_string(),
                     ));
-                    return self.batch(Vec::new(), &position, true);
+                    return self.batch(Vec::new(), position, reading, true);
                 }
                 Ok(Step::Page(page)) => {
                     let next = self.next_cursor(&page)?;
@@ -503,20 +526,20 @@ impl<V: ReportVendor> Source for ReportSource<V> {
                         None => {
                             held.watermark = held.run.take().map(|run| run.window.end);
                             held.cursor = None;
-                            self.finished.insert(key.clone());
+                            reading.finished.insert(key.clone());
                         }
                     }
                     position.partitions.insert(key, held);
-                    self.pages += 1;
-                    let more = self.pages < self.config.pages_per_read;
-                    return self.batch(rows, &position, more);
+                    reading.pages += 1;
+                    let more = reading.pages < self.config.pages_per_read;
+                    return self.batch(rows, position, reading, more);
                 }
                 Err(fault) => {
                     let failure = Self::classify(&self.config, &fault);
                     if !retryable(&failure) {
                         return Err(failure);
                     }
-                    self.hold(key, &failure.to_string());
+                    self.hold(&mut reading, key, &failure.to_string());
                 }
             }
         }
