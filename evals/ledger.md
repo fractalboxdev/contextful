@@ -2,7 +2,7 @@
 
 # Target ledger
 
-173 entries: 119 gated, 40 recorded, 7 scheduled, 7 open.
+184 entries: 119 gated, 53 recorded, 7 scheduled, 5 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -163,9 +163,20 @@
 | `sync-noop-pull-manifest-bytes-10k` | `store.pull.before-run` | `sync.pull.manifest_bytes_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 2152176` | gated |
 | `sync-noop-pull-read-10k` | `store.pull.before-run` | `sync.pull.bytes_read_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 0` | gated |
 | `unbounded-retrieve-latency` | `read.retrieve.sidecar-generates-candidates` | `retrieve.unbounded.p95_ms` | trend | test `contextful_context::read::horizon::retrieve_latency_at_10k_chunks` | — | recorded |
-| `vector-filtered-recall` | `read.retrieve.sidecar-oversampling` | `slices.filtered.retrieval.vector.recall_at_k` | scheduled | issue 43 | `>= 0.95` | open (issue 43) |
+| `vector-filtered-recall-100k-10pct` | `read.retrieve.filtered-traversal` | `retrieval.vector.n100k.filtered_10pct.f32.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
+| `vector-filtered-recall-100k-10pct-f16` | `read.retrieve.filtered-traversal` | `retrieval.vector.n100k.filtered_10pct.f16.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
+| `vector-filtered-recall-100k-10pct-i8` | `read.retrieve.filtered-traversal` | `retrieval.vector.n100k.filtered_10pct.i8.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.9` | recorded |
+| `vector-filtered-recall-100k-1pct` | `read.retrieve.filtered-exact-threshold` | `retrieval.vector.n100k.filtered_1pct.f32.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
+| `vector-filtered-recall-100k-1pct-f16` | `read.retrieve.filtered-exact-threshold` | `retrieval.vector.n100k.filtered_1pct.f16.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
+| `vector-filtered-recall-100k-1pct-i8` | `read.retrieve.filtered-exact-threshold` | `retrieval.vector.n100k.filtered_1pct.i8.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.9` | recorded |
 | `vector-recall` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.recall_at_k` | gate | test `contextful_context::index::vector_recall_at_10_holds_against_exact_search` | `>= 0.95` | gated |
-| `vector-resident` | `read.retrieve.sidecar-size-cap` | `vector.probe.rss_anon_delta_mib` | scheduled | issue 43 | `< 64` | open (issue 43) |
+| `vector-recall-100k` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.n100k.f32.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
+| `vector-recall-100k-f16` | `store.index.graph` | `retrieval.vector.n100k.f16.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.95` | recorded |
+| `vector-recall-100k-i8` | `store.index.i8-storage` | `retrieval.vector.n100k.i8.recall_at_10` | trend | bench `contextful_context::vector_sidecar` | `>= 0.9` | recorded |
+| `vector-resident` | `read.retrieve.sidecar-size-cap` | `vector.f16_200mb.probe.anon_delta_mib` | trend | bench `contextful_context::vector_sidecar` | `< 64` | recorded |
+| `vector-resident-i8` | `read.retrieve.sidecar-size-cap` | `vector.i8_200mb.probe.anon_delta_mib` | trend | bench `contextful_context::vector_sidecar` | `< 64` | recorded |
+| `vector-resident-peak-rss` | `read.retrieve.sidecar-size-cap` | `vector.f16_200mb.probe.peak_rss` | trend | bench `contextful_context::vector_sidecar` | — | recorded |
+| `vector-resident-peak-rss-i8` | `read.retrieve.sidecar-size-cap` | `vector.i8_200mb.probe.peak_rss` | trend | bench `contextful_context::vector_sidecar` | — | recorded |
 | `vintage-after-fold-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.append_after_fold` | gate | test `contextful_context::vintage_cost::an_append_after_a_fold_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-append-day-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.append_day` | gate | test `contextful_context::vintage_cost::a_one_day_append_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-backfill-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.backfill_100_days` | gate | test `contextful_context::vintage_cost::a_daily_backfill_reads_no_stored_vintage` | `== 0` | gated |
