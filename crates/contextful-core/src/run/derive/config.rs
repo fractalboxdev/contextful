@@ -3,6 +3,8 @@
 
 use super::task::{Tasks, BUILT_IN_TASKS};
 use crate::connector::meter::LimiterDeclaration;
+use crate::connector::reference::{check_material, Template};
+use crate::connector::ConnectorError;
 use crate::read::filter::Filter;
 use crate::run::RunError;
 use crate::time::Instant;
@@ -466,6 +468,10 @@ pub struct Binding {
     pub allow_image_hosts: Vec<String>,
     #[serde(default)]
     pub endpoint_host: Option<String>,
+    /// Header name to value template the exec proxy attaches to each request toward
+    /// `endpoint_host` (`connector.attach.exec-proxy-attach`).
+    #[serde(default)]
+    pub attach: BTreeMap<String, String>,
     #[serde(default)]
     pub request_timeout_secs: Option<u64>,
     #[serde(default)]
@@ -553,7 +559,46 @@ pub fn bind<'a>(pipeline_id: &str, config: &DeriveConfig, bindings: &'a BTreeMap
             return Err(RunError::DeriveEndpointHostNotBare(format!("engine `{}` declares endpoint_host `{host}` with a path, query, port, scheme or invalid host", config.engine)));
         }
     }
+    exec_attach(&config.engine, b)?;
     Ok(b)
+}
+
+/// Hold an exec binding's credentials to the loopback proxy: no `env` value embeds a
+/// reference (`run.exec.env-credential`), and an `attach` table sits only beside an exec
+/// binding's `endpoint_host` (`run.bind.attach-unbound`). Answers the parsed `attach`
+/// templates, each embedding a reference (`connector.attach.literal-attach-value`).
+pub fn exec_attach(engine: &str, b: &Binding) -> Result<Vec<(String, Template)>, RunError> {
+    for (name, value) in &b.env {
+        if Template::parse(value).is_ok_and(|t| t.has_reference()) {
+            return Err(RunError::DeriveEnvCredential(format!(
+                "engine `{engine}` puts a `secret://` reference in env `{name}`; a step reaches its vendor through the host's loopback proxy, which attaches `[derive.{engine}.attach]`"
+            )));
+        }
+    }
+    if b.attach.is_empty() {
+        return Ok(Vec::new());
+    }
+    if b.driver == "fetch" || b.endpoint_host.is_none() {
+        return Err(RunError::DeriveAttachUnbound(format!(
+            "engine `{engine}` declares `attach` with {}; the proxy attaches credentials only toward an exec engine's `endpoint_host`",
+            if b.driver == "fetch" { "driver `fetch`" } else { "no `endpoint_host`" }
+        )));
+    }
+    let mut attach = Vec::new();
+    for (header, value) in &b.attach {
+        if header.is_empty() || !header.bytes().all(|c| c.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&c)) {
+            return Err(RunError::Invalid(format!("engine `{engine}`: `attach` key `{header}` is not a header name")));
+        }
+        let t = check_material(&format!("derive.{engine}.attach.{header}"), value).map_err(|e| RunError::Invalid(e.to_string()))?;
+        if !t.has_reference() {
+            return Err(RunError::Invalid(
+                ConnectorError::SecretLiteralAttachValue(format!("`derive.{engine}.attach.{header}` embeds no `${{secret://<name>}}` reference; a constant header belongs in the step's request"))
+                    .to_string(),
+            ));
+        }
+        attach.push((header.clone(), t));
+    }
+    Ok(attach)
 }
 
 /// Hold an environment allowlist name to ASCII alphanumerics and underscore, not leading

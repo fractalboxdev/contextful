@@ -164,13 +164,14 @@ serving readers ({{run.publish.staging}}).
 
 ## Derive
 
-Derive runs a task, such as passage extraction, over parent rows.
-Each tick selects the parent rows that hold no settled output under the current
-derivation key ({{run.select.anti-join}}). A binding names a registered engine, and a
-command written into the manifest fails ({{run.bind.command-in-manifest}}).
+Derive runs a task over parent rows.
+Each tick selects parent rows holding no settled output under the current
+derivation key ({{run.select.anti-join}}). A binding names a registered engine; a
+command in the manifest fails ({{run.bind.command-in-manifest}}).
 
 An exec engine runs a pinned binary as an argument array, with no shell and a cleared
-environment ({{run.exec.no-shell}}). A fetch engine follows third-party links, and a host
+environment ({{run.exec.no-shell}}). A vendor step's loopback proxy attaches its
+credential ({{connector.attach.exec-proxy}}). A fetch engine follows third-party links, and a host
 written as an address literal fails ({{run.fetch.address-literal}}).
 
 The caption parser reads SubRip and WebVTT

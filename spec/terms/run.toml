@@ -151,6 +151,8 @@ DeriveLocalityWider            = { clause = "run.bind.locality-wider", gloss = "
 DeriveStepConditionUnknown     = { clause = "run.exec.step-condition", gloss = "A preprocess condition naming no known condition." }
 DeriveShellCommand             = { clause = "run.exec.shell-command", gloss = "A step command given as a string, not an argument array." }
 DeriveEnvNameInvalid           = { clause = "run.exec.env-name", gloss = "An environment allowlist name outside the permitted characters." }
+DeriveEnvCredential            = { clause = "run.exec.env-credential", gloss = "An exec step environment value embedding a credential reference." }
+DeriveAttachUnbound            = { clause = "run.bind.attach-unbound", gloss = "Credential headers declared on a binding with no exec vendor host." }
 DeriveStepExit                 = { clause = "run.exec.non-zero-exit", gloss = "A chain step ending non-zero." }
 DeriveStepTimeout              = { clause = "run.exec.deadline-elapsed", gloss = "A chain outrunning its deadline." }
 DeriveOutputCap                = { clause = "run.exec.output-cap", gloss = "A step's captured output crossing its bound." }

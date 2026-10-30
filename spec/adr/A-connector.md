@@ -179,6 +179,19 @@ Allowlist precedence decided the hook's position: no host lookup precedes a refu
 
 Revisit: a transport that resolves remotely, such as a proxy-only deployment.
 
+## exec-egress-proxied — An exec step's vendor traffic passes a host loopback proxy
+
+A child process holds no credential: the host attaches it per request, under the same allowlist, address check, hook and meter as every other request.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Loopback proxy attaching per request *(chosen)* | — | A step speaks plain HTTP to the proxy, and a step dialing the vendor itself bypasses it with no credential to send; no kernel filter stops the dial. |
+| Hydrate the credential into the step's environment | Custody | The child copies the material past redaction, per-request hydration and the bound host. |
+| A forward proxy through `HTTPS_PROXY` | Attachment | A `CONNECT` tunnel carries TLS end to end, so the host cannot add a header. |
+| A network namespace with a socket bridge | Portability | Linux user namespaces alone provide it, and a vendor tool must speak to a Unix socket. |
+
+Revisit: a portable kernel egress filter; a vendor serving on a port other than 443.
+
 ## manifest-widening-binds — Manifest widening binds approval to both declarations
 
 The comparison makes no claim about vendor scope implications, DNS or credential bytes.

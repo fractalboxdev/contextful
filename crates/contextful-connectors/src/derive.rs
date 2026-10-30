@@ -7,7 +7,7 @@ use contextful_core::connector::attach::{scrub, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::reference::Template;
 use contextful_core::run::derive::available::{AvailableSelect, Instants};
-use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task, PARENT_SCAN_ROWS};
+use contextful_core::run::derive::config::{exec_attach, Binding, DeriveConfig, OutputFormat, StepSpec, Task, PARENT_SCAN_ROWS};
 use contextful_core::run::derive::cues::{parse, passages};
 use contextful_core::run::derive::emit::{
     check_last_error, derived_id, document_status, marker_row, passage_rows, revived, Counts, Derivation, Selection, Selector, Unit, UnitStatus, DERIVATION_KEY, DERIVED_ID, KIND, OUTPUT_COLUMNS,
@@ -25,6 +25,7 @@ use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::client::{classify, HeaderValue, MAX_BODY_BYTES};
 use contextful_outbound::Resolver;
 use crate::http::Mediation;
+use crate::proxy::{Proxy, EGRESS_URL};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -118,6 +119,9 @@ pub struct Chain {
     pub preprocess: Vec<Step>,
     pub engine: Step,
     pub env: Vec<(String, Template)>,
+    /// The credential headers the loopback proxy attaches toward `endpoint_host`
+    /// (`connector.attach.exec-proxy-attach`).
+    pub attach: Vec<(String, Template)>,
     pub deadline: Duration,
     pub max_output: u64,
     pub id: String,
@@ -130,6 +134,7 @@ impl Chain {
         let spec = b.engine.as_ref().ok_or_else(|| RunError::Invalid(format!("`[derive.{name}]` declares no `engine` step")))?;
         let engine = resolve_step(name, "engine", spec, cwd)?;
         let preprocess = b.preprocess.iter().enumerate().map(|(i, s)| resolve_step(name, &format!("preprocess-{i}"), s, cwd)).collect::<Result<Vec<_>, _>>()?;
+        let attach = exec_attach(name, b)?;
         let mut env = Vec::new();
         for (k, v) in &b.env {
             contextful_core::run::derive::config::check_env_name(k)?;
@@ -141,6 +146,7 @@ impl Chain {
             preprocess,
             engine,
             env,
+            attach,
             deadline: Duration::from_secs(b.timeout_secs.unwrap_or(CHAIN_DEADLINE_SECS)),
             max_output: b.max_output_bytes.unwrap_or(CAPTURED_OUTPUT_BYTES),
             id: engine_id(name, &steps),
@@ -596,8 +602,10 @@ impl DeriveSource {
 
     /// Derive one unit into its rows, recording its captured output and any step failure
     /// on `audit`; a run stop yields none.
-    fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation, audit: &mut ChainAudit) -> Result<Vec<Row>, Failure> {
+    fn derive_unit(&self, chain: &Chain, env: &[(String, String)], proxy: Option<&Proxy>, unit: &Unit, cancel: &dyn Cancellation, audit: &mut ChainAudit) -> Result<Vec<Row>, Failure> {
         let mut notes = Vec::new();
+        // A request an earlier unit's step left in flight charges no failure to this one.
+        let _ = proxy.and_then(Proxy::take_failure);
         let outcome = self.media_path(&unit.media).map_err(ChainError::Unit).and_then(|media| {
             let scratch = tempfile::Builder::new().prefix("contextful-derive-").tempdir().map_err(|e| RunError::Invalid(format!("scratch directory: {e}")))?;
             run_chain_noted(chain, &media, env, scratch.path(), cancel, &mut notes)
@@ -608,6 +616,12 @@ impl DeriveSource {
         }
         if let Err(ChainError::Unit(e)) = &outcome {
             audit.record(&unit.key, &unsecret(&e.to_string()));
+        }
+        // A forwarded request the mediated client failed fails the unit whatever the step
+        // made of its `502` (`connector.attach.exec-proxy-refusal`).
+        if let (Some(failure), false) = (proxy.and_then(Proxy::take_failure), matches!(outcome, Err(ChainError::Canceled))) {
+            audit.record(&unit.key, &failure.message);
+            return Ok(vec![marker_row(unit, UnitStatus::Failed, Some(&failure.message), !failure.deterministic, &chain.id)]);
         }
         Ok(match outcome {
             Ok(doc) => {
@@ -628,6 +642,21 @@ impl DeriveSource {
             },
             Err(ChainError::Unit(e)) => vec![marker_row(unit, UnitStatus::Failed, Some(&unsecret(&e.to_string())), true, &chain.id)],
         })
+    }
+
+    /// The loopback proxy one pull's steps reach `host` through: the mediated client bound
+    /// to `https://<host>`, metered under the source's grant (`connector.attach.exec-proxy`).
+    fn proxy(&self, chain: &Chain, host: &str) -> Result<Proxy, Failure> {
+        let allow = Allowlist::parse(&[host]).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
+        if !chain.attach.is_empty() {
+            allow.check_bound().map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
+        }
+        let origin = Url::parse(&format!("https://{host}/")).map_err(|e| refused(RunError::DeriveEndpointHostNotBare(format!("engine `{}`: {e}", self.config.engine))))?;
+        let mut client = self.mediation.client(allow, origin.clone(), self.config.grant.as_ref());
+        if let Some(secs) = self.binding.request_timeout_secs {
+            client = client.with_timeout(Duration::from_secs(secs));
+        }
+        Proxy::start(client, origin, chain.attach.clone(), self.resolver.clone()).map_err(|e| Failure::new(FailureTag::Transient, format!("the exec proxy found no loopback port: {e}")))
     }
 
     fn fetch_unit(&self, allow: &Allowlist, unit: &Unit, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
@@ -751,6 +780,14 @@ impl DeriveSource {
                 env.push((k.clone(), self.resolver.render(t)?.reveal().to_string()));
             }
         }
+        let proxy = match (&chain, &self.binding.endpoint_host) {
+            (Some(chain), Some(host)) if self.binding.driver == "exec" => Some(self.proxy(chain, host)?),
+            _ => None,
+        };
+        if let Some(proxy) = &proxy {
+            env.retain(|(k, _)| k != EGRESS_URL);
+            env.push((EGRESS_URL.to_string(), proxy.url()));
+        }
         let started = Instant::now();
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
         let mut audit = ChainAudit::default();
@@ -763,12 +800,14 @@ impl DeriveSource {
                 break;
             }
             let rows = match (&chain, &allow) {
-                (Some(chain), _) => self.derive_unit(chain, &env, unit, cancel, &mut audit)?,
+                (Some(chain), _) => self.derive_unit(chain, &env, proxy.as_ref(), unit, cancel, &mut audit)?,
                 (_, Some(allow)) => self.fetch_unit(allow, unit, cancel)?,
                 _ => unreachable!("a derive source names one built-in driver"),
             };
             derived_units.push((unit, rows));
         }
+        // The proxy serves one pull (`connector.attach.exec-proxy`).
+        drop(proxy);
         // A concurrent tick may have settled a unit under its key while this one derived it.
         let landed = if derived_units.is_empty() { Vec::new() } else { self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)? };
         let mut rows = Vec::new();

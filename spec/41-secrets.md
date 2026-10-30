@@ -213,12 +213,17 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *A-authority#redaction-no-copy*
 - `credential-in-a-url` — A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.
   *A-authority#redaction-no-copy*
-- `mediation-covers-every-egress` — A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.
+- `mediation-covers-every-egress` — A built-in source, a guest connector, a model call, a limiter call and an exec step's loopback proxy each attach through the one mediated client.
   *A-connector#outbound-transport-origin*
-- `exec-environment` — At spawn, an exec step hydrates its env template through the source resolver into the environment cleared by {{run.exec.no-shell}}. This attachment bypasses host mediation and enters {{connector.record.provider-attribution}}.
-  *because the derive driver hands a vendor child its own credential, and a loopback attaching proxy remains an open design*
-
-unsettled: Does an exec step's vendor traffic pass a host-run loopback proxy that attaches its credential, so no child holds material? owner: connector affects: connector.attach
+- `exec-environment` — An exec step's environment, cleared by {{run.exec.no-shell}}, holds no credential under {{run.exec.env-credential}}. A binding declaring `endpoint_host` adds `CONTEXTFUL_EGRESS_URL`, replacing any `env` entry of that name.
+  *A-connector#exec-egress-proxied*
+- `exec-proxy` — `CONTEXTFUL_EGRESS_URL` names a host loopback proxy, `http://127.0.0.1:<port>`, open for one pull. The proxy sends each request's method, path, query, headers and body to `https://<endpoint_host>` through the mediated client, following no redirect.
+  *A-connector#exec-egress-proxied*
+- `exec-proxy-attach` — The proxy renders the binding's `attach` templates per request under {{connector.attach.per-request-hydration}}, replacing a header of the same name the step sent, and forwards no hop-by-hop header.
+  *A-connector#exec-egress-proxied*
+- `exec-proxy-refusal` — A request the mediated client fails answers the step `502` with the failure's text and fails the unit under that failure, even when the step exits zero.
+  *because a step discarding the answer otherwise settles a unit past a refusal the egress rules raised, as {{connector.attach.unpermitted-request}} closes for guests*
+- `exec-proxy-request` — The proxy reads at most 64 KiB of request head and 64 MiB of body. A larger request answers `413`, a body framed without `Content-Length` answers `411`, and neither sends anything.
 
 ## rotate
 

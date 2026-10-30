@@ -1224,3 +1224,155 @@ fn a_streamed_host_selection_filters_then_keeps_the_ordered_top_units_across_bat
     assert!(!seen.is_empty(), "the pass derives units");
     assert_eq!(seen, ["d1", "d6", "d5"], "bodies g, f, e: the top three across every batch, derived in order");
 }
+
+/// One request a vendor received through the exec proxy: method, URL, headers and body.
+type Delivered = (String, String, Vec<(String, String)>, Vec<u8>);
+
+/// A vendor transport resolving every host to `address` and answering each request with
+/// `heard <body>`, keeping what it received.
+struct Vendor {
+    address: std::net::IpAddr,
+    seen: std::sync::Mutex<Vec<Delivered>>,
+}
+
+impl Vendor {
+    fn at(address: &str) -> Arc<Vendor> {
+        Arc::new(Vendor { address: address.parse().unwrap(), seen: Default::default() })
+    }
+
+    fn seen(&self) -> Vec<Delivered> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+impl contextful_outbound::egress::Transport for Vendor {
+    fn resolve(&self, _: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
+        Ok(vec![std::net::SocketAddr::new(self.address, port)])
+    }
+
+    fn send(&self, r: &contextful_outbound::egress::Outbound<'_>) -> Result<contextful_outbound::egress::Inbound, contextful_outbound::egress::TransportFault> {
+        let headers = r.headers.iter().map(|(k, v)| (k.clone(), v.text().to_string())).collect();
+        self.seen.lock().unwrap().push((r.method.to_string(), r.url.to_string(), headers, r.body.to_vec()));
+        let mut body = b"heard ".to_vec();
+        body.extend_from_slice(r.body.trim_ascii());
+        Ok(contextful_outbound::egress::Inbound { status: 200, headers: vec![("X-Vendor".into(), "asr".into())], body })
+    }
+}
+
+const SPEECH_KEY: &str = "sentinel-speech-key-41";
+
+/// An exec vendor engine `reader` at `api.speech.example` attaching `Bearer ${secret://speech-vendor}`, whose
+/// step dumps its environment to `env.txt` and runs `script` with its input as `$1`.
+fn vendor_source(dir: &Path, vendor: &Arc<Vendor>, script: &str) -> DeriveSource {
+    std::fs::write(dir.join("memo.txt"), "Revenue rose.\n").unwrap();
+    std::fs::write(dir.join("engine.sh"), format!("env > \"$ENV_DUMP\"\n{script}")).unwrap();
+    let toml = format!(
+        "[derive.reader]\nendpoint_host = \"api.speech.example\"\n[derive.reader.env]\nENV_DUMP = \"{}\"\n\
+         [derive.reader.attach]\nAuthorization = \"Bearer ${{secret://speech-vendor}}\"\n\
+         [derive.reader.engine]\ncommand = [\"sh\", \"{}\", \"{{input}}\"]\noutput_format = \"srt\"\n",
+        dir.join("env.txt").display(),
+        dir.join("engine.sh").display()
+    );
+    let mut s = source(dir, json!([{"doc_id": "d1", "path": "memo.txt"}]), &toml);
+    s.resolver = crate::support::resolver(vec![("speech-vendor", SPEECH_KEY)]);
+    s.mediation.transport = Some(vendor.clone());
+    s
+}
+
+/// The proxy URL a step's environment named.
+fn egress_url(dir: &Path) -> String {
+    let env = std::fs::read_to_string(dir.join("env.txt")).unwrap();
+    let line = env.lines().find(|l| l.starts_with("CONTEXTFUL_EGRESS_URL=")).unwrap_or_else(|| panic!("no proxy variable in {env}"));
+    line["CONTEXTFUL_EGRESS_URL=".len()..].to_string()
+}
+
+/// A vendor engine's step holds `CONTEXTFUL_EGRESS_URL` and no credential; the loopback proxy it names sends the
+/// step's request to `https://<endpoint_host>` through the mediated client, attaching the binding's header in place
+/// of the step's own and dropping hop-by-hop headers, and closes when the pull ends.
+// spec: connector.attach.exec-environment@6b096db2
+// spec: connector.attach.exec-proxy@839917a3
+// spec: connector.attach.exec-proxy-attach@b52c8512
+// spec: connector.attach.mediation-covers-every-egress@b0a89377
+#[test]
+fn a_vendor_steps_request_passes_the_loopback_proxy_which_attaches_its_credential() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor = Vendor::at("93.184.216.34");
+    let script = "printf '1\\n00:00:01,000 --> 00:00:02,000\\n'\n\
+                  curl -sS -X POST -H 'Authorization: forged' -H 'Proxy-Authorization: forged' -H 'X-Step: asr' --data-binary @\"$1\" \"$CONTEXTFUL_EGRESS_URL/v1/listen?lang=en\"\n\
+                  printf '\\n'\n";
+    let mut s = vendor_source(dir.path(), &vendor, script);
+    let rows = pulled(&mut s);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["text"], "heard Revenue rose.", "{rows:?}");
+
+    let url = egress_url(dir.path());
+    assert!(url.starts_with("http://127.0.0.1:"), "{url}");
+    let env = std::fs::read_to_string(dir.path().join("env.txt")).unwrap();
+    assert!(!env.contains(SPEECH_KEY) && !env.contains("secret://"), "{env}");
+
+    let seen = vendor.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    let (method, target, headers, body) = &seen[0];
+    assert_eq!((method.as_str(), target.as_str()), ("POST", "https://api.speech.example/v1/listen?lang=en"));
+    assert_eq!(body, b"Revenue rose.\n");
+    let named = |n: &str| headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.clone()).collect::<Vec<_>>();
+    assert_eq!(named("authorization"), [format!("Bearer {SPEECH_KEY}")]);
+    assert_eq!(named("x-step"), ["asr"]);
+    assert!(named("proxy-authorization").is_empty() && named("host").is_empty(), "{headers:?}");
+    assert_eq!(s.resolver.attribution(), [("speech-vendor".to_string(), "fixed".to_string())].into_iter().collect());
+
+    let addr = url.trim_start_matches("http://");
+    assert!(std::net::TcpStream::connect(addr).is_err(), "the proxy closes with its pull");
+}
+
+/// A forwarded request the mediated client fails answers the step `502` and fails the unit, though the step exits 0.
+// spec: connector.attach.exec-proxy-refusal@cfe81973
+#[test]
+fn a_refused_forward_fails_the_unit_though_the_step_exits_zero() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor = Vendor::at("10.0.0.7");
+    let script = "code=$(curl -s -o /dev/null -w '%{http_code}' --data-binary @\"$1\" \"$CONTEXTFUL_EGRESS_URL/v1/listen\")\n\
+                  echo \"proxy answered $code\" >&2\n\
+                  printf '1\\n00:00:01,000 --> 00:00:02,000\\nnothing heard\\n'\n";
+    let mut s = vendor_source(dir.path(), &vendor, script);
+    let req = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    let pulled: Value = serde_json::from_slice(&s.pull(&req, &Never).unwrap()).unwrap();
+    let rows = pulled["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!((rows[0]["kind"].as_str(), rows[0]["unit_status"].as_str()), (Some("marker"), Some("failed")), "{rows:?}");
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("ConnectorPrivateAddress"), "{rows:?}");
+    let audit = pulled["audit"].to_string();
+    assert!(audit.contains("proxy answered 502"), "{audit}");
+    assert!(vendor.seen().is_empty());
+}
+
+/// Send `request` to a proxy over `vendor` and answer its status line.
+fn proxied(vendor: &Arc<Vendor>, request: &[u8]) -> String {
+    use std::io::{Read, Write};
+    let origin = url::Url::parse("https://api.speech.example/").unwrap();
+    let allow = contextful_core::connector::attach::Allowlist::parse(&["api.speech.example"]).unwrap();
+    let client = contextful_outbound::client::Client::new(allow, origin.clone()).with_transport(vendor.clone());
+    let proxy = contextful_connectors::proxy::Proxy::start(client, origin, vec![], crate::support::resolver(vec![])).unwrap();
+    let mut stream = std::net::TcpStream::connect(proxy.url().trim_start_matches("http://")).unwrap();
+    stream.write_all(request).unwrap();
+    let mut answer = String::new();
+    let _ = stream.read_to_string(&mut answer);
+    answer.lines().next().unwrap_or_default().trim().to_string()
+}
+
+/// The proxy reads at most 64 KiB of request head and 64 MiB of body. A larger request answers `413`, a body framed
+/// without `Content-Length` answers `411`, and neither sends anything.
+// spec: connector.attach.exec-proxy-request@d5683f5e
+#[test]
+fn an_oversized_or_unframed_request_answers_without_sending() {
+    use contextful_connectors::proxy::{PROXY_BODY_BYTES, PROXY_HEAD_BYTES};
+    let vendor = Vendor::at("93.184.216.34");
+    assert_eq!(proxied(&vendor, b"POST /v1/listen HTTP/1.1\r\nContent-Length: 2\r\n\r\nok"), "HTTP/1.1 200");
+    assert_eq!(vendor.seen().len(), 1);
+    let long_body = format!("POST /v1/listen HTTP/1.1\r\nContent-Length: {}\r\n\r\n", PROXY_BODY_BYTES + 1);
+    assert_eq!(proxied(&vendor, long_body.as_bytes()), "HTTP/1.1 413");
+    let long_head = format!("GET /v1/listen HTTP/1.1\r\nX-Pad: {}\r\n\r\n", "a".repeat(PROXY_HEAD_BYTES));
+    assert_eq!(proxied(&vendor, long_head.as_bytes()), "HTTP/1.1 413");
+    assert_eq!(proxied(&vendor, b"POST /v1/listen HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n"), "HTTP/1.1 411");
+    assert_eq!(vendor.seen().len(), 1, "a refused request sends nothing");
+}
