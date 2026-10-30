@@ -2,6 +2,7 @@
 
 mod calibration;
 mod entity;
+mod erase;
 mod evidence;
 mod owners;
 mod recall;

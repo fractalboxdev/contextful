@@ -27,6 +27,41 @@ impl ErasureSelection {
     }
 }
 
+/// The dead-letter column citing the source rows a letter's content came from: a JSON
+/// array of [`crate::memory::synthesize::EvidenceRef`] (`read.synthesize.dead-letter-evidence`).
+pub const DEAD_LETTER_EVIDENCE: &str = "evidence";
+
+/// Extends a selection to every row of the `letters` tables whose [`DEAD_LETTER_EVIDENCE`]
+/// cites a row the selection removes (`disclosure.erase.dead-letters`). A letter citing
+/// nothing stays; an evidence cell that does not decode refuses, since its sources are unknown.
+pub fn select_dead_letters(selection: &mut ErasureSelection, rows: &RetainedRows, letters: &[String]) -> Result<(), ErasureError> {
+    use crate::store::reserve::{ROW_SEQ, RUN_ID};
+    let unsupported = || ErasureError::ErasureScopeUnsupported("a dead letter's evidence does not decode".into());
+    let mut removed = std::collections::BTreeSet::new();
+    for (table, mask) in &selection.removed {
+        for (row, _) in rows.get(table).into_iter().flatten().zip(mask).filter(|(_, removed)| **removed) {
+            if let (Some(run), Some(seq)) = (row.get(RUN_ID).and_then(Value::as_str), row.get(ROW_SEQ).and_then(Value::as_i64)) {
+                removed.insert((table.as_str(), run, seq));
+            }
+        }
+    }
+    let mut masks = BTreeMap::new();
+    for table in letters {
+        let mut mask = Vec::new();
+        for row in rows.get(table).into_iter().flatten() {
+            let cites = match row.get(DEAD_LETTER_EVIDENCE) {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::String(text)) => serde_json::from_str::<Vec<crate::memory::synthesize::EvidenceRef>>(text).map_err(|_| unsupported())?,
+                Some(_) => return Err(unsupported()),
+            };
+            mask.push(cites.iter().any(|cite| removed.contains(&(cite.table.as_str(), cite.run.as_str(), cite.seq))));
+        }
+        masks.insert(table.clone(), mask);
+    }
+    selection.removed.extend(masks);
+    Ok(())
+}
+
 /// Selects subject rows and exclusively referenced descendants across retained versions.
 pub fn select_subject(
     declarations: &[TableDecl],

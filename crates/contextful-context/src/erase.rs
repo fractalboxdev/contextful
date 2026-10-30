@@ -5,7 +5,7 @@ use crate::error::IoPath;
 use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
-use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
+use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_dead_letters, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
 use contextful_core::ports::{Clock, SigningPort};
 use contextful_core::store::declare::{DeclarationSet, TableDecl};
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS_DIR};
@@ -116,7 +116,11 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
             }
         })
     };
-    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: false })
+    let admit_letters = |letters: &[&str]| -> Result<()> {
+        if !letters.is_empty() { ForgetAdmission::admit(request.admission.authority(), letters)?; }
+        Ok(())
+    };
+    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, admit_letters: &admit_letters, select: &select, allow_empty: false })
 }
 
 /// A store owner's tenant purge; the caller presents no capability credential.
@@ -171,7 +175,8 @@ pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> 
         Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?, tenant_digest.clone()))
     };
     let guard = || Ok(());
-    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: true })?;
+    let admit_letters = |_: &[&str]| Ok(());
+    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, admit_letters: &admit_letters, select: &select, allow_empty: true })?;
     // A tenant holding no row publishes no rewrite; its receipt counts zero in every declared table.
     let affected_counts = if erased.transaction_id.is_empty() { prospective.affected_counts } else { erased.affected_counts.clone() };
     let claim = ReceiptClaim {
@@ -225,6 +230,9 @@ struct Plan<'a> {
     audit_key: &'a [u8],
     clock: &'a dyn Clock,
     guard: &'a dyn Fn() -> Result<()>,
+    /// Admits the dead-letter tables beside declared tables that the publication rewrites
+    /// with its selection (`disclosure.erase.dead-letters`).
+    admit_letters: &'a dyn Fn(&[&str]) -> Result<()>,
     select: &'a dyn Fn(&RetainedRows) -> Result<(ErasureSelection, String)>,
     /// An empty selection returns an unpublished outcome with an empty transaction id,
     /// before any staging and whatever frontier the store already holds.
@@ -242,7 +250,15 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         let mut batches: BTreeMap<String, Vec<(PathBuf, Vec<RecordBatch>)>> = BTreeMap::new();
         let mut rows = RetainedRows::new();
         let mut directories = BTreeMap::new();
-        for decl in plan.declarations {
+        // The dead-letter table beside each declared table, when the store holds one the
+        // declarations do not, joins the publication (`disclosure.erase.dead-letters`).
+        let letters: Vec<String> = bound.tables()?.into_iter()
+            .filter(|name| plan.declarations.iter().all(|decl| decl.name != *name)
+                && plan.declarations.iter().any(|decl| contextful_core::run::ports::dead_letter_table(&decl.name) == *name))
+            .collect();
+        (plan.admit_letters)(&letters.iter().map(String::as_str).collect::<Vec<_>>())?;
+        let declarations: Vec<TableDecl> = plan.declarations.iter().cloned().chain(letters.iter().map(TableDecl::named)).collect();
+        for decl in &declarations {
             let directory = bound.table_dir(&decl.name)?;
             let mut retained = Vec::new();
             let mut parts = Vec::new();
@@ -261,7 +277,8 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
             rows.insert(decl.name.clone(), retained);
             batches.insert(decl.name.clone(), parts);
         }
-        let (selected, subject_hash) = (plan.select)(&rows)?;
+        let (mut selected, subject_hash) = (plan.select)(&rows)?;
+        select_dead_letters(&mut selected, &rows, &letters)?;
         if plan.allow_empty && selected.affected_tables().next().is_none() {
             return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new() });
         }
@@ -285,7 +302,7 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         let mut counts = BTreeMap::new();
         let store_id = crate::project::store_id(bound.root()).map_err(|_| incomplete("the erasure store identity is unavailable"))?;
         for name in &targets {
-            let decl = plan.declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
+            let decl = declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
             let source = &directories[*name];
             let old_inventory = crate::erasure_frontier::retirement_inventory(source)?;
             let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.components().map(|component| component.as_os_str().to_str().ok_or_else(|| incomplete("the retired path is not text"))).collect::<Result<Vec<_>>>()?.join("/");

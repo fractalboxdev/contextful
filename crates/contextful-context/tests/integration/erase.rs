@@ -810,6 +810,7 @@ fn normal_publication_waits_for_the_erasure_frontier_before_mutating_working_fil
 }
 
 // spec: disclosure.erase.physical-removal@47a3ae2f
+// spec: disclosure.erase.dead-letters@a2586c32
 // spec: read.reference.frontier@38efed50
 // spec: read.reference.index-visibility@e09069b7
 /// An admitted reference in the independently verified cumulative erasure index returns `available: false` and
@@ -836,6 +837,11 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:01:00Z")).unwrap();
     fixture.land(&table, "run-0002", json!([{ "id":"b", "subject":"bob", "text":"retained updated"}]), "2030-01-01T00:02:00Z").unwrap();
     contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:03:00Z")).unwrap();
+    // Each dead letter cites the source row its content came from (`disclosure.erase.dead-letters`).
+    let letters = decl("name = \"notes_dead_letter\"");
+    let cite = |run: &str, seq: i64| json!([{ "table":"notes", "run":run, "seq":seq }]).to_string();
+    fixture.land(&letters, "run-0003", json!([{ "reason":"MemoryExtractExhausted", "response":"private letter", "evidence":cite("run-0001", 0) },
+        { "reason":"MemoryExtractExhausted", "response":"kept letter", "evidence":cite("run-0001", 1) }]), "2030-01-01T00:04:00Z").unwrap();
     let reads = crate::read::Reads::new();
     let mut grant = crate::read::read(&["*"], None);
     grant.actions = vec![Action::Forget];
@@ -884,6 +890,8 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
         }
     }
     check_bytes(erased.store.root());
+    let kept = contextful_context::rows::table_rows(&erased.store, &letters, &["response", "evidence"]).unwrap();
+    assert_eq!(serde_json::to_value(kept).unwrap(), json!([{ "response":"kept letter", "evidence":cite("run-0001", 1) }]), "another subject's dead letter survives unchanged");
     let historical = contextful_context::rows::table_rows(&erased.store, &table, &["subject"]).unwrap();
     assert!(!historical.is_empty(), "the exclusion below ranges over no element");
     assert!(historical.iter().all(|row| row["subject"] == "bob"));
