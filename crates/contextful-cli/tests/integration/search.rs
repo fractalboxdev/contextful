@@ -8,11 +8,11 @@ use std::process::Output;
 use std::sync::{Arc, Mutex};
 
 /// The provider's answer to `target`: `rust lang` holds two pages, `p2` naming the second, and
-/// `web assembly` one; a target whose query `unavailable` names answers 503.
-fn answer(target: &str, unavailable: &[String]) -> (u16, String) {
+/// `web assembly` one; a target holding a `failing` marker answers that marker's status.
+fn answer(target: &str, failing: &[(String, u16)]) -> (u16, String) {
     let result = |url: &str, at: &str| serde_json::json!({"url": url, "title": url.trim_start_matches("https://"), "published_at": at});
-    if unavailable.iter().any(|u| target.contains(u.as_str())) {
-        return (503, "{}".into());
+    if let Some((_, status)) = failing.iter().find(|(marker, _)| target.contains(marker.as_str())) {
+        return (*status, "{}".into());
     }
     let body = if target.contains("q=rust%20lang") && target.contains("cursor=p2") {
         serde_json::json!({"results": [result("https://r3.test", "2030-01-09T11:00:00Z")]})
@@ -28,23 +28,28 @@ fn answer(target: &str, unavailable: &[String]) -> (u16, String) {
 
 struct Provider {
     vendor: Vendor,
-    unavailable: Arc<Mutex<Vec<String>>>,
+    failing: Arc<Mutex<Vec<(String, u16)>>>,
 }
 
 impl Provider {
     fn start() -> Provider {
-        let unavailable: Arc<Mutex<Vec<String>>> = Arc::default();
-        let state = unavailable.clone();
+        let failing: Arc<Mutex<Vec<(String, u16)>>> = Arc::default();
+        let state = failing.clone();
         let vendor = Vendor::start(move |target| answer(target, &state.lock().unwrap()));
-        Provider { vendor, unavailable }
+        Provider { vendor, failing }
     }
 
+    /// Answer 503 to every target holding `marker`.
     fn fail(&self, marker: &str) {
-        *self.unavailable.lock().unwrap() = vec![marker.to_string()];
+        self.answer_with(marker, 503);
+    }
+
+    fn answer_with(&self, marker: &str, status: u16) {
+        *self.failing.lock().unwrap() = vec![(marker.to_string(), status)];
     }
 
     fn heal(&self) {
-        self.unavailable.lock().unwrap().clear();
+        self.failing.lock().unwrap().clear();
     }
 }
 
@@ -184,4 +189,43 @@ fn a_malformed_search_declaration_fails_validation_before_any_request() {
         assert!(stderr(&out).contains(key), "{key}: {}", stderr(&out));
     }
     assert!(provider.vendor.targets().is_empty(), "validation reaches no provider: {:?}", provider.vendor.targets());
+}
+
+/// A fire failing permanently on its third pull holds its execution; the next fire replays the two journaled pulls of
+/// `rust lang` without asking the provider again, then reads `web assembly` live and ends, landing what an
+/// uninterrupted fire lands.
+// spec: run.journal.replay-lands@0cc34691
+#[test]
+fn a_resumed_search_fire_replays_its_journaled_result_sets_without_asking_the_provider() {
+    let provider = Provider::start();
+    let dir = project(&manifest(&provider, "max_results = 10"));
+    provider.answer_with("q=web%20assembly", 400);
+    let failed = fire(dir.path(), "f1", "2030-01-10T00:00:00Z");
+    assert!(!failed.status.success(), "a 400 fails the fire: {}", String::from_utf8_lossy(&failed.stdout));
+    assert_eq!(provider.vendor.targets().len(), 3, "{:?}", provider.vendor.targets());
+
+    provider.heal();
+    let out = ok(&fire(dir.path(), "f2", "2030-01-10T00:01:00Z"));
+    assert!(out.contains("4 rows"), "{out}");
+    // The live pull fills `{since}` from the resuming fire's instant.
+    assert_eq!(provider.vendor.targets()[3..], ["/search?q=web%20assembly&since=2030-01-08T00%3A01%3A00Z"], "the replay re-reads no recorded page");
+    assert_eq!(
+        landed(dir.path()),
+        pairs(&[("rust", "https://r1.test"), ("rust", "https://r2.test"), ("rust", "https://r3.test"), ("wasm", "https://w1.test")])
+    );
+}
+
+/// A provider key reference no assembled adapter answers fails the fire with `SecretUnresolvedReference` naming it,
+/// before any request, rather than landing a zero-row success.
+// spec: connector.resolve.unresolved-name@b7bc2a10
+#[test]
+fn an_unresolved_provider_key_fails_the_search_fire_before_any_request() {
+    let provider = Provider::start();
+    let key = "max_results = 10\nheaders = { Authorization = \"Bearer ${secret://search-provider-key}\" }";
+    let dir = project(&manifest(&provider, key));
+    let out = fire(dir.path(), "f1", "2030-01-10T00:00:00Z");
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let why = stderr(&out);
+    assert!(why.contains("SecretUnresolvedReference") && why.contains("search-provider-key"), "{why}");
+    assert!(provider.vendor.targets().is_empty(), "no request leaves: {:?}", provider.vendor.targets());
 }

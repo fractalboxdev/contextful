@@ -16,7 +16,8 @@ use contextful_outbound::client::Client;
 use contextful_outbound::Resolver;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::ops::Bound;
 use std::sync::Arc;
 use url::Url;
 
@@ -177,6 +178,11 @@ struct Position {
     version: u64,
     #[serde(default)]
     queries: BTreeMap<String, Held>,
+    /// The query the read reads next, in name order; absent between reads. The position,
+    /// not the source instance, carries it, so a pull after replayed ones resumes where the
+    /// recorded batches left the read (`run.journal.replay-lands`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reading: Option<String>,
 }
 
 /// The later of two instants, either absent.
@@ -196,8 +202,6 @@ pub struct SearchSource {
     client: Client,
     /// The `{since}` of a query holding no watermark: the fire's instant less `freshness`.
     floor: String,
-    /// Queries this read has finished or held.
-    done: BTreeSet<String>,
     /// Audit entries the next batch carries.
     audit: Vec<String>,
 }
@@ -209,7 +213,12 @@ impl SearchSource {
         let client = mediation.client(config.allowlist()?, config.origin.clone(), None);
         let floor_secs = now.unix_secs().saturating_sub(i64::try_from(config.freshness).unwrap_or(i64::MAX));
         let floor = Instant::from_unix_secs(floor_secs).unwrap_or(now).to_rfc3339();
-        Ok(SearchSource { config, resolver, client, floor, done: BTreeSet::new(), audit: Vec::new() })
+        Ok(SearchSource { config, resolver, client, floor, audit: Vec::new() })
+    }
+
+    /// The declared query after `name` in name order, `None` past the last.
+    fn after(&self, name: &str) -> Option<String> {
+        self.config.queries.range::<str, _>((Bound::Excluded(name), Bound::Unbounded)).next().map(|(n, _)| n.clone())
     }
 
     fn page(&self, query: &str, pass: &Pass) -> Result<Value, Failure> {
@@ -256,7 +265,12 @@ impl Source for SearchSource {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during search read"));
             }
-            let Some((name, text)) = self.config.queries.iter().find(|(name, _)| !self.done.contains(*name)).map(|(n, t)| (n.clone(), t.clone())) else {
+            let next = match position.reading.as_deref() {
+                None => self.config.queries.iter().next(),
+                Some(at) => self.config.queries.range::<str, _>((Bound::Included(at), Bound::Unbounded)).next(),
+            };
+            let Some((name, text)) = next.map(|(n, t)| (n.clone(), t.clone())) else {
+                position.reading = None;
                 return self.batch(Vec::new(), &position, false);
             };
             let mut held = position.queries.get(&name).cloned().unwrap_or_default();
@@ -265,7 +279,10 @@ impl Source for SearchSource {
                 Ok(page) => page,
                 Err(failure) if retryable(&failure) => {
                     self.audit.push(format!("search query `{name}` held at its committed position: {failure}"));
-                    self.done.insert(name);
+                    position.reading = self.after(&name);
+                    if position.reading.is_none() {
+                        return self.batch(Vec::new(), &position, false);
+                    }
                     continue;
                 }
                 Err(failure) => return Err(failure),
@@ -288,19 +305,22 @@ impl Source for SearchSource {
             pass.high = later(pass.high.take(), newest);
             pass.landed += rows.len() as u64;
             let next = page.pointer(&self.config.cursor).and_then(Value::as_str).filter(|c| !c.is_empty()).map(str::to_string);
-            match next {
+            let more = match next {
                 Some(cursor) if !rows.is_empty() && pass.landed < self.config.max_results => {
                     pass.cursor = Some(cursor);
                     held.pass = Some(pass);
+                    position.reading = Some(name.clone());
+                    true
                 }
                 _ => {
                     held.watermark = later(held.watermark.take(), pass.high.as_deref().and_then(|t| Instant::parse(t).ok()));
                     held.pass = None;
-                    self.done.insert(name.clone());
+                    position.reading = self.after(&name);
+                    position.reading.is_some()
                 }
-            }
+            };
             position.queries.insert(name, held);
-            return self.batch(rows, &position, true);
+            return self.batch(rows, &position, more);
         }
     }
 }
