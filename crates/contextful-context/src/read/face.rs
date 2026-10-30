@@ -104,6 +104,9 @@ pub struct Face {
     /// Each `cohort` model's table with the source tables its statement names
     /// (`disclosure.bound-cohort.per-individual-row`).
     pub(crate) cohorts: BTreeMap<String, BTreeSet<String>>,
+    /// Each derive pipeline's parent and joined tables with its output tables
+    /// (`disclosure.bound-cohort.derived-individual`).
+    pub(crate) derives: Vec<(Vec<String>, Vec<String>)>,
 }
 
 /// A table's `level` and `principal_kind` tables, by table.
@@ -239,6 +242,7 @@ impl Face {
             clock: std::sync::Arc::new(system_now),
             principals,
             cohorts: BTreeMap::new(),
+            derives: Vec::new(),
         };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
@@ -390,7 +394,8 @@ impl Face {
     }
 
     /// Every row of a table the session reads, or of one of its committed runs, through
-    /// the table's registered relation under its admitted read budgets.
+    /// the table's registered relation under its admitted read budgets; a per-individual
+    /// table refuses without `read-individual` (`disclosure.bound-cohort.per-individual-row`).
     pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
         self.table_rows(session, table, run, None)
     }
@@ -404,7 +409,9 @@ impl Face {
     fn table_rows(&self, session: &Session, table: &str, run: Option<&str>, native: Option<&[&str]>) -> Result<Response, ReadFault> {
         let frontier = self.read_frontier(session)?;
         let r = self.registered(session, table)?;
-        self.bind_visibility(session, &BTreeSet::from([table.to_string()]))?;
+        let touched = BTreeSet::from([table.to_string()]);
+        self.bind_visibility(session, &touched)?;
+        self.bind_cohort_sources(session, &touched)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let (sql, parameters) = match run {
             Some(run) => {
@@ -1167,11 +1174,13 @@ impl Face {
     /// One page of a subscription over `tables`, resumed after each table's `after`
     /// position: its messages and each table's last delivered position
     /// (`read.subscribe.tool-poll`). A table outside the session refuses as unknown before
-    /// any position resolves (`read.subscribe.ungranted-table`).
+    /// any position resolves (`read.subscribe.ungranted-table`), and a per-individual table
+    /// refuses without `read-individual` (`disclosure.bound-cohort.per-individual-row`).
     pub fn subscribe(&self, session: &Session, tables: &[String], after: &BTreeMap<String, String>) -> Result<Value, ReadFault> {
         for table in tables {
             self.registered(session, table)?;
         }
+        self.bind_cohort_sources(session, &tables.iter().cloned().collect())?;
         let refusal = |e: crate::ContextError| match e {
             crate::ContextError::Read(e) => ReadFault::from(e),
             other => ReadFault::Store(other),

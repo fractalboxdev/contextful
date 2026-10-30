@@ -383,15 +383,23 @@ pub(crate) struct HostChecked {
     limiter: Option<LimiterBinding>,
 }
 
+/// Refuse a derive run, before it selects any unit, whose source or joined table is
+/// per-individual and whose credential holds no `read-individual` over it; a run under no
+/// credential holds none (`disclosure.bound-cohort.derive-individual`).
+fn bind_individual_parents(spec: &PipelineSpec, l: &crate::project::Located, text: &str, author: Option<&crate::admit::Author>, tasks: &Tasks) -> Result<()> {
+    if crate::project::cohort_models(&l.declaration)?.is_empty() {
+        return Ok(());
+    }
+    let pepper = contextful_policy::enforce::mask::Pepper::resolve(|k| std::env::var(k).ok());
+    let face = crate::project::open_face(&l.project, &l.declaration, text, pepper)?;
+    face.bind_individual(author.map(|a| a.authority().grants()), &crate::project::derive_parents(spec, Some(tasks)))?;
+    Ok(())
+}
+
 /// The tables each derive pipeline's registered host task joins, which order it after the
 /// derive pipelines landing them (`run.select.join-order`).
 pub(crate) fn joined_tables(tasks: &Tasks) -> impl Fn(&PipelineSpec) -> Vec<String> + '_ {
-    move |spec| {
-        let task = (spec.source.name == contextful_connectors::derive::NAME)
-            .then(|| spec.source.config.get("task").and_then(serde_json::Value::as_str).and_then(|name| tasks.get(name)))
-            .flatten();
-        task.map(|t| t.joins().into_iter().map(|j| j.table).collect()).unwrap_or_default()
-    }
+    move |spec| crate::project::host_joins(spec, Some(tasks))
 }
 
 /// The limiter binding a declared seed source's quota names, building that source first: a
@@ -1232,6 +1240,9 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
         _ if bound.is_some() => bail!("pipeline `{}` reads source `{}`; an availability bound selects a derive pipeline's parents", spec.id, spec.source.name),
         _ => None,
     };
+    if let Checked::Derive(_) | Checked::Host(_) = &checked {
+        bind_individual_parents(&spec, &l, &text, author.as_ref(), tasks)?;
+    }
     if dry_run {
         return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver, available);
     }
