@@ -53,6 +53,8 @@ mod formal;
 #[cfg(feature = "data-plane")]
 mod holder;
 #[cfg(feature = "data-plane")]
+mod image_body;
+#[cfg(feature = "data-plane")]
 mod init;
 #[cfg(feature = "data-plane")]
 mod job;
@@ -88,6 +90,8 @@ mod receive_sqs_absent;
 mod report;
 #[cfg(feature = "data-plane")]
 mod run;
+#[cfg(feature = "data-plane")]
+mod search;
 #[cfg(feature = "data-plane")]
 mod secrets;
 #[cfg(feature = "data-plane")]

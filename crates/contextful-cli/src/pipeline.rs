@@ -20,6 +20,7 @@ use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
 use contextful_connectors::image::{ImageConfig, ImageSource};
 use contextful_connectors::report::declared::{DeclaredVendor, ReportDeclaration};
 use contextful_connectors::report::ReportSource;
+use contextful_connectors::search::{SearchConfig, SearchSource};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::meter::{manifest_bindings, require_binding, LimiterBinding};
 use contextful_core::ports::Clock;
@@ -364,6 +365,8 @@ pub(crate) enum Checked {
     Image(ImageConfig),
     /// An async-report source over its declared HTTP vendor.
     Report(Box<ReportDeclaration>),
+    /// A search source over its declared provider endpoint.
+    Search(Box<SearchConfig>),
     Derive(Box<(DeriveConfig, Binding, Option<LimiterBinding>)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -436,6 +439,7 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
         }
         contextful_connectors::file::NAME => check_file(spec),
         contextful_connectors::report::NAME => check_report(spec),
+        contextful_connectors::search::NAME => check_search(spec),
         contextful_connectors::receive::NAME => {
             let config = contextful_connectors::receive::ReceiveConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
             if let Some(field) = &spec.incremental {
@@ -620,6 +624,23 @@ fn check_report(spec: &PipelineSpec) -> Result<Checked> {
         bail!("pipeline `{}` declares {} tables beside the `report` source, which lands one table", spec.id, spec.tables.len());
     }
     Ok(Checked::Report(Box::new(declaration)))
+}
+
+/// A `search` source's declaration, checked before any request: the source owns its
+/// per-query position and lands one table.
+fn check_search(spec: &PipelineSpec) -> Result<Checked> {
+    let config = SearchConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+    if let Some(field) = &spec.incremental {
+        return Err(ConnectorError::ConnectorPositionOwned(format!(
+            "pipeline `{}` declares `incremental = \"{field}\"` beside the `search` source, whose position holds each query's watermark",
+            spec.id
+        ))
+        .into());
+    }
+    if spec.tables.len() != 1 {
+        bail!("pipeline `{}` declares {} tables beside the `search` source, which lands one table", spec.id, spec.tables.len());
+    }
+    Ok(Checked::Search(Box::new(config)))
 }
 
 /// The PDF decoder a `file` source reads pages through: this binary's worker behind the
@@ -1195,10 +1216,12 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
     match &checked {
         Checked::Http(config, _) => resolver.preflight(config.headers.values())?,
         Checked::Report(declaration) => resolver.preflight(declaration.headers.values())?,
+        Checked::Search(config) => resolver.preflight(config.headers.values())?,
+        Checked::Image(config) => resolver.preflight(config.templates())?,
         Checked::Component(decl) => component::preflight(decl, crate::connector::admit(decl, &l.project.dir)?.auth.as_ref(), &resolver)?,
         #[cfg(feature = "drive")]
         Checked::Drive(config) => resolver.preflight(config.templates())?,
-        Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) | Checked::Receive(_) => {}
+        Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Receive(_) => {}
         #[cfg(feature = "s3-sync")]
         Checked::Object(config) => resolver.preflight(config.credentials())?,
     }
@@ -1432,7 +1455,14 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
                 #[cfg(feature = "s3-sync")]
                 Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
                 Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
-                Checked::Image(config) => Box::new(ImageSource::new(config.clone(), &base)),
+                Checked::Image(config) => {
+                    let mediation = Mediation { run_id: Some(run_id.clone()), ..Mediation::default() };
+                    Box::new(ImageSource::new(config.clone(), &base, resolver.clone(), &mediation)?)
+                }
+                Checked::Search(config) => {
+                    let mediation = Mediation { run_id: Some(run_id.clone()), ..Mediation::default() };
+                    Box::new(SearchSource::mediated((**config).clone(), resolver.clone(), &mediation, w.clock.now())?)
+                }
                 Checked::Report(declaration) => {
                     let mediation = Mediation { run_id: Some(run_id.clone()), ..Mediation::default() };
                     let vendor = DeclaredVendor::mediated((**declaration).clone(), resolver.clone(), &mediation)?;

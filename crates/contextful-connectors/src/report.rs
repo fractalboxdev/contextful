@@ -444,7 +444,9 @@ impl<V: ReportVendor> ReportSource<V> {
     }
 }
 
-fn retryable(failure: &Failure) -> bool {
+/// Whether a failure holds its partition rather than failing the read: a transient or
+/// rate-limited failure no rerun is certain to repeat.
+pub(crate) fn retryable(failure: &Failure) -> bool {
     !failure.deterministic && matches!(failure.tag, FailureTag::Transient | FailureTag::RateLimited)
 }
 

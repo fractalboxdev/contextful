@@ -4,8 +4,9 @@
 
 use super::{Partition, ReportConfig, ReportVendor, RunState, VendorFault, Window};
 use crate::http::Mediation;
+use crate::request::{fill, header_templates, hydrate_headers, percent_encode, placeholder_in_authority, placeholders, verbatim};
 use contextful_core::connector::attach::{endpoint, scrub, Allowlist};
-use contextful_core::connector::reference::{check_material, Template};
+use contextful_core::connector::reference::Template;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::client::{Client, HeaderValue, Response};
@@ -149,18 +150,6 @@ fn invalid(why: String) -> RunError {
     RunError::Invalid(format!("report source config: {why}"))
 }
 
-/// The `{name}` placeholders of `text`, or the first unterminated `{`.
-fn placeholders(text: &str) -> Result<Vec<&str>, String> {
-    let mut out = Vec::new();
-    let mut rest = text;
-    while let Some(open) = rest.find('{') {
-        let close = rest[open..].find('}').ok_or_else(|| format!("`{text}` opens a placeholder it never closes"))?;
-        out.push(&rest[open + 1..open + close]);
-        rest = &rest[open + close + 1..];
-    }
-    Ok(out)
-}
-
 /// Hold `text`'s placeholders to the window's, a split key every partition carries, and
 /// `{id}` where `id` is allowed.
 fn check_placeholders(key: &str, text: &str, partitions: &[Partition], id: bool) -> Result<(), RunError> {
@@ -183,8 +172,7 @@ fn check_placeholders(key: &str, text: &str, partitions: &[Partition], id: bool)
 /// origin it reaches once filled.
 fn check_url(key: &str, text: &str, partitions: &[Partition], id: bool) -> Result<Url, RunError> {
     check_placeholders(key, text, partitions, id)?;
-    let authority_end = text.find("://").map_or(text.len(), |s| text[s + 3..].find(['/', '?', '#']).map_or(text.len(), |e| s + 3 + e));
-    if text[..authority_end].contains('{') {
+    if placeholder_in_authority(text) {
         return Err(invalid(format!("`{key}` places a placeholder in its scheme or host; a template binds only the path and query")));
     }
     let filled = fill(text, &|_| Some("x".to_string()), percent_encode);
@@ -269,10 +257,7 @@ impl ReportDeclaration {
         if !same_origin(&origin, &poll) {
             return Err(invalid(format!("`poll.url` reaches `{}`, another origin than `create.url`", scrub(&poll))));
         }
-        let mut headers = BTreeMap::new();
-        for (name, value) in &d.headers {
-            headers.insert(name.clone(), check_material(&format!("headers.{name}"), value).map_err(|e| RunError::Invalid(e.to_string()))?);
-        }
+        let headers = header_templates("", &d.headers)?;
         Ok(ReportDeclaration {
             report,
             headers,
@@ -299,32 +284,6 @@ impl ReportDeclaration {
         }
         Ok(allow)
     }
-}
-
-/// Percent-encode every byte outside RFC 3986's unreserved set.
-fn percent_encode(value: &str) -> String {
-    value.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
-}
-
-/// `template` with each placeholder `values` answers replaced by `encode` of its value, in
-/// one pass so a filled value never expands.
-fn fill(template: &str, values: &dyn Fn(&str) -> Option<String>, encode: fn(&str) -> String) -> String {
-    let mut out = String::with_capacity(template.len());
-    let mut rest = template;
-    while let Some((open, close)) = rest.find('{').and_then(|o| rest[o..].find('}').map(|c| (o, o + c))) {
-        out.push_str(&rest[..open]);
-        match values(&rest[open + 1..close]) {
-            Some(v) => out.push_str(&encode(&v)),
-            None => out.push_str(&rest[open..=close]),
-        }
-        rest = &rest[close + 1..];
-    }
-    out.push_str(rest);
-    out
-}
-
-fn verbatim(value: &str) -> String {
-    value.to_string()
 }
 
 /// The declared vendor over the mediated client.
@@ -402,15 +361,7 @@ impl DeclaredVendor {
     }
 
     fn headers(&self, json: bool) -> Result<Vec<(String, HeaderValue)>, VendorFault> {
-        let mut out = Vec::new();
-        if json {
-            out.push(("Content-Type".to_string(), HeaderValue::Plain("application/json".into())));
-        }
-        for (name, t) in &self.declaration.headers {
-            let v = self.resolver.render(t).map_err(failed)?;
-            out.push((name.clone(), if t.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) }));
-        }
-        Ok(out)
+        hydrate_headers(&self.resolver, &self.declaration.headers, json.then_some("application/json")).map_err(failed)
     }
 
     /// Send one request and answer its JSON body, a non-2xx answer as a vendor fault.

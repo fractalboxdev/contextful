@@ -535,9 +535,9 @@ The `file` source and the document decoder land one row per page or heading, key
   *because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory*
 - `file-pdf-absent` — A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.
 
-### reports, images, search and receive
+### reports
 
-Async vendor reports, images, web search results and pushed `receive` batches each land through their own source.
+Async vendor reports land through the `report` source, one watermark per partition.
 
 - `report-id-commit` — An async-report source commits the vendor run id when creation returns. Exhausting the polling budget ends the read successfully. The source recreates an expired vendor run for the same window.
   *P4*
@@ -566,14 +566,28 @@ Async vendor reports, images, web search results and pushed `receive` batches ea
 - `report-failed` — A poll reading a `failed` value raises `ConnectorReportFailed` naming the run id, and the partition's committed position drops that run, so the next fire creates a new one.
   *because a vendor never rebuilds a failed report, so polling its id again fails every later fire*
 - `report-result` — A ready run's pages come from `result.url`, or from the URL its done poll names at `result.pointer`; each page after the first carries its cursor as the `cursor_param` query parameter.
+
+### images, search and receive
+
+Images, web search results and pushed `receive` batches each land through their own source.
+
 - `image-row` — An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.
 - `image-header` — An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.
   *A-connector#untrusted-input-decodes*
 - `quotability-marker` — Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.
 - `marker-body-pairing` — An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.
   *A-connector#untrusted-input-decodes*
+- `image-body` — An image source declaring `body` as {{type:contextful_connectors::image::BodyDeclaration}} posts each image's bytes to its `url` through the mediated client, allowlisting that host alone, and replaces the null body of {{connector.source.image-row}} and its marker with the answer at its pointers.
 - `provider-origin` — Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.
   *A-connector#outbound-transport-origin*
+- `search-config` — A `search` source declares {{type:contextful_connectors::search::SearchDeclaration}}, at least one query and a positive result ceiling, and lands one table: one row per result object, carrying its query's name in `search_query`.
+- `search-templates` — `{query}` and `{since}`, percent-encoded, fill the `url` template's path and query, which holds both; another placeholder, a missing one, or one in the scheme or host fails validation.
+  *because a query placed in a host chooses where a bound credential goes*
+- `search-paging` — A query's pass follows the cursor each page names at `cursor`, sent as the `cursor_param` query parameter, one batch per page carrying the position after it, until a page names none or lands no result, or the pass reaches `max_results`.
+- `search-watermark` — The source holds one watermark per query, the greatest instant at the `time` field its finished passes landed; `{since}` fills from it, or from the fire's instant less `freshness` while none is held.
+- `search-resume` — A pass stopped with a cursor resumes at that cursor under the `{since}` it began with, and the query's watermark advances only when the pass finishes.
+  *because a cursor names a page of one result set, which another `{since}` changes*
+- `search-degradation` — A provider `5xx`, a throttle or a transport failure on one query holds that query at its committed position, recorded on the run's audit, and the read lands the other queries.
 - `receive-form` — A `receive` source declares `format = "jsonl"` and a positive `max_batch_bytes`, `max_queue_depth` and `key_retention_secs`, none defaulted, and no `schedule`; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
 - `receive-recorded` — The engine bounds and records a delivered batch before storing its rows.
