@@ -25,6 +25,7 @@ pub fn resolve(spec: &mut ModelSpec, manifest: &str) -> Result<(), StatementFaul
 
 
 /// Resolve and validate model declarations before immutable control publication.
+#[cfg(feature = "data-plane")]
 pub(crate) fn collect(files: &[contextful_core::pipeline::declare::ManifestFile]) -> anyhow::Result<Vec<ModelSpec>> {
     let pipelines = contextful_core::pipeline::declare::collect(files)?;
     let mut models = Vec::new();
@@ -41,6 +42,7 @@ pub(crate) fn collect(files: &[contextful_core::pipeline::declare::ManifestFile]
 }
 
 /// Refuse a cycle among resolved models (`run.model.model-cycle`).
+#[cfg(feature = "data-plane")]
 pub(crate) fn refuse_cycle(models: &[ModelSpec]) -> anyhow::Result<()> {
     let edges = contextful_context::build::model_edges(models).map_err(|(what, e)| anyhow::anyhow!("{what}: {e}"))?;
     contextful_core::pipeline::model::model_cycle(&edges)?;
@@ -48,6 +50,7 @@ pub(crate) fn refuse_cycle(models: &[ModelSpec]) -> anyhow::Result<()> {
 }
 
 /// Applied models must be self contained, never resolving a path from a live draft.
+#[cfg(feature = "data-plane")]
 pub(crate) fn applied(file: &contextful_core::pipeline::declare::ManifestFile) -> anyhow::Result<Vec<ModelSpec>> {
     let public = crate::effective::public_manifest(file.clone())?;
     let file = &public;

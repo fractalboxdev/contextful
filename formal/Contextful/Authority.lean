@@ -29,13 +29,15 @@ set_option genInjectivity false
 abbrev Name := List Char
 
 /-- The action vocabulary: `read` for every row-returning surface, `write` to land rows,
-`execute` to fire a run, `admin` to mint, `forget` to erase subject data. -/
+`execute` to fire a run, `admin` to mint, `forget` to erase subject data, and
+`read-individual` to read a `cohort` model's source rows beside `read`. -/
 inductive Action where
   | read
   | write
   | execute
   | admin
   | forget
+  | readIndividual
   deriving DecidableEq
 
 set_option genCtorIdx false in

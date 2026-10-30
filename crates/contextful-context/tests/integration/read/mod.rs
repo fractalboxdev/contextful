@@ -4,6 +4,7 @@
 
 mod audit;
 mod carried;
+mod cohort;
 mod cold;
 mod enforce;
 mod explain;

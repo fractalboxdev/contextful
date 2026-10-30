@@ -412,7 +412,7 @@ struct Pools {
     damage_percent: u64,
 }
 
-const ACTIONS: [&str; 5] = ["read", "write", "execute", "admin", "forget"];
+const ACTIONS: [&str; 6] = ["read", "write", "execute", "admin", "forget", "read-individual"];
 
 const WELL_FORMED: Pools = Pools {
     names: &["research", "research/filings", "research/filings/eu", "sales/invoices", "sales", "res"],

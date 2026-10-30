@@ -287,6 +287,7 @@ impl Face {
         // content token, skips it (`read.retrieve.dedup-is-gated`).
         let deduplicating = floor.is_some();
         self.bind_bounds(session, &touched, bounds)?;
+        self.bind_cohort_sources(session, &touched)?;
         // Under a horizon, a sidecar probe admits only entries the bounded relation holds
         // (`read.horizon.rank-statistics`); without one, the probe reads every entry.
         let horizon = contextful_core::read::horizon::horizon(session.grants());

@@ -22536,7 +22536,7 @@
       "operation": "grant",
       "subject": "actions",
       "kind": "behavior",
-      "statement": "A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.",
+      "statement": "A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, `forget` to erase subject data, and `read-individual` for {{disclosure.bound-cohort.per-individual-row}}.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 133
@@ -26439,10 +26439,21 @@
       "operation": "bound-cohort",
       "subject": "cohort-widening",
       "kind": "refusal",
-      "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
-      "why": "A-disclosure#aggregate-disclosure-enforced",
+      "statement": "A template or statement read grouping a `cohort` model's published table by a strict subset of the group key its release records raises `DisclosureCohortWidening`; grouping by the whole key or a superset of it reads.",
+      "why": "because a coarser grouping sums released groups into figures no release noised or floored, and the recorded key decides each read without a ledger of earlier releases",
       "file": "spec/61-disclosure.md",
       "line": 130
+    },
+    {
+      "id": "disclosure.bound-cohort.widening-groupings",
+      "contract": "disclosure",
+      "operation": "bound-cohort",
+      "subject": "widening-groupings",
+      "kind": "behavior",
+      "statement": "A SELECT groups each cohort table its `FROM` reaches by each `GROUP BY` set, each aggregate window's partition list, and the empty set when it aggregates under neither; only a bare column reference covers a key column.",
+      "why": "because an expression over a key column can merge its values, so only the column itself keeps released groups apart",
+      "file": "spec/61-disclosure.md",
+      "line": 132
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -26450,10 +26461,10 @@
       "operation": "bound-cohort",
       "subject": "per-individual-row",
       "kind": "refusal",
-      "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
-      "why": "A-disclosure#aggregate-disclosure-enforced",
+      "statement": "A query, template or retrieve read touching a table a `cohort` model's statement names raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table.",
+      "why": "because the face applies no floor to an ad-hoc read, so a read of a source table returns contributors' rows that no release has suppressed",
       "file": "spec/61-disclosure.md",
-      "line": 132
+      "line": 134
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -26464,7 +26475,7 @@
       "statement": "A `cohort` model whose permitted grouping columns or non-contributor grain columns name its contributor key or a forbidden column raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 134
+      "line": 136
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -26475,7 +26486,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 136
+      "line": 138
     },
     {
       "id": "disclosure.record.segment",
@@ -35095,8 +35106,6 @@
       "disclosure.suppress.empty-policy",
       "disclosure.suppress.grouping-allowlist",
       "disclosure.suppress.sentinel-row",
-      "disclosure.bound-cohort.cohort-widening",
-      "disclosure.bound-cohort.per-individual-row",
       "disclosure.bound-cohort.singleton-cohort",
       "disclosure.bound-cohort.exact-figures"
     ],
@@ -38392,6 +38401,10 @@
       "authority.profile.iteration-ceiling"
     ],
     [
+      "authority.grant.actions",
+      "disclosure.bound-cohort.per-individual-row"
+    ],
+    [
       "authority.grant.row-ceiling",
       "read.respond.face-ceiling"
     ],
@@ -39939,6 +39952,10 @@
         },
         {
           "name": "forget"
+        },
+        {
+          "name": "read-individual",
+          "doc": "Reads a row of a `cohort` model's source table beside `read` (`disclosure.bound-cohort.per-individual-row`)."
         }
       ],
       "clauses": [
@@ -44374,7 +44391,7 @@
           },
           "DisclosureCohortWidening": {
             "clause": "disclosure.bound-cohort.cohort-widening",
-            "gloss": "A read merged an under-floor group into a coarser key."
+            "gloss": "A read grouped a cohort table by a strict subset of its group key."
           },
           "DisclosureContributorKeyAbsent": {
             "clause": "disclosure.release.contributor-key",
@@ -44422,7 +44439,7 @@
           },
           "DisclosurePerIndividualUngranted": {
             "clause": "disclosure.bound-cohort.per-individual-row",
-            "gloss": "A per-individual row was read without an explicit grant."
+            "gloss": "A read touched a cohort model's source table without `read-individual`."
           },
           "DisclosurePolicyAbsent": {
             "clause": "disclosure.set-mode.policy-absent",
@@ -59054,6 +59071,22 @@
         "proved": false
       }
     ],
+    "disclosure.bound-cohort.cohort-widening": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/disclosure.rs",
+        "name": "a_served_cohort_model_guards_its_source_rows_and_its_released_key",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/cohort.rs",
+        "name": "grouping_a_cohort_table_by_a_strict_subset_of_its_key_refuses",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.bound-cohort.exact-figures": [
       {
         "kind": "test",
@@ -59079,6 +59112,22 @@
         "proved": false
       }
     ],
+    "disclosure.bound-cohort.per-individual-row": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/disclosure.rs",
+        "name": "a_served_cohort_model_guards_its_source_rows_and_its_released_key",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/cohort.rs",
+        "name": "a_cohort_source_table_answers_only_a_grant_holding_read_individual",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.bound-cohort.singleton-cohort": [
       {
         "kind": "test",
@@ -59091,6 +59140,15 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/cohort.rs",
         "name": "a_cohort_key_naming_one_person_raises_singleton_cohort_at_declaration",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.bound-cohort.widening-groupings": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/cohort.rs",
+        "name": "grouping_a_cohort_table_by_a_strict_subset_of_its_key_refuses",
         "verdict": "performed",
         "proved": false
       }

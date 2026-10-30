@@ -251,17 +251,7 @@ pub fn steps(decl: &TableDecl, tenant_claim: Option<&str>) -> Result<Vec<Step>, 
 
 /// How one grant reads in a path.
 fn grant_name(g: &Grant) -> String {
-    let actions: Vec<&str> = g
-        .actions
-        .iter()
-        .map(|a| match a {
-            Action::Read => "read",
-            Action::Write => "write",
-            Action::Execute => "execute",
-            Action::Admin => "admin",
-            Action::Forget => "forget",
-        })
-        .collect();
+    let actions: Vec<&str> = g.actions.iter().map(|a| a.name()).collect();
     let tables: Vec<String> = g.tables.iter().cloned().map(String::from).collect();
     format!("{} {}", actions.join(","), tables.join(","))
 }

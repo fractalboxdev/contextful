@@ -175,6 +175,7 @@ The enum at `crates/contextful-core/src/grant.rs`, named by `authority.grant.act
 | `execute` |  |
 | `admin` |  |
 | `forget` |  |
+| `read-individual` | Reads a row of a `cohort` model's source table beside `read` (`disclosure.bound-cohort.per-individual-row`). |
 
 ### `contextful_core::identify::LinkMethod`
 

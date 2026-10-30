@@ -40,6 +40,24 @@ fn signed_forget_is_scoped_and_attenuation_never_inherits_it_from_other_actions(
     assert_eq!(admit(&minted(&signer), &signer, DURING).unwrap().grants()[0].actions, vec![Action::Read]);
 }
 
+#[test]
+fn signed_read_individual_is_scoped_and_attenuation_never_inherits_it_from_read() {
+    let individual = Action::parse("read-individual").expect("the signed profile admits explicit read-individual grants");
+    let signer = issuer();
+    let parent = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read, individual], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let admitted = admit(&parent, &signer, DURING).unwrap();
+    assert!(admitted.permits(individual, &["research/filings"]));
+    assert!(!admitted.permits(individual, &["sales/invoices"]));
+    // A child keeping `read` alone drops the action, and a reader's child cannot add it.
+    let grants = introspect(&parent).unwrap().authority.grants;
+    let reader = admit(&attenuate(&parent, &Derivation::narrowing(&grants, Some(&[Action::Read]), None)).unwrap(), &signer, DURING).unwrap();
+    assert!(reader.permits(Action::Read, &["research/filings"]));
+    assert!(!reader.permits(individual, &["research/filings"]));
+    let plain = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let grants = introspect(&plain).unwrap().authority.grants;
+    refused(attenuate(&plain, &Derivation::narrowing(&grants, Some(&[Action::Read, individual]), None)), "AttenuationWidens");
+}
+
 /// A holder derives a narrower child with no issuer round trip by appending a signed block. The parent's bytes stay unchanged, independently verifiable and independently withdrawable.
 // spec: authority.attenuate.offline@7aa68118
 #[test]

@@ -43,7 +43,7 @@ mod merge_differential;
 mod delegate;
 #[cfg(feature = "data-plane")]
 mod job;
-#[cfg(feature = "data-plane")]
+#[cfg(feature = "read-plane")]
 mod model_source;
 #[cfg(feature = "read-plane")]
 mod mcp;
