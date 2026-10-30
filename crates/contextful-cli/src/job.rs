@@ -208,10 +208,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 Some(delegate) => {
                     let binding = delegates.get(delegate).cloned().with_context(|| format!("JobDelegateUnbound: job `{name}` names delegate `{delegate}`, which `[control.delegates]` does not bind"))?;
                     // Submit mode refuses before any execution opens, so no item receives a
-                    // receipt for a mode this build does not dispatch.
-                    if binding.mode == contextful_core::surface::delegate::Mode::Submit {
-                        bail!("delegate `{delegate}` binds `mode = \"submit\"`, which this build does not dispatch; bind `call`");
-                    }
+                    // receipt (`surface.delegate.submit-unfilled`).
+                    binding.dispatchable()?;
                     Arc::new(crate::delegate::DelegateBody {
                         binding,
                         job: name.clone(),

@@ -73,6 +73,20 @@ fn a_delegate_url_is_loopback_or_the_virtual_host_over_plain_http_without_a_cred
     }
 }
 
+/// A `store-driven` fire whose delegate binds `mode = "submit"` raises `DelegateSubmitUnfilled`, naming
+/// `call` as the mode that dispatches, before any execution opens, so no item receives a receipt.
+// spec: surface.delegate.submit-unfilled@38c08f4d
+#[test]
+fn a_submit_binding_refuses_dispatch_naming_call() {
+    let call = binding("url = \"http://127.0.0.1:1\"\nmode = \"call\"\n").unwrap();
+    assert_eq!(call.dispatchable(), Ok(()));
+    let submit = binding("url = \"http://contextful.delegate/long\"\nmode = \"submit\"\n").unwrap();
+    match submit.dispatchable() {
+        Err(SurfaceError::DelegateSubmitUnfilled(m)) => assert!(m.contains("[control.delegates.d]") && m.contains("mode = \"call\""), "{m}"),
+        other => panic!("expected DelegateSubmitUnfilled, got {other:?}"),
+    }
+}
+
 /// A `call` delegate's `timeout` defaults to 300 s.
 // spec: surface.delegate.call-timeout@bede4158
 #[test]

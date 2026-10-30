@@ -1,6 +1,6 @@
 //! `surface.delegate`: a store-driven item's body on deploy-bound code outside the binary.
 //! The binding a daemon's `[control.delegates.<name>]` declares (`binding`, `host`,
-//! `call-timeout`, `call-timeout-ceiling`, `version`, `dedup-window`), the envelope one request carries
+//! `call-timeout`, `call-timeout-ceiling`, `version`, `dedup-window`, `submit-unfilled`), the envelope one request carries
 //! (`envelope`), the signatures on request and answer (`signed`, `rejected`) and the closed
 //! outcome vocabulary an answer uses (`outcome`).
 
@@ -107,6 +107,18 @@ impl Binding {
             }
         }
         Ok(Binding { name: name.to_string(), url, mode, timeout_secs, version, dedup_window_secs })
+    }
+
+    /// Refuse a binding no fire dispatches: a `submit` binding raises `DelegateSubmitUnfilled`
+    /// naming `call` (`surface.delegate.submit-unfilled`).
+    pub fn dispatchable(&self) -> Result<(), SurfaceError> {
+        match self.mode {
+            Mode::Call => Ok(()),
+            Mode::Submit => Err(SurfaceError::DelegateSubmitUnfilled(format!(
+                "`[control.delegates.{}]` binds `mode = \"submit\"`, which a store-driven fire does not dispatch; bind `mode = \"call\"`",
+                self.name
+            ))),
+        }
     }
 
     /// The name a job's `body = { delegate = "<name>" }` resolves to.

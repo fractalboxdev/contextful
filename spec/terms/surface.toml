@@ -53,6 +53,7 @@ FireCredentialZoneUnset       = { clause = "surface.dispatch.fire-credential-zon
 JobDelegateUnbound            = { clause = "surface.delegate.binding", gloss = "A store-driven body naming a delegate the daemon's configuration does not bind." }
 DelegateHostRefused           = { clause = "surface.delegate.host", gloss = "A delegate URL that is not plain HTTP to a loopback host or the delegate virtual host, or carries a credential." }
 DelegateAnswerRejected        = { clause = "surface.delegate.rejected", gloss = "A delegate answer unsigned, skewed, outside the outcome vocabulary, naming an undeclared table or over the step-result cap." }
+DelegateSubmitUnfilled        = { clause = "surface.delegate.submit-unfilled", gloss = "A store-driven fire whose delegate binds the submit mode, which no fire dispatches." }
 DelegateTimeoutRefused        = { clause = "surface.delegate.call-timeout-ceiling", gloss = "A call delegate's timeout declared above the ceiling." }
 SecretMaterialInDocument      = { clause = "surface.edit.secret-in-document", gloss = "A credential value written into the configuration document." }
 ConnectorUploadRefused        = { clause = "surface.edit.connector-upload", gloss = "A connector artifact offered through the operator surface." }

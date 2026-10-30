@@ -82,7 +82,8 @@ the old attempt and changes nothing ({{surface.dispatch.callback-rejected}}).
 A store-driven item whose body names a **delegate** runs on it: code deployed outside the binary and
 reached over one signed HTTP request ({{surface.delegate.binding}}). Its answer is a
 closed outcome: rows, a deferral, or a transient or permanent failure
-({{surface.delegate.outcome}}).
+({{surface.delegate.outcome}}). A fire refuses a delegate bound in `submit` mode and names
+`call`, the mode it dispatches ({{surface.delegate.submit-unfilled}}).
 
 A data plane serving from a region its policy omits refuses to start
 ({{surface.reside.region-mismatch}}). Served routes create, pause
