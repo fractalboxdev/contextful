@@ -62,7 +62,7 @@ fn a_failed_or_malformed_answer_is_an_error() {
 /// A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its
 /// allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.
 // spec: connector.infer.mediated-call@efeea03a
-// spec: connector.attach.mediation-covers-every-egress@38e925ca
+// spec: connector.attach.mediation-covers-every-egress@b0a89377
 #[test]
 fn a_completion_passes_the_hook_and_the_address_check() {
     let _env = proxy_env();

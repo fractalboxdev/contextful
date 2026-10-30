@@ -145,7 +145,9 @@ connector-lease-retire-share    = { clause = "connector.lease.retirement-margin"
 connector-lease-retire-cap      = { clause = "connector.lease.retirement-margin", value = 30, unit = "s", basis = "chosen", gloss = "Ceiling on the early-retirement margin." }
 connector-lease-vendor-requests = { clause = "connector.lease.vendor-requests-on-failure", value = 0, unit = "requests", basis = "chosen", gloss = "Vendor requests on an expired lease whose provider is unreachable." }
 connector-lease-mint-calls      = { clause = "connector.lease.calls-per-resolver", value = 1, unit = "calls", basis = "chosen", const = "crates/contextful-core/src/connector/lease.rs::MINT_CALLS_PER_WINDOW", gloss = "Mint calls per resolver per declared name per lease window." }
-connector-record-expiry-warning = { clause = "connector.record.expiry-warning", value = 30, unit = "d", basis = "chosen", gloss = "Window within which the inventory marks an expiring credential.", const = "crates/contextful-core/src/connector/record.rs::EXPIRY_WARNING_DAYS" }
+connector-exec-proxy-head       = { clause = "connector.attach.exec-proxy-request", value = 64, unit = "KiB", basis = "chosen", gloss = "Request head bytes the exec proxy reads.", const = "crates/contextful-connectors/src/proxy.rs::PROXY_HEAD_BYTES" }
+connector-exec-proxy-body       = { clause = "connector.attach.exec-proxy-request", value = 64, unit = "MiB", basis = "chosen", gloss = "Request body bytes the exec proxy forwards.", const = "crates/contextful-connectors/src/proxy.rs::PROXY_BODY_BYTES" }
+connector-record-expiry-warning ={ clause = "connector.record.expiry-warning", value = 30, unit = "d", basis = "chosen", gloss = "Window within which the inventory marks an expiring credential.", const = "crates/contextful-core/src/connector/record.rs::EXPIRY_WARNING_DAYS" }
 
 # Terms (`corpus.registry.term`): each term's defining clause and gloss.
 [term]

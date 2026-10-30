@@ -583,30 +583,31 @@ fn a_content_table_left_without_rows_stops_answering_the_earlier_key() {
     }
 }
 
-/// An exec step's env template hydrates through the source's resolver at spawn into the
-/// child's environment, and the run's attribution names it.
-// spec: connector.attach.exec-environment@0584b560
+/// An exec step's `env` value embedding a `${secret://<name>}` placeholder refuses as `DeriveEnvCredential` at
+/// validation and at run, naming the engine and variable, before any step spawns or any value hydrates.
+// spec: run.exec.env-credential@ee8a91f8
 #[test]
-fn an_exec_steps_credential_hydrates_at_spawn_and_enters_the_attribution() {
+fn an_exec_env_secret_reference_refuses_before_any_step_spawns() {
     let sentinel = "sentinel-speech-key-41";
     let dir = transcribe_project("env = { SPEECH_API_KEY = \"${secret://speech-vendor}\" }\n");
-    std::fs::write(dir.path().join("engine.sh"), "test -n \"$SPEECH_API_KEY\" && test -z \"$SPEECH_VENDOR\" && echo \"keyed $1\" >&2\nprintf '1\\n00:00:01,000 --> 00:00:02,000\\n'\ncat \"$1\"\n").unwrap();
-    let fire = |dir: &std::path::Path| {
+    std::fs::write(dir.path().join("engine.sh"), "touch spawned\nprintf '1\\n00:00:01,000 --> 00:00:02,000\\n'\ncat \"$1\"\n").unwrap();
+    let contextful = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_contextful"))
-            .args(["pipeline", "run", "doc-text", "--project", "research", "--site-id", "site", "--now", "2030-01-01T01:00:00Z", "--run-id", "derive-1"])
-            .current_dir(dir)
+            .args(args)
+            .current_dir(dir.path())
             .env_remove("CONTEXTFUL_SECRETS_BACKEND")
             .env("SPEECH_VENDOR", sentinel)
             .env("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")
             .output()
             .unwrap()
     };
-    ok(&fire(dir.path()));
-    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
-    let run: serde_json::Value = history.lines().skip(1).map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()).find(|r| r["run_id"] == "derive-1").unwrap();
-    assert_eq!(run["credential_providers"], serde_json::json!({ "speech-vendor": "env" }), "{run}");
-    assert!(run["audit"][0].as_str().unwrap().contains("keyed "), "{run}");
-    assert!(!history.contains(sentinel));
+    for args in [&["pipeline", "validate"][..], &["pipeline", "run", "doc-text", "--project", "research", "--site-id", "site", "--now", "2030-01-01T01:00:00Z", "--run-id", "derive-1"]] {
+        let out = contextful(args);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success() && err.contains("DeriveEnvCredential") && err.contains("SPEECH_API_KEY") && err.contains("`reader`"), "{args:?}: {err}");
+        assert!(!err.contains(sentinel) && !String::from_utf8_lossy(&out.stdout).contains(sentinel), "{args:?}");
+    }
+    assert!(!dir.path().join("spawned").exists(), "no step spawns");
 }
 
 /// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each

@@ -11,6 +11,7 @@ pub mod file;
 pub mod http;
 pub mod image;
 pub mod object;
+pub mod proxy;
 pub mod receive;
 pub mod report;
 

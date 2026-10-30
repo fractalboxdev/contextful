@@ -140,6 +140,8 @@ Engine bindings select registered tasks, configure engine interfaces and constra
   *A-run#derive-engine-machine*
 - `endpoint-host-bare` — An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.
   *A-run#derive-engine-machine*
+- `attach-unbound` — An `attach` table on a `fetch` binding, or on a binding declaring no `endpoint_host`, raises `DeriveAttachUnbound`, naming the engine.
+  *because {{connector.attach.exec-proxy}} attaches a credential toward one declared vendor host, and a fetch reader reaches third-party hosts*
 - `remote-url-unsupported` — An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`, naming the `when = "media_is_url"` preprocess step.
   *A-run#derive-engine-machine*
 - `media-unreadable` — A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.
@@ -164,6 +166,8 @@ The executor runs operator-declared argument arrays as local processes with pinn
   *A-run#derive-engine-machine*
 - `env-name` — An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.
   *A-run#derive-engine-machine*
+- `env-credential` — An `env` value embedding a `${secret://<name>}` placeholder raises `DeriveEnvCredential`, naming the engine and variable; a step reaches its vendor through {{connector.attach.exec-proxy}}.
+  *A-connector#exec-egress-proxied*
 - `chain-deadline` — `timeout_secs` bounds one unit's whole chain at 1800 s by default.
 - `captured-output` — `max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default.
 - `audit-entries` — A chain contributes at most 64 entries of captured output to the run record.
@@ -289,7 +293,7 @@ The test-engine command builds one derive engine outside a pipeline and runs tha
 
 ## Shapes
 
-Two engine bindings at the top level of `contextful.toml`:
+Three engine bindings at the top level of `contextful.toml`:
 
 ```toml
 [derive.local-asr]
@@ -309,7 +313,18 @@ output_format = "srt"
 output_path   = "{output_stem}.srt"
 
 [derive.local-asr.env]
-SPEECH_API_KEY = "${secret://speech-vendor}"
+SPEECH_MODEL = "base"
+
+[derive.cloud-asr]
+driver        = "exec"
+endpoint_host = "api.speech.example"       # steps reach it through CONTEXTFUL_EGRESS_URL
+
+[derive.cloud-asr.attach]
+Authorization = "Bearer ${secret://speech-vendor}"
+
+[derive.cloud-asr.engine]
+command       = ["speech-upload", "--server", "{input}"]
+output_format = "srt"
 
 [derive.card-reader]
 driver               = "fetch"

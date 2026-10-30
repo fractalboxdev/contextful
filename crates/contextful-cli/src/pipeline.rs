@@ -1565,8 +1565,8 @@ impl std::fmt::Display for IngestTally {
 }
 
 /// A source reporting its fire's provider attribution from the resolver every credential
-/// of the fire hydrates through, exec-step environments included
-/// (`connector.attach.exec-environment`).
+/// of the fire hydrates through, an exec step's loopback proxy included
+/// (`connector.attach.exec-proxy-attach`).
 struct Attributed {
     inner: Box<dyn Source>,
     resolver: Arc<contextful_outbound::Resolver>,

@@ -350,6 +350,43 @@ fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
     assert!(bind("doc-text", &link, &valid, "m").is_ok());
 }
 
+/// An `env` value embedding a `${secret://<name>}` placeholder raises `DeriveEnvCredential`, naming the engine and
+/// variable; a literal value passes.
+// spec: run.exec.env-credential@ee8a91f8
+#[test]
+fn an_exec_env_value_holding_a_secret_reference_refuses() {
+    let transcribe = cfg(base()).unwrap();
+    let keyed = bindings("[derive.reader]\nendpoint_host = \"api.speech.example\"\n[derive.reader.env]\nSPEECH_API_KEY = \"Bearer ${secret://speech-vendor}\"\n").unwrap();
+    match bind("doc-text", &transcribe, &keyed, "m") {
+        Err(RunError::DeriveEnvCredential(m)) => assert!(m.contains("`reader`") && m.contains("SPEECH_API_KEY") && !m.contains("Bearer"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    let literal = bindings("[derive.reader]\n[derive.reader.env]\nSPEECH_MODEL = \"base\"\n").unwrap();
+    assert!(bind("doc-text", &transcribe, &literal, "m").is_ok());
+}
+
+/// An `attach` table on a `fetch` binding or on a binding declaring no `endpoint_host` raises `DeriveAttachUnbound`,
+/// naming the engine; beside an exec binding's `endpoint_host` it parses, and a literal value refuses.
+// spec: run.bind.attach-unbound@8550fe27
+#[test]
+fn an_attach_table_without_an_exec_vendor_host_refuses() {
+    let attach = "[derive.reader.attach]\nAuthorization = \"Bearer ${secret://speech-vendor}\"\n";
+    let transcribe = cfg(base()).unwrap();
+    let link = DeriveConfig { task: Task::LinkPreview, ..cfg(base()).unwrap() };
+    for (config, source) in [(&transcribe, format!("[derive.reader]\n{attach}")), (&link, format!("[derive.reader]\ndriver = \"fetch\"\nendpoint_host = \"example.com\"\n{attach}"))] {
+        match bind("doc-text", config, &bindings(&source).unwrap(), "m") {
+            Err(RunError::DeriveAttachUnbound(m)) => assert!(m.contains("`reader`"), "{m}"),
+            other => panic!("{source}: {other:?}"),
+        }
+    }
+    let vendor = bindings(&format!("[derive.reader]\nendpoint_host = \"api.speech.example\"\n{attach}")).unwrap();
+    assert!(bind("doc-text", &transcribe, &vendor, "m").is_ok());
+    let parsed = contextful_core::run::derive::config::exec_attach("reader", &vendor["reader"]).unwrap();
+    assert_eq!(parsed.iter().map(|(h, _)| h.as_str()).collect::<Vec<_>>(), ["Authorization"]);
+    let literal = bindings("[derive.reader]\nendpoint_host = \"api.speech.example\"\n[derive.reader.attach]\nX-Trace = \"constant\"\n").unwrap();
+    assert!(matches!(bind("doc-text", &transcribe, &literal, "m"), Err(RunError::Invalid(m)) if m.contains("SecretLiteralAttachValue")));
+}
+
 /// A string-valued `command` raises `DeriveShellCommand`; {{run.exec.no-shell}} runs the argument
 /// array.
 // spec: run.exec.shell-command@9c84aea4

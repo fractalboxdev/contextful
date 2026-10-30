@@ -27,7 +27,7 @@ fn bearer() -> Vec<(String, Arc<dyn Hydrate>)> {
 
 /// No host import hands credential bytes to guest code; a guest names a request and receives a response.
 // spec: connector.attach.no-material-to-a-guest@643f937c
-// spec: connector.attach.mediation-covers-every-egress@38e925ca
+// spec: connector.attach.mediation-covers-every-egress@b0a89377
 #[test]
 fn the_host_attaches_the_credential_and_the_guest_sees_only_the_response() {
     let server = Server::start(|r| Response::text(200, if r.header("authorization").is_some() { "attached" } else { "bare" }));

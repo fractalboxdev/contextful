@@ -84,6 +84,12 @@ pub enum RunError {
     /// An environment allowlist name outside the permitted characters. (`run.exec.env-name`)
     #[error("DeriveEnvNameInvalid: {0}")]
     DeriveEnvNameInvalid(String),
+    /// An exec step environment value embedding a credential reference. (`run.exec.env-credential`)
+    #[error("DeriveEnvCredential: {0}")]
+    DeriveEnvCredential(String),
+    /// Credential headers declared on a binding with no exec vendor host. (`run.bind.attach-unbound`)
+    #[error("DeriveAttachUnbound: {0}")]
+    DeriveAttachUnbound(String),
     /// Configuration overriding the build-owned anti-join output identity. (`run.select.foreign-output-table`)
     #[error("DeriveForeignOutputTable: {0}")]
     DeriveForeignOutputTable(String),
