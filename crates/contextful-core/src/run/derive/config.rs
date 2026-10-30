@@ -244,9 +244,16 @@ impl DeriveConfig {
             })
             .transpose()?;
         let model = model_endpoint(pipeline_id, cfg, &task, tasks)?;
-        if task != Task::LinkPreview && cfg.contains_key("grant") {
+        // A grant meters the shared-quota client a link preview or a reaching host task
+        // sends through (`run.select.unmetered-grant`, `run.bind.reach-grant`).
+        let metered = match &task {
+            Task::LinkPreview => true,
+            Task::Host(name) => tasks.get(name).is_some_and(|t| !t.pure()),
+            Task::Transcribe => false,
+        };
+        if !metered && cfg.contains_key("grant") {
             return Err(RunError::DeriveUnmeteredGrant(format!(
-                "pipeline `{pipeline_id}` declares `grant` for {}, which does not use the shared-quota client", task.name()
+                "pipeline `{pipeline_id}` declares `grant` for {}, which does not use the shared-quota client; a `link_preview` or a host task declaring `pure` false does", task.name()
             )));
         }
         let grant = cfg.get("grant").map(|value| {

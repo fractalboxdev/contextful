@@ -13,7 +13,7 @@ use crate::admit::{revocation_state, AdmitArgs, LedgerFile};
 use crate::clock::SystemClock;
 use contextful_core::job::{parse_jobs, Job, JobKind, Reach};
 use contextful_core::run::drive::Bodies;
-use crate::pipeline::{check, manifests};
+use crate::pipeline::{check, joined_tables, manifests};
 use crate::project::Located;
 use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
@@ -732,6 +732,15 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
     Ok(())
 }
 
+/// Order the pipelines' dependent runs through the tables each registered host task joins,
+/// refusing a join that closes a cycle or splits a task's parents across two runs
+/// (`run.select.join-order`, `run.select.derive-cycle`, `run.select.parents-diverge`).
+fn ordered(specs: &BTreeMap<String, PipelineSpec>, tasks: &Tasks) -> Result<()> {
+    contextful_core::pipeline::declare::dependent_runs_joining(specs.values(), &joined_tables(tasks))
+        .map_err(|e| SurfaceError::ApplyValidationRefused(format!("dependent runs: {e}")))?;
+    Ok(())
+}
+
 /// Validate jobs through their owning schema and retain their declaration verbatim.
 fn job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<toml::Value>> {
     parse_job_blocks(text, bodies, specs).map_err(|error| SurfaceError::ApplyValidationRefused(format!("job declarations: {error:#}")).into())
@@ -873,6 +882,7 @@ fn validated_draft(document: &str, project: &Project, declaration: &Path, tasks:
     }
     let rendered = render(&specs, &jobs, &models, tables, &externals)?;
     self_valid(&rendered)?;
+    ordered(&specs, tasks)?;
     let store = contextful_context::Store::open_declared(&project.dir, &project.name, declaration)?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
@@ -1217,6 +1227,7 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
+    ordered(&declared, tasks)?;
     let v = match &attestation {
         Some(attestation) => snapshots.import_attested(&text,
             |version, _| attestation.receipt(&l.project.name, version, None, &text),
@@ -1287,6 +1298,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         job_blocks(&text, Some(bodies), &target)?;
         snapshot_externals(&text, &target)?;
         self_valid(&text).map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e:#}")))?;
+        ordered(&target, tasks)?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
@@ -1782,7 +1794,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
     let jobs = parse_jobs(&job_text, &|name| {
         control.bodies.contains(name) || name.strip_prefix(contextful_core::surface::delegate::BODY_PREFIX).is_some_and(|d| control.delegates.contains_key(d))
     })?;
-    let runs = contextful_core::job::dependent_jobs(&specs.values().cloned().collect::<Vec<_>>(), &jobs)?;
+    let runs = contextful_core::job::dependent_jobs_joining(&specs.values().cloned().collect::<Vec<_>>(), &jobs, &joined_tables(tasks))?;
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();
     for spec in specs.values() {

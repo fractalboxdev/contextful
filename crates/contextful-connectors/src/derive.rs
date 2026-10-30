@@ -17,7 +17,7 @@ use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, vendor_deadline, ChainAudit, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
 use contextful_core::run::derive::task::{
-    host_revived, host_rows, ingested_since, join_units, keep_ordered, landing_order, select_host, DeriveTask, Derived, MeteredClient, Reach, HostSelection, HostUnit, INGESTED_AT,
+    host_revived, host_rows, ingested_since, keep_ordered, landing_order, select_host_joined, DeriveTask, Derived, JoinedRows, MeteredClient, Reach, HostSelection, HostUnit, INGESTED_AT,
 };
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
@@ -874,6 +874,7 @@ impl HostDerive {
     /// This tick's host selection, its parents scanned per {{run.select.parent-scan}}: each
     /// batch selects within the row budget the earlier batches left.
     fn selection(&self, columns: &[&str], marker_table: &str) -> Result<(HostSelection, Instants), Failure> {
+        let joined = self.join()?;
         let markers = self.reader.rows(marker_table, &OUTPUT_COLUMNS)?;
         let mut sel = HostSelection::default();
         let mut seen = std::collections::BTreeSet::new();
@@ -903,7 +904,7 @@ impl HostDerive {
                 Some(_) => self.config.max_rows_per_run,
                 None => (self.config.max_rows_per_run - sel.outstanding.len() as i64).max(0),
             };
-            let batch = select_host(&fresh, &markers, &DeriveConfig { max_rows_per_run: room, ..self.config.clone() }, self.task.as_ref());
+            let batch = select_host_joined(&fresh, &markers, &DeriveConfig { max_rows_per_run: room, ..self.config.clone() }, self.task.as_ref(), &joined);
             sel.outstanding.extend(batch.outstanding.into_iter().take(room as usize));
             if let Some(order) = &self.config.order_by {
                 keep_ordered(&mut sel.outstanding, order, room as usize);
@@ -937,29 +938,17 @@ impl HostDerive {
         (columns, self.store_table(&task.marker_table()))
     }
 
-    /// Read each table the task joins once, after the driving table's selection and before
-    /// the first unit derives, through its keyed read, keeping the rows whose join column
-    /// holds an outstanding unit's key (`run.select.unit-parents`, `run.select.join-keyed`);
-    /// a joined table the store holds no schema for fails the tick (`run.select.join-absent`).
-    fn join(&self, units: &mut [HostUnit]) -> Result<(), Failure> {
-        if units.is_empty() {
-            return Ok(());
-        }
-        let keys: std::collections::BTreeSet<String> = units.iter().map(|u| u.key.clone()).collect();
+    /// Read each table the task joins once, before the anti-join, through its keyed read, so
+    /// each unit's key covers its joined rows (`run.select.unit-parents`, `run.select.join-key`,
+    /// `run.select.join-keyed`); a joined table the store holds no schema for fails the tick
+    /// (`run.select.join-absent`).
+    fn join(&self) -> Result<JoinedRows, Failure> {
+        let mut joined = JoinedRows::default();
         for join in self.task.joins() {
-            let kept: Vec<Row> = self
-                .reader
-                .latest_rows(&join.table, &join.read_columns())?
-                .into_iter()
-                .filter(|r| match r.get(&join.key_column) {
-                    Some(serde_json::Value::String(k)) => keys.contains(k),
-                    Some(serde_json::Value::Number(n)) => keys.contains(&n.to_string()),
-                    _ => false,
-                })
-                .collect();
-            join_units(units, &join, kept);
+            let rows = self.reader.latest_rows(&join.table, &join.read_columns())?;
+            joined.insert(&join, rows);
         }
-        Ok(())
+        Ok(joined)
     }
 
     fn store_table(&self, table: &str) -> String {
@@ -973,11 +962,10 @@ impl HostDerive {
         let name = self.config.task.name().to_string();
         let (columns, marker_table) = self.wanted();
         let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
-        let (mut sel, instants) = self.selection(&wanted, &marker_table)?;
+        let (sel, instants) = self.selection(&wanted, &marker_table)?;
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
-        self.join(&mut sel.outstanding)?;
         let started = Instant::now();
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
         let mut derived: Vec<(&HostUnit, Derived)> = Vec::new();

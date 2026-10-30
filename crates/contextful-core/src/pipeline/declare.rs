@@ -387,28 +387,54 @@ pub struct DependentRuns {
 /// A derive cycle raises `DeriveCycle`; an explicit predecessor conflicting with its
 /// source-table parent raises `DeriveAfterConflict`.
 pub fn dependent_runs<'a>(specs: impl IntoIterator<Item = &'a PipelineSpec>) -> Result<DependentRuns, RunError> {
+    dependent_runs_joining(specs, &|_| Vec::new())
+}
+
+/// [`dependent_runs`] where `joins` answers the tables a derive pipeline's host task joins:
+/// a joined table another derive pipeline lands orders the joining pipeline after it
+/// (`run.select.join-order`). Its parents off one chain raise `DeriveParentsDiverge`, and a
+/// join closing a cycle raises `DeriveCycle`.
+pub fn dependent_runs_joining<'a>(
+    specs: impl IntoIterator<Item = &'a PipelineSpec>,
+    joins: &dyn Fn(&PipelineSpec) -> Vec<String>,
+) -> Result<DependentRuns, RunError> {
     let specs: Vec<&PipelineSpec> = specs.into_iter().collect();
     let outputs: BTreeMap<String, &str> = specs
         .iter()
         .filter(|s| s.source.name == "derive")
         .flat_map(|s| s.tables.iter().map(move |t| (s.table_name(t.name()), s.id.as_str())))
         .collect();
+    // Each derive pipeline's derive parents: its source table's producer, then each other
+    // pipeline whose output table its task joins.
+    let mut parents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for spec in specs.iter().filter(|s| s.source.name == "derive") {
+        let source = spec.source.config.get("source_table").and_then(Value::as_str).and_then(|name| outputs.get(name).copied());
+        let joined: Vec<&str> = joins(spec).iter().filter_map(|table| outputs.get(table).copied()).filter(|p| *p != spec.id).collect();
+        let mut found: Vec<&str> = Vec::new();
+        for parent in source.into_iter().chain(joined) {
+            if !found.contains(&parent) {
+                found.push(parent);
+            }
+        }
+        parents.insert(&spec.id, found);
+    }
+    let explicit: BTreeMap<&str, Option<&str>> = specs.iter().map(|s| (s.id.as_str(), s.after.as_deref())).collect();
     let mut inferred: BTreeMap<&str, Option<&str>> = BTreeMap::new();
-    let mut after: BTreeMap<&str, Option<&str>> = BTreeMap::new();
-    let mut runs = DependentRuns::default();
-    for spec in &specs {
-        let parent = (spec.source.name == "derive")
-            .then(|| spec.source.config.get("source_table").and_then(Value::as_str).and_then(|name| outputs.get(name).copied()))
-            .flatten();
-        if let (Some(explicit), Some(parent)) = (spec.after.as_deref(), parent) {
+    for id in dependency_order(&specs, &parents, &explicit)? {
+        let parent = last_parent(id, parents.get(id).map(Vec::as_slice).unwrap_or_default(), &explicit, &inferred)?;
+        if let (Some(explicit), Some(parent)) = (explicit.get(id).copied().flatten(), parent) {
             if explicit != parent {
                 return Err(RunError::DeriveAfterConflict(format!(
-                    "pipeline `{}` declares `after = \"{explicit}\"` but its derive source table belongs to `{parent}`",
-                    spec.id
+                    "pipeline `{id}` declares `after = \"{explicit}\"` but runs after its derive parent `{parent}`"
                 )));
             }
         }
-        inferred.insert(&spec.id, parent);
+        inferred.insert(id, parent);
+    }
+    let mut after: BTreeMap<&str, Option<&str>> = BTreeMap::new();
+    let mut runs = DependentRuns::default();
+    for spec in &specs {
+        let parent = inferred.get(spec.id.as_str()).copied().flatten();
         if let Some(parent) = parent {
             runs.derived_parents.insert(spec.id.clone(), parent.to_string());
         }
@@ -447,6 +473,95 @@ pub fn dependent_runs<'a>(specs: impl IntoIterator<Item = &'a PipelineSpec>) -> 
         runs.steps.entry(head).or_default().push(id);
     }
     Ok(runs)
+}
+
+type Links<'a> = BTreeMap<&'a str, Option<&'a str>>;
+
+/// Every pipeline after each pipeline it depends on through a derive parent or `after`. A
+/// cycle through a pipeline holding a derive parent raises `DeriveCycle`, naming every
+/// member (`run.select.derive-cycle`); a cycle of `after` links alone is left to the chain
+/// walk that names it.
+fn dependency_order<'a>(
+    specs: &[&'a PipelineSpec],
+    parents: &BTreeMap<&'a str, Vec<&'a str>>,
+    explicit: &Links<'a>,
+) -> Result<Vec<&'a str>, RunError> {
+    struct Walk<'w, 'a> {
+        parents: &'w BTreeMap<&'a str, Vec<&'a str>>,
+        explicit: &'w Links<'a>,
+        stack: Vec<&'a str>,
+        done: std::collections::BTreeSet<&'a str>,
+        order: Vec<&'a str>,
+    }
+    impl<'a> Walk<'_, 'a> {
+        fn visit(&mut self, id: &'a str) -> Result<(), RunError> {
+            if self.done.contains(id) {
+                return Ok(());
+            }
+            if let Some(start) = self.stack.iter().position(|node| *node == id) {
+                let cycle = &self.stack[start..];
+                if cycle.iter().any(|node| self.parents.get(node).is_some_and(|p| !p.is_empty())) {
+                    let mut members = cycle.to_vec();
+                    members.sort_unstable();
+                    let names: Vec<String> = members.iter().map(|n| format!("`{n}`")).collect();
+                    return Err(RunError::DeriveCycle(format!("derive source and joined tables return through {}", names.join(", "))));
+                }
+                return Ok(());
+            }
+            self.stack.push(id);
+            let deps: Vec<&'a str> = self.parents.get(id).into_iter().flatten().copied().chain(self.explicit.get(id).copied().flatten()).collect();
+            for dep in deps {
+                if self.explicit.contains_key(dep) {
+                    self.visit(dep)?;
+                }
+            }
+            self.stack.pop();
+            self.done.insert(id);
+            self.order.push(id);
+            Ok(())
+        }
+    }
+    let mut walk = Walk { parents, explicit, stack: Vec::new(), done: Default::default(), order: Vec::new() };
+    for spec in specs {
+        walk.visit(spec.id.as_str())?;
+    }
+    Ok(walk.order)
+}
+
+/// The derive parent `id` runs after: its one candidate, or among several the one whose
+/// chain holds every other (`run.select.join-order`); candidates on no one chain raise
+/// `DeriveParentsDiverge` (`run.select.parents-diverge`). Every candidate's chain is
+/// already resolved in `inferred`.
+fn last_parent<'a>(id: &str, candidates: &[&'a str], explicit: &Links<'a>, inferred: &Links<'a>) -> Result<Option<&'a str>, RunError> {
+    let after = |node: &str| explicit.get(node).copied().flatten().or(inferred.get(node).copied().flatten());
+    let chain = |from: &'a str| {
+        let mut seen: Vec<&'a str> = Vec::new();
+        let mut next = after(from);
+        while let Some(node) = next.filter(|n| !seen.contains(n)) {
+            seen.push(node);
+            next = after(node);
+        }
+        seen
+    };
+    match candidates {
+        [] => Ok(None),
+        [one] => Ok(Some(*one)),
+        _ => candidates
+            .iter()
+            .copied()
+            .find(|c| {
+                let held = chain(c);
+                candidates.iter().all(|other| other == c || held.contains(other))
+            })
+            .map(Some)
+            .ok_or_else(|| {
+                let names: Vec<String> = candidates.iter().map(|n| format!("`{n}`")).collect();
+                RunError::DeriveParentsDiverge(format!(
+                    "pipeline `{id}` reads the derive outputs of {}, which lie on no one dependent run; it runs after one parent whose chain holds the others",
+                    names.join(", ")
+                ))
+            }),
+    }
 }
 
 /// Collect every specification by `id` across the manifest files, in order. One id

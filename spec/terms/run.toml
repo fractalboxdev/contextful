@@ -126,13 +126,14 @@ ModelBuildUnknown              = { clause = "run.model.hold-unknown-build", glos
 ModelBuildCollected            = { clause = "run.model.hold-collected", gloss = "A hold naming a build whose parts a collection removed." }
 ModelCycle                     = { clause = "run.model.model-cycle", gloss = "Model statements returning to a model through other models." }
 DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "A required derive config key absent or blank." }
-DeriveCycle                    = { clause = "run.select.derive-cycle", gloss = "Derive source-table dependencies returning to a pipeline." }
-DeriveAfterConflict            = { clause = "run.select.derive-after-conflict", gloss = "A derive child whose explicit predecessor differs from its source-table parent." }
+DeriveCycle                    = { clause = "run.select.derive-cycle", gloss = "Derive source-table or join dependencies returning to a pipeline." }
+DeriveAfterConflict            = { clause = "run.select.derive-after-conflict", gloss = "A derive child whose explicit predecessor differs from its derive parent." }
+DeriveParentsDiverge           = { clause = "run.select.parents-diverge", gloss = "A derive pipeline whose derive parents lie on no one dependent run." }
 DeriveNoStoreRoot              = { clause = "run.select.no-store-root", gloss = "A derive source built without a store root or pipeline id." }
 DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration overriding the build-owned anti-join output identity." }
 DeriveUnitIncomplete           = { clause = "run.select.incomplete-unit", gloss = "A parent row without a key or media value." }
 DeriveJournaledPull            = { clause = "run.select.journaled-pull", gloss = "A derive pipeline configured to journal its pulls." }
-DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss = "A transcribe pipeline declaring a shared-quota grant." }
+DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss = "A shared-quota grant on a derive task sending through no metered client." }
 DeriveMeteredClient            = { clause = "run.select.metered-client", gloss = "A derive task reaching the network outside the client the engine hands it." }
 DeriveEngineUnbound            = { clause = "run.bind.unbound-engine", gloss = "A pipeline naming an engine the machine has not defined." }
 DeriveCommandInManifest        = { clause = "run.bind.command-in-manifest", gloss = "An executable key on the request side of the binding split." }

@@ -132,13 +132,19 @@ struct HostClient {
 }
 
 impl HostClient {
-    fn open(model: &ModelEndpoint, hook: Arc<dyn PreSendHook>, run_id: &str) -> Result<HostClient> {
+    /// The client for one run; under a `grant`, every request and completion reserves a
+    /// permit against `meter` first (`run.bind.reach-grant`).
+    fn open(model: &ModelEndpoint, hook: Arc<dyn PreSendHook>, run_id: &str, meter: Option<contextful_outbound::Meter>) -> Result<HostClient> {
         let key = std::env::var(crate::memory::INFERENCE_KEY_VAR).ok();
         let endpoint = contextful_outbound::infer::Endpoint::new(&model.endpoint, &model.model, key).map_err(anyhow::Error::msg)?;
-        let endpoint = crate::telemetry::traced(endpoint).with_hook(hook.clone()).for_run(run_id);
+        let mut endpoint = crate::telemetry::traced(endpoint).with_hook(hook.clone()).for_run(run_id);
         let origin = url::Url::parse(&model.endpoint)?;
         let allow = contextful_core::connector::attach::Allowlist::parse(&[origin.host_str().unwrap_or_default()])?;
-        let client = contextful_outbound::client::Client::new(allow, origin).with_hook(hook).for_run(run_id);
+        let mut client = contextful_outbound::client::Client::new(allow, origin).with_hook(hook).for_run(run_id);
+        if let Some(meter) = meter {
+            endpoint = endpoint.metered(meter.clone());
+            client = client.metered(meter);
+        }
         Ok(HostClient { endpoint, client })
     }
 }
@@ -370,6 +376,19 @@ pub(crate) struct HostChecked {
     config: DeriveConfig,
     task: Arc<dyn DeriveTask>,
     tables: BTreeMap<String, String>,
+    /// The limiter binding the task's `grant` names (`run.bind.reach-grant`).
+    limiter: Option<LimiterBinding>,
+}
+
+/// The tables each derive pipeline's registered host task joins, which order it after the
+/// derive pipelines landing them (`run.select.join-order`).
+pub(crate) fn joined_tables(tasks: &Tasks) -> impl Fn(&PipelineSpec) -> Vec<String> + '_ {
+    move |spec| {
+        let task = (spec.source.name == contextful_connectors::derive::NAME)
+            .then(|| spec.source.config.get("task").and_then(serde_json::Value::as_str).and_then(|name| tasks.get(name)))
+            .flatten();
+        task.map(|t| t.joins().into_iter().map(|j| j.table).collect()).unwrap_or_default()
+    }
 }
 
 /// The limiter binding a declared seed source's quota names, building that source first: a
@@ -446,7 +465,15 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
                 let decls: Vec<TableDecl> = spec.tables.iter().map(|t| t.decl()).collect();
                 check_host_tables(&spec.id, config.task.name(), task.as_ref(), &decls)?;
                 let tables = spec.tables.iter().map(|t| (t.name().to_string(), spec.table_name(t.name()))).collect();
-                return Ok(Checked::Host(Box::new(HostChecked { config, task, tables })));
+                // A declared grant binds at load, ahead of any request (`connector.meter.quota-unbound`).
+                let limiter = match &config.grant {
+                    Some(grant) => {
+                        let text = std::fs::read_to_string(declaration).unwrap_or_default();
+                        Some(require_binding(grant, &manifest_bindings(&text)?)?.clone())
+                    }
+                    None => None,
+                };
+                return Ok(Checked::Host(Box::new(HostChecked { config, task, tables, limiter })));
             }
             let names: Vec<&str> = spec.tables.iter().map(|t| t.name()).collect();
             check_single_output(&spec.id, &names)?;
@@ -1260,8 +1287,11 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
             Some(_) if !host.task.pure() => Some(Arc::new(DeriveLedger::new(dest.store.clone(), marker, dest.node.clone(), marker_run.clone(), w.clock.clone()))),
             _ => None,
         };
+        // A grant reserves each request's permit from its shared quota (`run.bind.reach-grant`).
+        let limiter = host.limiter.clone().map(|binding| contextful_outbound::Limiter::new(binding, resolver.clone(), &marker_run, w.clock.clone()).map(Arc::new)).transpose()?;
+        let meter = host.config.grant.clone().map(|grant| contextful_outbound::Meter::new(grant, limiter.clone()));
         let client = match (&host.config.model, &ledger) {
-            (Some(model), Some(ledger)) => Some(Arc::new(HostClient::open(model, ledger.clone(), &marker_run)?) as Arc<dyn MeteredClient>),
+            (Some(model), Some(ledger)) => Some(Arc::new(HostClient::open(model, ledger.clone(), &marker_run, meter)?) as Arc<dyn MeteredClient>),
             _ => None,
         };
         let derive = HostDerive {
@@ -1277,6 +1307,13 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
             client,
         };
         let staged_rows = derive.stage(&Uncanceled);
+        // The run's report surrenders every unspent permit (`connector.meter.report-delivery`).
+        if let Some(limiter) = &limiter {
+            limiter.finish();
+            for entry in limiter.audit() {
+                eprintln!("{}: {entry}", spec.id);
+            }
+        }
         // The run's requests settle into its ledger before any table lands, a refused tick's included
         // (`run.journal.ledger-settles-first`).
         if let Some(ledger) = &ledger {

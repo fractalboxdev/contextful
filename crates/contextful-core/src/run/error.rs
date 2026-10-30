@@ -60,10 +60,13 @@ pub enum RunError {
     /// A required derive config key absent or blank. (`run.select.required-key`)
     #[error("DeriveConfigKeyMissing: {0}")]
     DeriveConfigKeyMissing(String),
-    /// A derive child whose explicit predecessor differs from its source-table parent. (`run.select.derive-after-conflict`)
+    /// A derive child whose explicit predecessor differs from its derive parent. (`run.select.derive-after-conflict`)
     #[error("DeriveAfterConflict: {0}")]
     DeriveAfterConflict(String),
-    /// Derive source-table dependencies returning to a pipeline. (`run.select.derive-cycle`)
+    /// A derive pipeline whose derive parents lie on no one dependent run. (`run.select.parents-diverge`)
+    #[error("DeriveParentsDiverge: {0}")]
+    DeriveParentsDiverge(String),
+    /// Derive source-table or join dependencies returning to a pipeline. (`run.select.derive-cycle`)
     #[error("DeriveCycle: {0}")]
     DeriveCycle(String),
     /// A caption block starting before the one already accepted. (`run.parse-cues.backward-cue`)
@@ -153,7 +156,7 @@ pub enum RunError {
     /// A parent row without a key or media value. (`run.select.incomplete-unit`)
     #[error("DeriveUnitIncomplete: {0}")]
     DeriveUnitIncomplete(String),
-    /// A transcribe pipeline declaring a shared-quota grant. (`run.select.unmetered-grant`)
+    /// A shared-quota grant on a derive task sending through no metered client. (`run.select.unmetered-grant`)
     #[error("DeriveUnmeteredGrant: {0}")]
     DeriveUnmeteredGrant(String),
     /// A derive task reaching the network outside the client the engine hands it. (`run.select.metered-client`)

@@ -1,7 +1,7 @@
 //! `run.declare`: the specification, manifest reading, the content hash and table names.
 
 use contextful_core::pipeline::canonical::canonical_json;
-use contextful_core::pipeline::declare::{collect, dependent_runs, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
+use contextful_core::pipeline::declare::{collect, dependent_runs, dependent_runs_joining, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
 #[cfg(feature = "schema")]
 use contextful_core::pipeline::declare::pipeline_schema;
 use contextful_core::run::RunError;
@@ -35,7 +35,7 @@ fn a_derived_source_table_orders_its_parent_before_the_child() {
     assert!(!runs.head_of.contains_key("other"));
 }
 
-// spec: run.select.derive-cycle@945ba718
+// spec: run.select.derive-cycle@d95634a7
 #[test]
 fn a_derived_source_cycle_names_every_member_at_build() {
     let a = derive("alpha", "left", "beta_right");
@@ -49,7 +49,7 @@ fn a_derived_source_cycle_names_every_member_at_build() {
     assert!(err.contains("DeriveCycle") && err.contains("self"), "{err}");
 }
 
-// spec: run.select.derive-after-conflict@0f730e0b
+// spec: run.select.derive-after-conflict@f3c6187d
 #[test]
 fn a_derive_child_cannot_name_another_predecessor() {
     let mut child = derive("child", "passages", "parent_words");
@@ -60,6 +60,64 @@ fn a_derive_child_cannot_name_another_predecessor() {
     for part in ["DeriveAfterConflict", "child", "parent", "other"] {
         assert!(err.contains(part), "{part}: {err}");
     }
+}
+
+/// The tables `joiner`'s host task joins: `tables` for the pipeline of that id, none for any other.
+fn joining(joiner: &'static str, tables: &'static [&'static str]) -> impl Fn(&PipelineSpec) -> Vec<String> {
+    move |spec| if spec.id == joiner { tables.iter().map(|t| t.to_string()).collect() } else { Vec::new() }
+}
+
+/// A host task joining another derive pipeline's output table runs after that pipeline on its tick; joining several
+/// on one chain, it runs after the last.
+// spec: run.select.join-order@2dea6f85
+#[test]
+fn a_joined_derive_output_orders_its_producer_before_the_joining_task() {
+    let joiner = derive("joiner", "digests", "documents");
+    let producer = derive("producer", "words", "documents");
+    let deeper = derive("deeper", "copies", "producer_words");
+    let specs = [&joiner, &producer, &deeper];
+    assert!(!dependent_runs(specs).unwrap().head_of.contains_key("joiner"), "a task joining nothing heads its own run");
+
+    let runs = dependent_runs_joining(specs, &joining("joiner", &["producer_words"])).unwrap();
+    assert_eq!(runs.head_of.get("joiner").map(String::as_str), Some("producer"));
+    assert_eq!(runs.derived_parents.get("joiner").map(String::as_str), Some("producer"));
+    assert_eq!(runs.steps.get("producer"), Some(&vec!["deeper".to_string(), "joiner".to_string()]));
+
+    let runs = dependent_runs_joining(specs, &joining("joiner", &["producer_words", "deeper_copies"])).unwrap();
+    assert_eq!(runs.derived_parents.get("joiner").map(String::as_str), Some("deeper"), "the last parent on the chain");
+    assert_eq!(runs.steps.get("producer"), Some(&vec!["deeper".to_string(), "joiner".to_string()]));
+
+    let reader = derive("reader", "digests", "producer_words");
+    let runs = dependent_runs_joining([&reader, &producer, &deeper], &joining("reader", &["deeper_copies"])).unwrap();
+    assert_eq!(runs.derived_parents.get("reader").map(String::as_str), Some("deeper"), "a source-table parent and a joined parent on one chain");
+
+    for tables in [&["documents"][..], &["joiner_digests"][..]] {
+        let runs = dependent_runs_joining(specs, &joining("joiner", tables)).unwrap();
+        assert!(!runs.head_of.contains_key("joiner"), "{tables:?}: a plain or own table orders nothing");
+    }
+}
+
+/// A derive pipeline whose source-table and joined parents lie on no one dependent run raises `DeriveParentsDiverge`.
+// spec: run.select.parents-diverge@8b4fef01
+#[test]
+fn derive_parents_on_two_chains_refuse() {
+    let joiner = derive("joiner", "digests", "left_rows");
+    let left = derive("left", "rows", "documents");
+    let right = derive("right", "rows", "documents");
+    let err = dependent_runs_joining([&joiner, &left, &right], &joining("joiner", &["right_rows"])).unwrap_err().to_string();
+    for part in ["DeriveParentsDiverge", "joiner", "left", "right"] {
+        assert!(err.contains(part), "{part}: {err}");
+    }
+}
+
+/// A join closing a cycle through derive dependencies raises `DeriveCycle`, naming every pipeline on it.
+// spec: run.select.derive-cycle@d95634a7
+#[test]
+fn a_join_closing_a_cycle_names_every_member() {
+    let alpha = derive("alpha", "left", "documents");
+    let beta = derive("beta", "right", "alpha_left");
+    let err = dependent_runs_joining([&alpha, &beta], &joining("alpha", &["beta_right"])).unwrap_err().to_string();
+    assert!(err.contains("DeriveCycle") && err.contains("alpha") && err.contains("beta"), "{err}");
 }
 
 const BASE: &str = "[[pipeline]]\nid = \"orders\"\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://api.example.test/v1\" }\n[[pipeline.tables]]\nname = \"items\"\n";

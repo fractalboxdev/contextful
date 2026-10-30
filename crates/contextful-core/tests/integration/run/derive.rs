@@ -179,7 +179,7 @@ fn a_host_task_declaring_a_shared_quota_grant_refuses() {
         Err(RunError::DeriveUnmeteredGrant(message)) if message.contains("word-split") && message.contains("split")));
 }
 
-// spec: run.select.unmetered-grant@9035fd6f
+// spec: run.select.unmetered-grant@f3344c4d
 #[test]
 fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
     let granted = with("grant", json!("vendor-quota"));
@@ -189,6 +189,42 @@ fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
     let mut link = link;
     link["grant"] = json!({"quota": "vendor-quota", "class": "batch-read"});
     assert!(cfg(link).is_ok());
+
+    // A host task declaring `pure` false sends through the run's metered client, so its grant parses.
+    struct Reaching;
+    impl DeriveTask for Reaching {
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn pure(&self) -> bool {
+            false
+        }
+        fn columns(&self) -> Vec<String> {
+            vec!["body".into()]
+        }
+        fn marker_table(&self) -> String {
+            "units".into()
+        }
+        fn content_tables(&self) -> Vec<String> {
+            vec!["scores".into()]
+        }
+        fn derive(&self, _unit: &HostUnit, _reach: &Reach<'_>) -> Result<Derived, RunError> {
+            Ok(Derived::new())
+        }
+    }
+    let mut tasks = registered();
+    tasks.register("judge", std::sync::Arc::new(Reaching)).unwrap();
+    let config = json!({
+        "task": "judge", "source_table": "documents", "parent_id_column": "doc_id",
+        "grant": {"quota": "vendor-quota", "class": "batch-read"}
+    });
+    let parsed = DeriveConfig::parse_with("judge", &config, &tasks).unwrap();
+    assert_eq!(parsed.grant.map(|g| (g.quota, g.class)), Some(("vendor-quota".to_string(), "batch-read".to_string())));
+    let pure = json!({
+        "task": "split", "source_table": "documents", "parent_id_column": "doc_id",
+        "grant": {"quota": "vendor-quota", "class": "batch-read"}
+    });
+    assert!(matches!(DeriveConfig::parse_with("word-split", &pure, &tasks), Err(RunError::DeriveUnmeteredGrant(m)) if m.contains("split")));
 }
 
 /// Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under
