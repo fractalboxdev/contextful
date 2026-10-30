@@ -1323,21 +1323,98 @@ method = { test = "contextful_context::index::vector_recall_at_10_holds_against_
 target = { op = ">=", value = 0.95 }
 seed   = 0x5eed_0043
 
-[entry.vector-filtered-recall]
-clause = "read.retrieve.sidecar-oversampling"
-metric = "slices.filtered.retrieval.vector.recall_at_k"
-kind   = "eval"
-tier   = "scheduled"
-method = { issue = 43 }
-target = { op = ">=", value = 0.95 }
+# 100,000 seeded vectors of dim 32 and 200 queries, against exact `Float32` search, per
+# storage; a filter holding 1% of rows (1,000) ranks exactly, one holding 10% traverses.
 
-[entry.vector-resident]
-clause = "read.retrieve.sidecar-size-cap"
-metric = "vector.probe.rss_anon_delta_mib"
-kind   = "size"
-tier   = "scheduled"
-method = { issue = 43 }
-target = { op = "<", value = 64 }
+[entry.vector-recall-100k]
+clause = "read.retrieve.sidecar-generates-candidates"
+metric = "retrieval.vector.n100k.f32.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
+
+[entry.vector-recall-100k-f16]
+clause = "store.index.graph"
+metric = "retrieval.vector.n100k.f16.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
+
+[entry.vector-recall-100k-i8]
+clause = "store.index.i8-storage"
+metric = "retrieval.vector.n100k.i8.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.9 }
+seed   = 0x5eed_0043
+
+[entry.vector-filtered-recall-100k-1pct]
+clause = "read.retrieve.filtered-exact-threshold"
+metric = "retrieval.vector.n100k.filtered_1pct.f32.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
+
+[entry.vector-filtered-recall-100k-1pct-f16]
+clause = "read.retrieve.filtered-exact-threshold"
+metric = "retrieval.vector.n100k.filtered_1pct.f16.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
+
+[entry.vector-filtered-recall-100k-1pct-i8]
+clause = "read.retrieve.filtered-exact-threshold"
+metric = "retrieval.vector.n100k.filtered_1pct.i8.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.9 }
+seed   = 0x5eed_0043
+
+[entry.vector-filtered-recall-100k-10pct]
+clause = "read.retrieve.filtered-traversal"
+metric = "retrieval.vector.n100k.filtered_10pct.f32.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
+
+[entry.vector-filtered-recall-100k-10pct-f16]
+clause = "read.retrieve.filtered-traversal"
+metric = "retrieval.vector.n100k.filtered_10pct.f16.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.95 }
+seed   = 0x5eed_0043
+
+[entry.vector-filtered-recall-100k-10pct-i8]
+clause = "read.retrieve.filtered-traversal"
+metric = "retrieval.vector.n100k.filtered_10pct.i8.recall_at_10"
+kind   = "bench"
+tier   = "trend"
+direction = "higher_is_better"
+method = { bench = "contextful_context::vector_sidecar" }
+target = { op = ">=", value = 0.9 }
+seed   = 0x5eed_0043
 
 [entry.lexical-deep-recall]
 clause = "read.retrieve.candidate-window"

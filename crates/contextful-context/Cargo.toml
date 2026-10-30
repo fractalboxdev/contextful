@@ -73,3 +73,9 @@ name = "land_fold"
 path = "benches/land_fold.rs"
 harness = false
 
+# Resident memory of a 200 MB vector sidecar and recall@10 over 100,000 vectors.
+[[bench]]
+name = "vector_sidecar"
+path = "benches/vector_sidecar.rs"
+harness = false
+

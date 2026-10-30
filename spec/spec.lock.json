@@ -8030,7 +8030,7 @@
       "operation": "retrieve",
       "subject": "candidate-window",
       "kind": "limit",
-      "statement": "The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.",
+      "statement": "The candidate window is 8 times the requested limit or 200 rows, whichever is larger. A filled window reports a recency-ordered slice. Where a vector sidecar answers, the window bounds no semantic recall: {{read.retrieve.sidecar-generates-candidates}} adds candidates beyond it.",
       "why": "P4",
       "file": "spec/20-read.md",
       "line": 286
@@ -36713,6 +36713,10 @@
     [
       "read.retrieve.scored-text",
       "read.retrieve.relevance-floor"
+    ],
+    [
+      "read.retrieve.candidate-window",
+      "read.retrieve.sidecar-generates-candidates"
     ],
     [
       "read.retrieve.kinds",
