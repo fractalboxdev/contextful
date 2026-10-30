@@ -1,6 +1,9 @@
 //! The async-report source: a vendor builds a report run per partition and window, the
 //! source commits the run id, polls within a budget and drains a fixed number of result
 //! pages per read, holding one watermark per partition in a versioned position.
+//! [`declared`] adapts a declared HTTP vendor into [`ReportVendor`] as the `report` source.
+
+pub mod declared;
 
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, PullRequest, Source};
@@ -12,6 +15,8 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// The source's registered name.
+pub const NAME: &str = "report";
 /// The position layout's version.
 pub const POSITION_VERSION: u64 = 1;
 /// The column carrying the partition key a row was read under.
@@ -62,13 +67,19 @@ pub enum RunState {
     Pending,
     Ready,
     Expired,
+    /// The vendor failed the run (`connector.source.report-failed`).
+    Failed,
 }
 
-/// A vendor's failed answer: its HTTP status and its body.
+/// A vendor's failed answer: its HTTP status and its body, or the failure of a request
+/// that drew no answer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VendorFault {
     pub status: u16,
     pub body: Value,
+    /// A request's own failure, classified already: a transport fault or a refusal of the
+    /// mediated client.
+    pub failure: Option<Failure>,
 }
 
 /// The vendor half of an async-report source.
@@ -246,6 +257,8 @@ enum Step {
     Page(Value),
     /// The vendor answered `Expired` for a run this read already recreated.
     ExpiredAgain,
+    /// The vendor failed the held run, whose id this is.
+    Failed(String),
 }
 
 /// The async-report source over one vendor.
@@ -261,6 +274,8 @@ pub struct ReportSource<V> {
     recreated: BTreeSet<String>,
     /// Audit entries the next batch carries.
     audit: Vec<String>,
+    /// The failure the next pull raises, once the batch dropping a failed run commits.
+    failed: Option<Failure>,
 }
 
 fn day_of(text: &str) -> Option<i64> {
@@ -287,6 +302,7 @@ impl<V: ReportVendor> ReportSource<V> {
             polled: BTreeSet::new(),
             recreated: BTreeSet::new(),
             audit: Vec::new(),
+            failed: None,
         })
     }
 
@@ -294,6 +310,9 @@ impl<V: ReportVendor> ReportSource<V> {
     /// rate limiting, whatever the status; an authentication status is terminal; a `5xx` is
     /// transient.
     pub fn classify(config: &ReportConfig, fault: &VendorFault) -> Failure {
+        if let Some(failure) = &fault.failure {
+            return failure.clone();
+        }
         let code = fault.body.pointer(&config.error_code).and_then(Value::as_i64);
         match fault.status {
             _ if code.is_some_and(|c| config.throttle_codes.contains(&c)) => Failure::new(
@@ -347,6 +366,7 @@ impl<V: ReportVendor> ReportSource<V> {
                         break;
                     }
                     RunState::Pending => {}
+                    RunState::Failed => return Ok(Step::Failed(run.id)),
                     RunState::Expired => {
                         if !self.recreated.insert(key) {
                             return Ok(Step::ExpiredAgain);
@@ -438,6 +458,9 @@ impl<V: ReportVendor> Source for ReportSource<V> {
             return Err(Failure::deterministic(FailureTag::Config, format!("report position version {} is newer than {POSITION_VERSION}", position.version)));
         }
         position.version = POSITION_VERSION;
+        if let Some(failure) = self.failed.take() {
+            return Err(failure);
+        }
         loop {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during report read"));
@@ -458,6 +481,18 @@ impl<V: ReportVendor> Source for ReportSource<V> {
                 }
                 Ok(Step::Pending) => return self.batch(Vec::new(), &position, false),
                 Ok(Step::ExpiredAgain) => self.hold(key, "the vendor answered Expired for a run this read recreated"),
+                // The batch dropping the failed run commits first, so the next fire creates
+                // a new one; the pull after it fails the read.
+                Ok(Step::Failed(id)) => {
+                    held.run = None;
+                    held.cursor = None;
+                    position.partitions.insert(key.clone(), held);
+                    self.failed = Some(Failure::deterministic(
+                        FailureTag::Permanent,
+                        ConnectorError::ConnectorReportFailed(format!("report run `{id}` of partition `{key}` answered a declared failed state")).to_string(),
+                    ));
+                    return self.batch(Vec::new(), &position, true);
+                }
                 Ok(Step::Page(page)) => {
                     let next = self.next_cursor(&page)?;
                     let rows = self.rows(&partition, &page);

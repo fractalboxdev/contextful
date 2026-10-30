@@ -21,6 +21,9 @@ pub enum ConnectorError {
     /// An authentication failure on a report read. (`connector.source.report-auth`)
     #[error("ConnectorAuthTerminal: {0}")]
     ConnectorAuthTerminal(String),
+    /// A report run the vendor answered with a declared failed state. (`connector.source.report-failed`)
+    #[error("ConnectorReportFailed: {0}")]
+    ConnectorReportFailed(String),
     /// A delimited body invalid under its declared encoding. (`connector.source.declared-encoding`)
     #[error("ConnectorEncodingInvalid: {0}")]
     ConnectorEncodingInvalid(String),

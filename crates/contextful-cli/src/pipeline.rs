@@ -18,6 +18,8 @@ use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
 use contextful_connectors::file::{FileConfig, FileSource};
 use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
 use contextful_connectors::image::{ImageConfig, ImageSource};
+use contextful_connectors::report::declared::{DeclaredVendor, ReportDeclaration};
+use contextful_connectors::report::ReportSource;
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::meter::{manifest_bindings, require_binding, LimiterBinding};
 use contextful_core::ports::Clock;
@@ -277,6 +279,8 @@ pub(crate) enum Checked {
     Object(ObjectConfig),
     File(FileConfig),
     Image(ImageConfig),
+    /// An async-report source over its declared HTTP vendor.
+    Report(Box<ReportDeclaration>),
     Derive(Box<(DeriveConfig, Binding, Option<LimiterBinding>)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -335,6 +339,7 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             check_object(spec)
         }
         contextful_connectors::file::NAME => check_file(spec),
+        contextful_connectors::report::NAME => check_report(spec),
         contextful_connectors::receive::NAME => {
             let config = contextful_connectors::receive::ReceiveConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
             if let Some(field) = &spec.incremental {
@@ -494,6 +499,23 @@ fn check_file(spec: &PipelineSpec) -> Result<Checked> {
         .into());
     }
     Ok(Checked::File(config))
+}
+
+/// A `report` source's declaration, checked before any request: the source owns its
+/// per-partition position and lands one table.
+fn check_report(spec: &PipelineSpec) -> Result<Checked> {
+    let declaration = ReportDeclaration::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+    if let Some(field) = &spec.incremental {
+        return Err(ConnectorError::ConnectorPositionOwned(format!(
+            "pipeline `{}` declares `incremental = \"{field}\"` beside the `report` source, whose position holds each partition's watermark",
+            spec.id
+        ))
+        .into());
+    }
+    if spec.tables.len() != 1 {
+        bail!("pipeline `{}` declares {} tables beside the `report` source, which lands one table", spec.id, spec.tables.len());
+    }
+    Ok(Checked::Report(Box::new(declaration)))
 }
 
 /// The PDF decoder a `file` source reads pages through: this binary's worker behind the
@@ -939,6 +961,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
             match &checked {
                 Checked::Http(config, _) => resolver.preflight(config.headers.values())?,
+                Checked::Report(declaration) => resolver.preflight(declaration.headers.values())?,
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
@@ -1095,6 +1118,12 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                         Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
                         Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
                         Checked::Image(config) => Box::new(ImageSource::new(config.clone(), &base)),
+                        Checked::Report(declaration) => {
+                            let mediation = Mediation { run_id: Some(run_id.clone()), ..Mediation::default() };
+                            let vendor = DeclaredVendor::mediated((**declaration).clone(), resolver.clone(), &mediation)?;
+                            let today = w.clock.now().to_rfc3339();
+                            Box::new(ReportSource::new(declaration.report.clone(), vendor, &today[..10])?)
+                        }
                         Checked::Derive(pair) => {
                             let limiter = pair.2.clone().map(|binding| contextful_outbound::Limiter::new(binding, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
                             limiters.extend(limiter.clone());

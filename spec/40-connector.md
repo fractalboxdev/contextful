@@ -556,6 +556,16 @@ Async vendor reports, images, web search results and pushed `receive` batches ea
 - `field-drift` — Report rows enter the batch as untyped JSON. The source recognizes throttling from a throttle status or an error body containing a throttle code.
 - `report-auth` — An authentication failure on a report read raises `ConnectorAuthTerminal`, terminal against the retry schedule.
   *P6*
+- `report-declaration` — A `report` source declares its vendor as {{type:contextful_connectors::report::declared::VendorDeclaration}} beside the keys of {{type:contextful_connectors::report::ReportConfig}} and lands one table; a missing, unknown or malformed key fails validation naming it.
+  *because a request shape found malformed at its first fire fails a scheduled run hours after the edit that broke it*
+- `report-templates` — `{account}`, `{grain}`, `{breakdown}`, `{split.<key>}`, `{start}`, `{end}` and `{metrics}`, comma-joined, fill every template, and `{id}` the `poll` and `result` URLs, percent-encoded in a URL; another placeholder, or one in a scheme or host, fails validation.
+  *because a partition value placed in a host chooses where a bound credential goes*
+- `report-origin` — Every `report` request passes the mediated client with the create URL's host as its one allowlisted host; a `poll` or `result` URL on another origin fails validation, and a vendor-named rows URL off it refuses under {{connector.attach.weakened-hop}}.
+  *because a credential attaches to one exact host, and a URL the vendor names must not carry it elsewhere*
+- `report-poll` — A poll reads the status at `state.pointer`: a `done` value readies the run, an `expired` value expires it, and any other value, or none, leaves it pending. Two polls of one run wait at least `interval` apart.
+- `report-failed` — A poll reading a `failed` value raises `ConnectorReportFailed` naming the run id, and the partition's committed position drops that run, so the next fire creates a new one.
+  *because a vendor never rebuilds a failed report, so polling its id again fails every later fire*
+- `report-result` — A ready run's pages come from `result.url`, or from the URL its done poll names at `result.pointer`; each page after the first carries its cursor as the `cursor_param` query parameter.
 - `image-row` — An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.
 - `image-header` — An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.
   *A-connector#untrusted-input-decodes*
@@ -689,6 +699,42 @@ root     = "handbook"                       # resolved against the project direc
 include  = ["**/*.md", "policies/**"]
 exclude  = ["drafts/**"]
 base_url = "https://handbook.example.org"
+```
+
+An async-report source over a declared HTTP vendor, one table holding every partition's rows:
+
+```toml
+[[pipeline]]
+id = "ads"
+tables = ["insights"]
+
+[pipeline.source]
+name = "report"
+
+[pipeline.source.config]
+partitions    = [{ account = "a1", grain = "day", breakdown = "age" }]
+metrics       = ["spend", "clicks"]
+entity        = "ad_id"
+date          = "date_start"
+lookback_days = 3
+headers       = { Authorization = "Bearer ${secret://vendor-token}" }
+
+[pipeline.source.config.create]
+url  = "https://api.vendor.example/v1/{account}/reports"
+body = { since = "{start}", until = "{end}", fields = "{metrics}" }
+id   = "/report/id"
+
+[pipeline.source.config.poll]
+url      = "https://api.vendor.example/v1/reports/{id}"
+interval = "30s"
+
+[pipeline.source.config.state]
+pointer = "/status"
+done    = "done"
+failed  = ["failed", "error"]
+
+[pipeline.source.config.result]
+url = "https://api.vendor.example/v1/reports/{id}/rows"
 ```
 
 A connector manifest in the adopted manifest posture:

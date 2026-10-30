@@ -83,6 +83,8 @@ mod receive_sqs;
 #[cfg(all(feature = "data-plane", not(feature = "aws-sqs")))]
 mod receive_sqs_absent;
 #[cfg(feature = "data-plane")]
+mod report;
+#[cfg(feature = "data-plane")]
 mod run;
 #[cfg(feature = "data-plane")]
 mod secrets;

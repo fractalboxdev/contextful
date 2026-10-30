@@ -247,7 +247,7 @@ fn watermarks_are_held_per_partition_in_one_versioned_position() {
 // spec: connector.source.partition-isolation@e11cae37
 #[test]
 fn a_retryable_failure_on_one_partition_keeps_the_pages_others_drained() {
-    let fault = VendorFault { status: 503, body: json!({}) };
+    let fault = VendorFault { status: 503, body: json!({}), failure: None };
     let (vendor, _log) = Vendor::new(vec![
         ("a1", Script { pages: pages(2), fault_at: Some((1, fault)), ..Script::default() }),
         ("a2", Script { pages: pages(2), ..Script::default() }),
@@ -365,16 +365,16 @@ fn report_rows_stay_untyped_json_and_a_throttle_code_in_the_body_is_recognized()
         read(&mut source, None).last().unwrap()["cursor"]["partitions"].clone()
     };
     for fault in [
-        VendorFault { status: 400, body: json!({"error": {"code": 17}}) },
-        VendorFault { status: 403, body: json!({"error": {"code": 17}}) },
-        VendorFault { status: 429, body: json!({}) },
+        VendorFault { status: 400, body: json!({"error": {"code": 17}}), failure: None },
+        VendorFault { status: 403, body: json!({"error": {"code": 17}}), failure: None },
+        VendorFault { status: 429, body: json!({}), failure: None },
     ] {
         let held = throttled(fault);
         assert_eq!(held[key("a1")]["watermark"], Value::Null);
         assert_eq!(held[key("a2")]["watermark"], json!(TODAY));
     }
     for status in [400, 401, 403] {
-        let fault = VendorFault { status, body: json!({"error": {"code": 17}}) };
+        let fault = VendorFault { status, body: json!({"error": {"code": 17}}), failure: None };
         assert_eq!(ReportSource::<Vendor>::classify(&config(&["a1"], json!({"throttle_codes": [17]})), &fault).tag, FailureTag::RateLimited, "{status}");
     }
 }
@@ -383,7 +383,7 @@ fn report_rows_stay_untyped_json_and_a_throttle_code_in_the_body_is_recognized()
 #[test]
 fn an_authentication_failure_is_terminal() {
     for status in [401, 403] {
-        let fault = VendorFault { status, body: json!({}) };
+        let fault = VendorFault { status, body: json!({}), failure: None };
         let (vendor, _log) = Vendor::new(vec![
             ("a1", Script { pages: pages(1), create_fault: Some(fault), ..Script::default() }),
             ("a2", Script { pages: pages(1), ..Script::default() }),

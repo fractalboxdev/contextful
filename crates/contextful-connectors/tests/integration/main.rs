@@ -12,5 +12,6 @@ mod image;
 mod object;
 mod receive;
 mod report;
+mod report_declared;
 mod support;
 mod workbook;
