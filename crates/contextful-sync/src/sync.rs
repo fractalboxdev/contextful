@@ -1689,6 +1689,12 @@ impl Syncer {
                 if local.as_deref() == Some(digest.as_str()) {
                     return Ok(Fetched::Kept);
                 }
+                // The counter covers a run before its manifest makes it readable, so no commit
+                // assigns a value at or below it, whatever ends the pull (`store.reserve.pull-reseed`).
+                let _commit = match project_table(&self.project, key).filter(|_| !replica && is_run_manifest(key)) {
+                    Some(table) => Some(self.store.raise_commit_seq(&table, &path, &merged)?),
+                    None => None,
+                };
                 write(&path, &merged)?;
                 record.note(rel, &path, digest);
                 Ok(Fetched::Downloaded)
@@ -1799,14 +1805,6 @@ impl Syncer {
             let _guard = PushGuard::take(self.store.root(), std::time::Duration::from_secs(self.config.push_wait_secs()))?;
             self.record_pulled(&manifest, pushed_before)?;
         }
-        // A landing session holds its seed while the counter stands as it left it, so each
-        // table a pulled run manifest joins rewrites its counter (`store.reserve.pull-reseed`).
-        if !replica {
-            let reseeding: BTreeSet<String> = report.downloaded.iter().filter(|k| is_run_manifest(k)).filter_map(|k| project_table(&self.project, k)).collect();
-            for table in reseeding {
-                self.store.reseed_commit_seq(&table)?;
-            }
-        }
         // Pointers last: every pointer to write is verified before any is written.
         let candidates: Vec<(String, BucketPointer)> = match &generation {
             Some((listed, _)) => listed.pointers.iter().map(|(k, p)| (k.clone(), p.clone())).collect(),
@@ -1913,6 +1911,18 @@ impl Syncer {
         self.record_skipped(&manifest, &skipped, &reaches, generation.is_some())?;
         for (rel_key, path, pointer) in advancing {
             let bytes = serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            // The counter covers the snapshot's rows before the pointer names it (`store.reserve.pull-reseed`).
+            let _commit = match project_table(&self.project, &rel_key).filter(|_| !replica) {
+                Some(table) => {
+                    let snapshot = self.store.snapshot_dir(&table, &pointer.snapshot_id)?.join(MANIFEST_FILE);
+                    match std::fs::read(&snapshot) {
+                        Ok(stored) => Some(self.store.raise_commit_seq(&table, &snapshot, &stored)?),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                        Err(e) => return Err(io(&snapshot, e)),
+                    }
+                }
+                None => None,
+            };
             write(&path, &self.store.seal_metadata_bytes(&path, &bytes)?)?;
             report.pointers.push(rel_key);
         }

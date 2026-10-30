@@ -252,8 +252,8 @@ A commit holds its table's commit lock, assigns `_commit_seq` above every held v
   *A-topology#commit-lock*
 - `commit-seq-seed` — A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot, so a pulled or counterless store reuses no value.
   *A-topology#commit-lock*
-- `pull-reseed` — A pull downloading any run manifest of a table rewrites that table's `data/.commit_seq`, under its commit lock, to the greatest value its counter, run manifests and current snapshot record.
-  *because a landing session assigns from its held high-water while the counter stands as it last wrote it*
+- `pull-reseed` — A pull rewrites a table's `data/.commit_seq` under its commit lock, to at least the `commit_seq` of each run manifest or pointer snapshot it writes, before that object becomes visible.
+  *because a landing session assigns from its held high-water while the counter stands as it last wrote it, and a pull can end at any object*
 
 ### request ledgers
 

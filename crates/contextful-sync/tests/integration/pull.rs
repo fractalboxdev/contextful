@@ -1212,9 +1212,9 @@ fn pull_and_push_read_pointers_by_key_and_list_no_table_objects() {
     assert_eq!(recorded.script.listed_under("team/research/tables/"), 0, "a push lists no table object");
 }
 
-/// A pull downloading any run manifest of a table rewrites that table's `data/.commit_seq`, under its commit lock,
-/// to the greatest value its counter, run manifests and current snapshot record.
-// spec: store.reserve.pull-reseed@3a885d18
+/// A pull rewrites a table's `data/.commit_seq` under its commit lock, to at least the `commit_seq` of each run
+/// manifest or pointer snapshot it writes, before that object becomes visible.
+// spec: store.reserve.pull-reseed@a60a4ada
 #[test]
 #[allow(clippy::result_large_err)]
 fn a_pull_reseeds_the_commit_counter_so_a_session_lands_above_the_pulled_runs() {
@@ -1243,4 +1243,87 @@ fn a_pull_reseeds_the_commit_counter_so_a_session_lands_above_the_pulled_runs() 
     assert_eq!(counter["commit_seq"], 5, "the pull rewrites the counter to the pulled runs' greatest value");
     assert_eq!(land(&mut session, "run-a2", 2).commit_seq, Some(6), "the session's next commit lands above every pulled run");
     assert_eq!(session.unfolded(), 8, "the pulled runs count");
+}
+
+/// One single-row land through `session` as run `run`, returning its manifest.
+#[allow(clippy::result_large_err)]
+fn session_land(session: &mut contextful_context::land::LandSession, run: &str, secs: u64) -> contextful_core::store::lay_out::RunManifest {
+    use contextful_context::land::{Batch, Position};
+    use contextful_core::store::reserve::Injection;
+    let batch = Batch { rows: vec![json!({ "id": secs }).as_object().unwrap().clone()], types: Default::default() };
+    let injection = Injection { run_id: run.into(), site_id: "site".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None };
+    session.land(&batch, injection, at("2030-01-01T00:00:00Z").plus_secs(secs), &Position::default(), &|| Ok(())).unwrap().manifest.unwrap()
+}
+
+fn counter_value(root: &std::path::Path) -> serde_json::Value {
+    let counter: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("tables/filings/data/.commit_seq")).unwrap()).unwrap();
+    counter["commit_seq"].clone()
+}
+
+/// A pull rewrites a table's `data/.commit_seq` under its commit lock, to at least the `commit_seq` of each run
+/// manifest or pointer snapshot it writes, before that object becomes visible.
+// spec: store.reserve.pull-reseed@a60a4ada
+#[test]
+fn a_pull_failing_after_its_run_manifests_land_leaves_the_counter_above_them() {
+    use contextful_context::land::LandSession;
+    use contextful_core::store::lay_out::NodeId;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    // The last run's part never arrives, so every attempt lands the other four runs and the
+    // pull refuses as unconverged.
+    let gone: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: b.clone(),
+        script: Script { on_get: Some(Box::new(|key| key.contains("/runs/run-b4/").then_some(Ok(None)))), ..Script::default() },
+    });
+    let (a, c) = (node("ingest-a", gone, ""), node("ingest-b", b.clone(), ""));
+    let d = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"filings\"\nfold_max_unfolded_runs = 1000\n").unwrap().remove(0);
+    let mut session = LandSession::open(&a.syncer.store, d, NodeId::parse("ingest-a").unwrap()).unwrap();
+    session_land(&mut session, "run-a0", 0);
+    assert_eq!(session_land(&mut session, "run-a1", 1).commit_seq, Some(2));
+    for i in 0..5 {
+        c.land(&format!("run-b{i}"), json!([{ "id": 100 + i }]), "2030-01-01T00:00:10Z");
+    }
+    c.syncer.push(at(NOW)).unwrap();
+    assert!(matches!(a.syncer.pull(&PullScope::default()), Err(SyncError::Store(StoreError::SyncPullDidNotConverge(_)))));
+    let landed: Vec<i64> = (0..5)
+        .filter_map(|i| std::fs::read(a.root().join(format!("tables/filings/data/runs/run-b{i}/ingest-b/_manifest.json"))).ok())
+        .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["commit_seq"].as_i64().unwrap())
+        .collect();
+    assert_eq!(landed, [1, 2, 3, 4], "four pulled runs are visible");
+
+    assert_eq!(counter_value(&a.root()), 4, "the counter covers every run manifest the failed pull wrote");
+    assert_eq!(session_land(&mut session, "run-a2", 2).commit_seq, Some(5), "the session's next commit lands above every pulled run");
+    assert_eq!(session.unfolded(), 7, "the pulled runs count");
+}
+
+/// A pull rewrites a table's `data/.commit_seq` under its commit lock, to at least the `commit_seq` of each run
+/// manifest or pointer snapshot it writes, before that object becomes visible.
+// spec: store.reserve.pull-reseed@a60a4ada
+#[test]
+fn a_pull_advancing_only_a_pointer_raises_the_counter_to_its_snapshot() {
+    use contextful_context::land::LandSession;
+    use contextful_core::store::lay_out::NodeId;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    let d = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"filings\"\nfold_max_unfolded_runs = 1000\n").unwrap().remove(0);
+    let mut session = LandSession::open(&a.syncer.store, d, NodeId::parse("ingest-a").unwrap()).unwrap();
+    session_land(&mut session, "run-a0", 0);
+    assert_eq!(session_land(&mut session, "run-a1", 1).commit_seq, Some(2));
+    // The other node folds five runs and collects their manifests: the bucket holds the
+    // snapshot and its pointer, and no run manifest.
+    for i in 0..5 {
+        c.land(&format!("run-b{i}"), json!([{ "id": 100 + i }]), "2030-01-01T00:00:10Z");
+    }
+    let held = c.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&c.syncer.store, &TableDecl::named("filings"), at(NOW)).unwrap() else { panic!() };
+    std::fs::remove_dir_all(c.root().join("tables/filings/data/runs")).unwrap();
+    c.syncer.push(at(NOW)).unwrap();
+    c.syncer.publish("filings", &snapshot_id, &held).unwrap();
+
+    let report = a.syncer.pull(&PullScope::default()).unwrap();
+    assert!(!report.downloaded.is_empty() && report.downloaded.iter().all(|k| !k.ends_with("/_manifest.json") || !k.contains("/runs/")), "{:?}", report.downloaded);
+    assert_eq!(report.pointers.len(), 1, "{:?}", report.pointers);
+    assert_eq!(counter_value(&a.root()), 5, "the counter covers the pulled snapshot");
+    assert_eq!(session_land(&mut session, "run-a2", 2).commit_seq, Some(6), "the session's next commit lands above the snapshot's rows");
 }

@@ -85,7 +85,7 @@ pub(crate) struct SchemaCache {
 }
 
 /// One table's assigned high-water and the file versions it holds for: while neither the
-/// counter nor the pointer moves, no other writer committed, reseeded or folded since.
+/// counter nor the pointer moves, no other writer committed, pulled or folded since.
 #[derive(Debug)]
 struct HeldSeq {
     counter: Option<FileVersion>,
@@ -543,7 +543,7 @@ impl Store {
     }
 
     /// Whether this store's last `_commit_seq` assignment on `table` found the counter and the
-    /// pointer as its previous assignment left them, so no other writer committed, reseeded or
+    /// pointer as its previous assignment left them, so no other writer committed, pulled or
     /// folded between the two (`store.fold.session-listing`). False without a schema cache.
     pub(crate) fn sole_assignment(&self, table: &str) -> bool {
         self.schema_cache.as_ref().is_some_and(|c| c.sole.lock().expect("the schema cache is not poisoned").contains(table))
@@ -641,8 +641,9 @@ impl Store {
     ///
     /// A store holding a schema cache keeps the high-water it assigned beside the counter's
     /// and pointer's versions, and reads no manifest while both stand as it left them: every
-    /// other writer's commit and every reseed rewrites the counter under the commit lock, and
-    /// every pass replaces the pointer (`store.fold.session-listing`).
+    /// other writer's commit and every pulled run manifest or pointer rewrites the counter
+    /// under the commit lock (`store.reserve.pull-reseed`), and every pass replaces the
+    /// pointer (`store.fold.session-listing`).
     pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
         let dir = self.table_dir(table)?;
         let path = dir.join("data").join(COMMIT_SEQ_FILE);
@@ -670,14 +671,18 @@ impl Store {
         Ok(next)
     }
 
-    /// Rewrite `table`'s commit counter, under its commit lock, to the greatest value its
-    /// counter, run manifests and current snapshot record (`store.reserve.pull-reseed`).
-    pub fn reseed_commit_seq(&self, table: &str) -> Result<i64> {
-        let _commit = self.lock_commit(table)?;
-        let path = self.table_dir(table)?.join("data").join(COMMIT_SEQ_FILE);
-        let held = self.commit_counter(table, &path)?.max(self.recorded_commit_seq(table)?);
-        self.write_commit_counter(&path, held)?;
-        Ok(held)
+    /// Take `table`'s commit lock and raise its counter to at least the `commit_seq` that the
+    /// manifest bytes `stored`, bound for `path`, record (`store.reserve.pull-reseed`). The
+    /// counter is rewritten even where it already stands above, so an assignment holding a
+    /// high-water reads the manifests again. The caller writes the manifest, or the pointer
+    /// naming it, before dropping the returned lock.
+    pub fn raise_commit_seq(&self, table: &str, path: &Path, stored: &[u8]) -> Result<FileLock> {
+        let seq = parse_commit_seq(table, path, &self.open_metadata_bytes(path, stored)?)?;
+        let commit = self.lock_commit(table)?;
+        let counter = self.table_dir(table)?.join("data").join(COMMIT_SEQ_FILE);
+        let held = self.commit_counter(table, &counter)?.max(seq);
+        self.write_commit_counter(&counter, held)?;
+        Ok(commit)
     }
 
     /// The value the counter at `path` records, zero where none is written.
@@ -698,17 +703,9 @@ impl Store {
     /// The highest `commit_seq` a table's manifests record: every run manifest on disk,
     /// readable or not, and the snapshot the pointer names. Zero when none records one.
     fn recorded_commit_seq(&self, table: &str) -> Result<i64> {
-        #[derive(Deserialize)]
-        struct Recorded {
-            #[serde(default)]
-            commit_seq: Option<i64>,
-        }
         let read = |path: PathBuf| -> Result<i64> {
             let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(0) };
-            let r: Recorded = serde_json::from_slice(&bytes).map_err(|e| {
-                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
-            })?;
-            Ok(r.commit_seq.unwrap_or(0))
+            parse_commit_seq(table, &path, &bytes)
         };
         let mut high = match self.pointer(table)? {
             Some((ptr, _)) => read(self.snapshot_dir(table, &ptr.snapshot_id)?.join(MANIFEST_FILE))?,
@@ -1339,6 +1336,19 @@ impl CommitCounter {
         let counter: CommitCounter = serde_json::from_str(text).map_err(|e| unreadable(e.to_string()))?;
         Ok(counter.commit_seq)
     }
+}
+
+/// The `commit_seq` the opened run or snapshot manifest `bytes` of `path` records, zero where
+/// it records none.
+fn parse_commit_seq(table: &str, path: &Path, bytes: &[u8]) -> Result<i64> {
+    #[derive(Deserialize)]
+    struct Recorded {
+        #[serde(default)]
+        commit_seq: Option<i64>,
+    }
+    let r: Recorded = serde_json::from_slice(bytes)
+        .map_err(|e| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display())))?;
+    Ok(r.commit_seq.unwrap_or(0))
 }
 
 /// How long a landing waits for a lock another landing holds before refusing.

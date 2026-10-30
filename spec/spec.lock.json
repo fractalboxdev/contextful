@@ -3349,8 +3349,8 @@
       "operation": "reserve",
       "subject": "pull-reseed",
       "kind": "behavior",
-      "statement": "A pull downloading any run manifest of a table rewrites that table's `data/.commit_seq`, under its commit lock, to the greatest value its counter, run manifests and current snapshot record.",
-      "why": "because a landing session assigns from its held high-water while the counter stands as it last wrote it",
+      "statement": "A pull rewrites a table's `data/.commit_seq` under its commit lock, to at least the `commit_seq` of each run manifest or pointer snapshot it writes, before that object becomes visible.",
+      "why": "because a landing session assigns from its held high-water while the counter stands as it last wrote it, and a pull can end at any object",
       "file": "spec/10-store.md",
       "line": 255,
       "group": "commit"
@@ -72055,6 +72055,20 @@
         "kind": "test",
         "path": "crates/contextful-sync/tests/integration/pull.rs",
         "name": "a_pull_reseeds_the_commit_counter_so_a_session_lands_above_the_pulled_runs",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/pull.rs",
+        "name": "a_pull_failing_after_its_run_manifests_land_leaves_the_counter_above_them",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/pull.rs",
+        "name": "a_pull_advancing_only_a_pointer_raises_the_counter_to_its_snapshot",
         "verdict": "performed",
         "proved": false
       }
