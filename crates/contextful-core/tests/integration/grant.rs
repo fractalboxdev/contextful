@@ -2,7 +2,7 @@
 //! tenant scope, templates, pipelines as resources, and ceilings.
 
 use contextful_core::grant::{
-    authorize_template, describe_pipeline, least_row_ceiling, list_pipelines, list_templates, raw_read_covers,
+    authorize_template, describe_pipeline, individual_read_covers, least_row_ceiling, list_pipelines, list_templates, raw_read_covers,
     template_read_covers,
     tenant_child_expiry, trace_run, AggregateGrant, Action, Grant, TablePattern, TenantScope,
     AGGREGATE_GROUP_CEILING_FLOOR, TENANT_CHILD_LIFETIME_MINUTES,
@@ -71,12 +71,36 @@ fn forget_round_trips_as_a_separate_action_and_confers_no_read() {
     assert!(!raw_read_covers(&[g], "research/filings"));
 }
 
+#[test]
+fn read_individual_round_trips_and_covers_only_its_own_tables() {
+    let individual = Action::parse("read-individual").expect("the per-individual read action belongs to the vocabulary");
+    let g = grant(&[Action::Read, individual], &["survey/*"]);
+    let json = serde_json::to_string(&g).unwrap();
+    assert!(json.contains("\"read-individual\""), "{json}");
+    assert_eq!(serde_json::from_str::<Grant>(&json).unwrap(), g);
+    assert!(individual_read_covers(std::slice::from_ref(&g), "survey/responses"));
+    assert!(!individual_read_covers(std::slice::from_ref(&g), "sales/invoices"));
+    // `read` alone, or an aggregate-constrained grant, holds no per-individual read; the
+    // action alone confers no raw read.
+    assert!(!individual_read_covers(&[grant(&[Action::Read], &["*"])], "survey/responses"));
+    let aggregated = Grant { aggregate: Some(aggregate()), ..g.clone() };
+    assert!(!individual_read_covers(&[aggregated], "survey/responses"));
+    assert!(!raw_read_covers(&[grant(&[individual], &["*"])], "survey/responses"));
+}
+
 /// A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to
-/// mint, and `forget` to erase subject data.
-// spec: authority.grant.actions@bc60e632
+/// mint, `forget` to erase subject data, and `read-individual` for {{disclosure.bound-cohort.per-individual-row}}.
+// spec: authority.grant.actions@e8f74a58
 #[test]
 fn actions() {
-    let vocabulary = [("read", Action::Read), ("write", Action::Write), ("execute", Action::Execute), ("admin", Action::Admin), ("forget", Action::Forget)];
+    let vocabulary = [
+        ("read", Action::Read),
+        ("write", Action::Write),
+        ("execute", Action::Execute),
+        ("admin", Action::Admin),
+        ("forget", Action::Forget),
+        ("read-individual", Action::ReadIndividual),
+    ];
     for (word, action) in vocabulary {
         assert_eq!(Action::parse(word).unwrap(), action);
         assert_eq!(serde_json::to_string(&action).unwrap(), format!("\"{word}\""));

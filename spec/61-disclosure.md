@@ -127,18 +127,16 @@ The line between a per-person table and a cohort table, and the floor a cohort r
 
 - `governance-declaration` — `[model.disclosure]` declares `governance`, `per-person` or `cohort`, naming whether each published figure describes one person or a cohort; an absent `governance` is `per-person`, and another value raises {{run.declare.spec-invalid}}.
   *because an undeclared model takes the stricter regime: a per-person model refuses exact figures, so omitting `governance` never widens what a release publishes*
-- `cohort-widening` — A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.
-  *A-disclosure#aggregate-disclosure-enforced*
-- `per-individual-row` — Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.
-  *A-disclosure#aggregate-disclosure-enforced*
+- `cohort-widening` — A template or statement read grouping a `cohort` model's published table by a strict subset of the group key its release records raises `DisclosureCohortWidening`; grouping by the whole key or a superset of it reads.
+  *because a coarser grouping sums released groups into figures no release noised or floored, and the recorded key decides each read without a ledger of earlier releases*
+- `widening-groupings` — A SELECT groups each cohort table its `FROM` reaches by each `GROUP BY` set, each aggregate window's partition list, and the empty set when it aggregates under neither; only a bare column reference covers a key column.
+  *because an expression over a key column can merge its values, so only the column itself keeps released groups apart*
+- `per-individual-row` — A query, template or retrieve read touching a table a `cohort` model's statement names raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table.
+  *because the face applies no floor to an ad-hoc read, so a read of a source table returns contributors' rows that no release has suppressed*
 - `singleton-cohort` — A `cohort` model whose permitted grouping columns or non-contributor grain columns name its contributor key or a forbidden column raises `DisclosureSingletonCohort` at declaration, before any row lands under it.
   *A-disclosure#aggregate-disclosure-enforced*
 - `exact-figures` — A policy declaring `figures = "exact"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `"noised"`, and exact figures publish only from a `cohort` table.
   *A-disclosure#aggregate-disclosure-enforced*
-
-unsettled: For `per-individual-row`, which read surface returns a per-individual row of a cohort table, given a release publishes no contributor key, and which grant dimension on the reader's token is the explicit grant? owner: disclosure affects: disclosure.bound-cohort
-
-unsettled: Is a `cohort-widening` read a release whose group key is coarser than an earlier release's over the same units, or a read grouping a cohort table by a strict subset of its key? owner: disclosure affects: disclosure.bound-cohort
 
 ## Shapes
 

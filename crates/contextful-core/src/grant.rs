@@ -19,21 +19,34 @@ pub enum Action {
     Execute,
     Admin,
     Forget,
+    /// Reads a row of a `cohort` model's source table beside `read`
+    /// (`disclosure.bound-cohort.per-individual-row`).
+    #[serde(rename = "read-individual")]
+    ReadIndividual,
 }
 
 impl Action {
+    /// Every action, in vocabulary order.
+    pub const ALL: [Action; 6] = [Action::Read, Action::Write, Action::Execute, Action::Admin, Action::Forget, Action::ReadIndividual];
+
+    /// The action's word, as a grant spells it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Action::Read => "read",
+            Action::Write => "write",
+            Action::Execute => "execute",
+            Action::Admin => "admin",
+            Action::Forget => "forget",
+            Action::ReadIndividual => "read-individual",
+        }
+    }
+
     /// Parse one action word exactly (`authority.grant.unknown-action`).
     pub fn parse(s: &str) -> Result<Action, AuthorityError> {
-        match s {
-            "read" => Ok(Action::Read),
-            "write" => Ok(Action::Write),
-            "execute" => Ok(Action::Execute),
-            "admin" => Ok(Action::Admin),
-            "forget" => Ok(Action::Forget),
-            other => Err(AuthorityError::GrantActionUnknown(format!(
-                "`{other}` is not one of read, write, execute, admin, forget"
-            ))),
-        }
+        Action::ALL.into_iter().find(|a| a.name() == s).ok_or_else(|| {
+            let words: Vec<&str> = Action::ALL.iter().map(|a| a.name()).collect();
+            AuthorityError::GrantActionUnknown(format!("`{s}` is not one of {}", words.join(", ")))
+        })
     }
 }
 
@@ -242,6 +255,12 @@ impl Grant {
 /// constraint (`authority.grant.aggregate`).
 pub fn raw_read_covers(grants: &[Grant], table: &str) -> bool {
     grants.iter().any(|g| g.aggregate.is_none() && g.covers(Action::Read, table))
+}
+
+/// Whether a grant holds `read-individual` over `table`, which a read of a `cohort` model's
+/// source table needs beside its read coverage (`disclosure.bound-cohort.per-individual-row`).
+pub fn individual_read_covers(grants: &[Grant], table: &str) -> bool {
+    grants.iter().any(|g| g.aggregate.is_none() && g.covers(Action::ReadIndividual, table))
 }
 
 /// Whether `grant` covers a read of `table` inside template `id`'s session: a read grant

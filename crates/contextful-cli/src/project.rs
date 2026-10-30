@@ -204,7 +204,23 @@ pub(crate) fn read_audit(project: &Project, issuer_key: Option<&Path>, public_ke
 pub(crate) fn open_face_with_pins(project: &Project, declaration: &Path, manifest: &str, pepper: Pepper, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Face> {
     let offset = now_offset()?;
     let store = open_store(project, public_key, keyset)?;
-    Ok(Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?.with_now_offset(offset))
+    let face = Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?;
+    Ok(face.with_cohorts(&cohort_models(declaration)?)?.with_now_offset(offset))
+}
+
+/// Each `cohort` model the declaration set declares, its statement resolved, whose source
+/// tables answer only `read-individual` (`disclosure.bound-cohort.per-individual-row`).
+fn cohort_models(declaration: &Path) -> Result<Vec<contextful_core::pipeline::model::ModelSpec>> {
+    use contextful_core::pipeline::model::{collect_models, Governance};
+    let mut cohort = Vec::new();
+    for model in collect_models(&manifests(declaration)?, &[])? {
+        if model.spec.disclosure.as_ref().is_some_and(|d| d.governance() == Governance::Cohort) {
+            let mut spec = model.spec;
+            crate::model_source::resolve(&mut spec, &model.file)?;
+            cohort.push(spec);
+        }
+    }
+    Ok(cohort)
 }
 
 #[cfg(feature = "data-plane")]

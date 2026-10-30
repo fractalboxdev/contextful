@@ -381,3 +381,73 @@ fn a_per_person_and_a_cohort_release_of_exact_figures_differ() {
     let text = published(dir.path()).expect("the cohort release publishes").to_string();
     assert!(text.contains("energy") && !text.contains("t4"), "{text}");
 }
+
+const AUDIENCE: &str = "contextful://benchmark";
+
+/// The answers `contextful mcp` gives under `token` to one `context.query` per statement.
+fn credentialed_queries(dir: &std::path::Path, public: &str, token: &str, statements: &[&str]) -> Vec<serde_json::Value> {
+    use std::io::Write;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env("CONTEXTFUL_PEPPER", PEPPER)
+        .env("CONTEXTFUL_TOKEN", token)
+        .args(["mcp", "--project", "benchmark", "--public-key", public, "--audience", AUDIENCE])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        for (id, sql) in statements.iter().enumerate() {
+            let call = serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": sql } } });
+            writeln!(stdin, "{call}").unwrap();
+        }
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+}
+
+fn refusal_text(answer: &serde_json::Value) -> String {
+    assert_eq!(answer["result"]["isError"], serde_json::json!(true), "{answer}");
+    answer["result"]["content"][0]["text"].as_str().unwrap().to_string()
+}
+
+/// A served face over a released `cohort` model: its source table answers only a credential
+/// holding `read-individual` over it, and its published table refuses a grouping coarser
+/// than its released key.
+// spec: disclosure.bound-cohort.per-individual-row@6f9a71eb
+// spec: disclosure.bound-cohort.cohort-widening@5979fff9
+#[test]
+fn a_served_cohort_model_guards_its_source_rows_and_its_released_key() {
+    let dir = benchmark(&format!("{}{CAP}", governed("governance = \"cohort\"")));
+    let p = dir.path();
+    let out = release(p, &[]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUDIENCE}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+    let text = |out: std::process::Output| {
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let public = text(cli(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |extra: &[&str]| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--ttl", "600"];
+        args.extend_from_slice(extra);
+        text(cli(p, &args))
+    };
+    let statements = ["SELECT tenant_id FROM revenue ORDER BY tenant_id", "SELECT industry FROM revenue_by_industry ORDER BY industry", "SELECT sum(revenue) FROM revenue_by_industry"];
+
+    let reader = mint(&["--table", "*"]);
+    let answers = credentialed_queries(p, &public, &reader, &statements);
+    assert_eq!(answers.len(), 3, "{answers:?}");
+    assert!(refusal_text(&answers[0]).contains("DisclosurePerIndividualUngranted"), "{answers:?}");
+    assert_eq!(answers[1]["result"]["structuredContent"]["rows"], serde_json::json!([["__suppressed__"], ["energy"]]), "{answers:?}");
+    assert!(refusal_text(&answers[2]).contains("DisclosureCohortWidening"), "{answers:?}");
+
+    let individual = mint(&["--action", "read", "--action", "read-individual", "--table", "revenue"]);
+    let answers = credentialed_queries(p, &public, &individual, &statements[..1]);
+    let rows = &answers[0]["result"]["structuredContent"]["rows"];
+    assert_eq!(rows.as_array().map(Vec::len), Some(6), "{answers:?}");
+}

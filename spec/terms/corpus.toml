@@ -121,10 +121,10 @@ term-first-use = 0
 
 [ceiling.contract-words]
 assurance = 11021
-authority = 7716
+authority = 7720
 connector = 11427
 corpus = 5120
-disclosure = 6328
+disclosure = 6461
 read = 9693
 run = 21520
 store = 12412

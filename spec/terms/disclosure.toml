@@ -58,8 +58,8 @@ DisclosureDominanceUnverifiable      = { clause = "disclosure.suppress.dominance
 DisclosurePolicySuppressesNothing    = { clause = "disclosure.suppress.empty-policy", gloss = "A policy sets neither threshold." }
 DisclosureGroupingAllowlistEmpty     = { clause = "disclosure.suppress.grouping-allowlist", gloss = "A grouping allowlist is empty or names a non-column." }
 DisclosureTemplateMultiStatement     = { clause = "disclosure.template.single-statement", gloss = "A template declaration holds more than one statement." }
-DisclosureCohortWidening             = { clause = "disclosure.bound-cohort.cohort-widening", gloss = "A read merged an under-floor group into a coarser key." }
-DisclosurePerIndividualUngranted     = { clause = "disclosure.bound-cohort.per-individual-row", gloss = "A per-individual row was read without an explicit grant." }
+DisclosureCohortWidening             = { clause = "disclosure.bound-cohort.cohort-widening", gloss = "A read grouped a cohort table by a strict subset of its group key." }
+DisclosurePerIndividualUngranted     = { clause = "disclosure.bound-cohort.per-individual-row", gloss = "A read touched a cohort model's source table without `read-individual`." }
 DisclosureSingletonCohort            = { clause = "disclosure.bound-cohort.singleton-cohort", gloss = "A cohort key's grain resolves to one person." }
 AuditEntryUnpersisted    = { clause = "disclosure.record.unpersisted-entry", gloss = "A read's audit entry did not persist; no rows are returned." }
 AuditLogReadOnly         = { clause = "disclosure.record.read-only", gloss = "An append through a read-only audit handle." }

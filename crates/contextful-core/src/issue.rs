@@ -245,7 +245,7 @@ impl IssuancePolicy {
         if let (Some(action), false) = (effect, principal) {
             return Err(AuthorityError::IssuancePrincipalRequired(format!(
                 "a grant carrying `{}` needs a subject naming on_behalf_of",
-                action_name(*action)
+                action.name()
             )));
         }
         let algorithm = ctx.signer.algorithm();
@@ -347,16 +347,6 @@ fn check_bound(max_lifetime_secs: u64) -> Result<(), PolicyError> {
 fn is_wildcard_zone(zone: &str) -> bool {
     let zone = zone.trim();
     zone == "*" || zone.ends_with(":*")
-}
-
-fn action_name(action: Action) -> &'static str {
-    match action {
-        Action::Read => "read",
-        Action::Write => "write",
-        Action::Execute => "execute",
-        Action::Admin => "admin",
-        Action::Forget => "forget",
-    }
 }
 
 /// Who authors a table write when no credential accompanies it

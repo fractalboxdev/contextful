@@ -130,7 +130,7 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
 
 - `fields` — A grant names actions, table patterns, and optionally a tenant scope, aggregate constraints, a template allowlist and a row ceiling. An absent constraint leaves its dimension unconstrained; an absent allowlist confers no template.
   *A-authority#offline-narrowing*
-- `actions` — A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.
+- `actions` — A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, `forget` to erase subject data, and `read-individual` for {{disclosure.bound-cohort.per-individual-row}}.
   *A-authority#offline-narrowing*
 - `unknown-action` — An action outside the vocabulary raises `GrantActionUnknown` at the mint and at admission.
   *P1*

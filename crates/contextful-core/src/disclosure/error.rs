@@ -191,6 +191,12 @@ pub enum DisclosureError {
     /// A per-person table declares exact figures. (`disclosure.bound-cohort.exact-figures`)
     #[error("DisclosureExactPerPerson: {0}")]
     ExactPerPerson(String),
+    /// A read grouped a cohort table by a strict subset of its group key. (`disclosure.bound-cohort.cohort-widening`)
+    #[error("DisclosureCohortWidening: {0}")]
+    CohortWidening(String),
+    /// A read touched a cohort model's source table without `read-individual`. (`disclosure.bound-cohort.per-individual-row`)
+    #[error("DisclosurePerIndividualUngranted: {0}")]
+    PerIndividualUngranted(String),
 }
 
 impl DisclosureError {
@@ -218,6 +224,8 @@ impl DisclosureError {
             DisclosureError::StaticPepper(_) => "DisclosureStaticPepper",
             DisclosureError::SingletonCohort(_) => "DisclosureSingletonCohort",
             DisclosureError::ExactPerPerson(_) => "DisclosureExactPerPerson",
+            DisclosureError::CohortWidening(_) => "DisclosureCohortWidening",
+            DisclosureError::PerIndividualUngranted(_) => "DisclosurePerIndividualUngranted",
         }
     }
 }

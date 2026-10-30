@@ -101,6 +101,9 @@ pub struct Face {
     clock: std::sync::Arc<dyn Fn() -> contextful_core::time::Instant + Send + Sync>,
     /// The manifest's `[[principal]]` blocks (`authority.place.per-principal`).
     principals: Vec<contextful_core::pipeline::model::Principal>,
+    /// Each `cohort` model's table with the source tables its statement names
+    /// (`disclosure.bound-cohort.per-individual-row`).
+    pub(crate) cohorts: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// A table's `level` and `principal_kind` tables, by table.
@@ -235,6 +238,7 @@ impl Face {
             reach: Default::default(),
             clock: std::sync::Arc::new(system_now),
             principals,
+            cohorts: BTreeMap::new(),
         };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
@@ -1089,6 +1093,7 @@ impl Face {
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_bounds(session, &admitted.relations, opts.bounds)?;
         self.bind_as_of_join(&admitted.as_of_joined)?;
+        self.bind_cohorts(&engine, session, &admitted.relations, &tree)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
         if opts.internals {
@@ -1122,6 +1127,7 @@ impl Face {
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_bounds(session, &admitted.relations, opts.bounds)?;
         self.bind_as_of_join(&admitted.as_of_joined)?;
+        self.bind_cohorts(&engine, session, &admitted.relations, &tree)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
         let response = self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)?;

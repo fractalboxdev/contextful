@@ -20,6 +20,7 @@ def parseAction : String → Option Action
   | "execute" => some .execute
   | "admin" => some .admin
   | "forget" => some .forget
+  | "read-individual" => some .readIndividual
   | _ => none
 
 def dimensionName : Dimension → String
