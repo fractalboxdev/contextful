@@ -73,6 +73,7 @@ ConnectorPageCursorMissing      = { clause = "connector.source.page-cursor-missi
 ConnectorMetricGrainRejected    = { clause = "connector.source.metric-grain", gloss = "A metric read at a grain the vendor estimates." }
 ConnectorOrderingColumnRejected = { clause = "connector.source.ordering-column", gloss = "A report stream ordered by the engine-injected ingest stamp." }
 ConnectorAuthTerminal           = { clause = "connector.source.report-auth", gloss = "An authentication failure on a report read." }
+ConnectorReportFailed           = { clause = "connector.source.report-failed", gloss = "A report run the vendor answered with a declared failed state." }
 ConnectorImageHeaderUnreadable  = { clause = "connector.source.image-header", gloss = "An image file header that does not parse." }
 ConnectorQuotabilityMismatch    = { clause = "connector.source.marker-body-pairing", gloss = "An image body and its quotability marker not null together." }
 ConnectorProviderOriginRejected = { clause = "connector.source.provider-origin", gloss = "A search call to a non-TLS transport or a host other than the provider's." }

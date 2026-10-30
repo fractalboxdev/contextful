@@ -24,7 +24,7 @@ pub const DRIVE_FEATURE: &str = "drive";
 pub const OBJECT_FEATURE: &str = "s3-sync";
 
 /// The names resolving to compiled-in sources.
-pub const BUILT_IN: [&str; 8] = [http::NAME, derive::NAME, DRIVE, DRIVE_PICKS, object::NAME, file::NAME, image::NAME, receive::NAME];
+pub const BUILT_IN: [&str; 9] = [http::NAME, derive::NAME, DRIVE, DRIVE_PICKS, object::NAME, file::NAME, image::NAME, receive::NAME, report::NAME];
 
 /// Whether a listed source is compiled into this build; a feature-gated one that is not
 /// answers with the feature to rebuild with.

@@ -19811,6 +19811,78 @@
       "group": "reports, images, search and receive"
     },
     {
+      "id": "connector.source.report-declaration",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "report-declaration",
+      "kind": "behavior",
+      "statement": "A `report` source declares its vendor as {{type:contextful_connectors::report::declared::VendorDeclaration}} beside the keys of {{type:contextful_connectors::report::ReportConfig}} and lands one table; a missing, unknown or malformed key fails validation naming it.",
+      "why": "because a request shape found malformed at its first fire fails a scheduled run hours after the edit that broke it",
+      "file": "spec/40-connector.md",
+      "line": 559,
+      "group": "reports, images, search and receive"
+    },
+    {
+      "id": "connector.source.report-templates",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "report-templates",
+      "kind": "behavior",
+      "statement": "`{account}`, `{grain}`, `{breakdown}`, `{split.<key>}`, `{start}`, `{end}` and `{metrics}`, comma-joined, fill every template, and `{id}` the `poll` and `result` URLs, percent-encoded in a URL; another placeholder, or one in a scheme or host, fails validation.",
+      "why": "because a partition value placed in a host chooses where a bound credential goes",
+      "file": "spec/40-connector.md",
+      "line": 561,
+      "group": "reports, images, search and receive"
+    },
+    {
+      "id": "connector.source.report-origin",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "report-origin",
+      "kind": "behavior",
+      "statement": "Every `report` request passes the mediated client with the create URL's host as its one allowlisted host; a `poll` or `result` URL on another origin fails validation, and a vendor-named rows URL off it refuses under {{connector.attach.weakened-hop}}.",
+      "why": "because a credential attaches to one exact host, and a URL the vendor names must not carry it elsewhere",
+      "file": "spec/40-connector.md",
+      "line": 563,
+      "group": "reports, images, search and receive"
+    },
+    {
+      "id": "connector.source.report-poll",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "report-poll",
+      "kind": "behavior",
+      "statement": "A poll reads the status at `state.pointer`: a `done` value readies the run, an `expired` value expires it, and any other value, or none, leaves it pending. Two polls of one run wait at least `interval` apart.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 565,
+      "group": "reports, images, search and receive"
+    },
+    {
+      "id": "connector.source.report-failed",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "report-failed",
+      "kind": "refusal",
+      "statement": "A poll reading a `failed` value raises `ConnectorReportFailed` naming the run id, and the partition's committed position drops that run, so the next fire creates a new one.",
+      "why": "because a vendor never rebuilds a failed report, so polling its id again fails every later fire",
+      "file": "spec/40-connector.md",
+      "line": 566,
+      "group": "reports, images, search and receive"
+    },
+    {
+      "id": "connector.source.report-result",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "report-result",
+      "kind": "behavior",
+      "statement": "A ready run's pages come from `result.url`, or from the URL its done poll names at `result.pointer`; each page after the first carries its cursor as the `cursor_param` query parameter.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 568,
+      "group": "reports, images, search and receive"
+    },
+    {
       "id": "connector.source.image-row",
       "contract": "connector",
       "operation": "source",
@@ -19819,7 +19891,7 @@
       "statement": "An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 559,
+      "line": 569,
       "group": "reports, images, search and receive"
     },
     {
@@ -19831,7 +19903,7 @@
       "statement": "An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 560,
+      "line": 570,
       "group": "reports, images, search and receive"
     },
     {
@@ -19843,7 +19915,7 @@
       "statement": "Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 562,
+      "line": 572,
       "group": "reports, images, search and receive"
     },
     {
@@ -19855,7 +19927,7 @@
       "statement": "An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/40-connector.md",
-      "line": 563,
+      "line": 573,
       "group": "reports, images, search and receive"
     },
     {
@@ -19867,7 +19939,7 @@
       "statement": "Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/40-connector.md",
-      "line": 565,
+      "line": 575,
       "group": "reports, images, search and receive"
     },
     {
@@ -19879,7 +19951,7 @@
       "statement": "A `receive` source declares `format = \"jsonl\"` and a positive `max_batch_bytes`, `max_queue_depth` and `key_retention_secs`, none defaulted, and no `schedule`; it serves every declared table and requests nothing from outside.",
       "why": "because a ceiling the sender fills must be the operator's choice, not a guess the binary carries",
       "file": "spec/40-connector.md",
-      "line": 567,
+      "line": 577,
       "group": "reports, images, search and receive",
       "scenarios": [
         "WHEN a `receive` source omits `max_queue_depth`, THEN validation refuses naming the key."
@@ -19894,7 +19966,7 @@
       "statement": "The engine bounds and records a delivered batch before storing its rows.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 569,
+      "line": 579,
       "group": "reports, images, search and receive"
     },
     {
@@ -19906,7 +19978,7 @@
       "statement": "A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 570,
+      "line": 580,
       "group": "reports, images, search and receive",
       "scenarios": [
         "WHEN line 2 of a body names an undeclared table, THEN the batch fails naming line 2 and no table lands."
@@ -19921,7 +19993,7 @@
       "statement": "The drive source walks `folder_id` breadth-first through `files.list`, paging each folder within `drive_id` when declared. The source lists each folder once, sorts children by name and id, and follows no shortcut.",
       "why": "because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot",
       "file": "spec/40-connector.md",
-      "line": 576,
+      "line": 586,
       "group": "drive"
     },
     {
@@ -19933,7 +20005,7 @@
       "statement": "Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 578,
+      "line": 588,
       "group": "drive",
       "scenarios": [
         "WHEN `folder_ids` is empty or accompanies `folder_id`, THEN validation raises `ConnectorDriveRootsInvalid` before listing."
@@ -19948,7 +20020,7 @@
       "statement": "With `folder_ids`, every selected root names a folder in the declared `drive_id`. A missing or outside-drive root raises `ConnectorDriveRootRejected` before the source lists any selected folder.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 580,
+      "line": 590,
       "group": "drive",
       "scenarios": [
         "WHEN one selected root belongs to another Shared Drive, THEN `ConnectorDriveRootRejected` names it before the source lists any selected folder."
@@ -19963,7 +20035,7 @@
       "statement": "With `folder_ids`, the drive source applies {{connector.source.drive-walk}} to each root while confining descendants to the declared drive, listing each folder once across overlaps.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 582,
+      "line": 592,
       "group": "drive"
     },
     {
@@ -19975,7 +20047,7 @@
       "statement": "A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 584,
+      "line": 594,
       "group": "drive"
     },
     {
@@ -19987,7 +20059,7 @@
       "statement": "A file reachable through multiple selected roots lands once by `file_id`. Its `resolved_root` is the lexicographically least selected root id reaching the file.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 585,
+      "line": 595,
       "group": "drive",
       "scenarios": [
         "WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`."
@@ -20002,7 +20074,7 @@
       "statement": "The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 587,
+      "line": 597,
       "group": "drive"
     },
     {
@@ -20014,7 +20086,7 @@
       "statement": "`mode` selects `bytes-and-pages` by default or `metadata-only`; another spelling raises `ConnectorDriveModeUnknown` before any request.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 588,
+      "line": 598,
       "group": "drive"
     },
     {
@@ -20026,7 +20098,7 @@
       "statement": "Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 590,
+      "line": 600,
       "group": "drive"
     },
     {
@@ -20038,7 +20110,7 @@
       "statement": "In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 591,
+      "line": 601,
       "group": "drive",
       "scenarios": [
         "WHEN a downloaded version has known bytes, THEN its SHA-256 matches those bytes, which the source discards after capture.",
@@ -20054,7 +20126,7 @@
       "statement": "After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.",
       "why": "because a digest of newer bytes cannot witness the version named by the file row",
       "file": "spec/40-connector.md",
-      "line": 593,
+      "line": 603,
       "group": "drive",
       "scenarios": [
         "WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor."
@@ -20069,7 +20141,7 @@
       "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 595,
+      "line": 605,
       "group": "drive"
     },
     {
@@ -20081,7 +20153,7 @@
       "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
-      "line": 596,
+      "line": 606,
       "group": "drive",
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no page content row lands."
@@ -20096,7 +20168,7 @@
       "statement": "In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 598,
+      "line": 608,
       "group": "drive",
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes."
@@ -20111,7 +20183,7 @@
       "statement": "For a file over `max_file_bytes`, 64 MiB by default, the source stores a file row with a `skipped` reason naming the cap, without pages. The source reads no bytes past the cap and continues.",
       "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
       "file": "spec/40-connector.md",
-      "line": 599,
+      "line": 609,
       "group": "drive",
       "scenarios": [
         "WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap."
@@ -20126,7 +20198,7 @@
       "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
       "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
       "file": "spec/40-connector.md",
-      "line": 601,
+      "line": 611,
       "group": "drive"
     },
     {
@@ -20138,7 +20210,7 @@
       "statement": "A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.",
       "why": "because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file",
       "file": "spec/40-connector.md",
-      "line": 603,
+      "line": 613,
       "group": "drive"
     },
     {
@@ -20150,7 +20222,7 @@
       "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 605,
+      "line": 615,
       "group": "drive"
     },
     {
@@ -20162,7 +20234,7 @@
       "statement": "The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 606,
+      "line": 616,
       "group": "drive",
       "scenarios": [
         "WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files."
@@ -20177,7 +20249,7 @@
       "statement": "A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.",
       "why": "A-connector#drive-capture-binds",
       "file": "spec/40-connector.md",
-      "line": 608,
+      "line": 618,
       "group": "drive",
       "scenarios": [
         "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.",
@@ -20193,7 +20265,7 @@
       "statement": "For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.",
       "why": "because a changed version needs a fresh byte witness even when the file id stays stable",
       "file": "spec/40-connector.md",
-      "line": 610,
+      "line": 620,
       "group": "drive",
       "scenarios": [
         "WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest."
@@ -20208,7 +20280,7 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 612,
+      "line": 622,
       "group": "drive"
     },
     {
@@ -20220,7 +20292,7 @@
       "statement": "A selected-root walk shares {{connector.source.page-cap}} across roots; reaching it with a pending folder or page token raises `ConnectorDriveListingExceeded`, naming the folder and committing no selection removals.",
       "why": "because an incomplete listing cannot prove a file left the selected trees",
       "file": "spec/40-connector.md",
-      "line": 613,
+      "line": 623,
       "group": "drive",
       "scenarios": [
         "WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone."
@@ -20235,7 +20307,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 615,
+      "line": 625,
       "group": "drive"
     },
     {
@@ -20247,7 +20319,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 616,
+      "line": 626,
       "group": "drive"
     },
     {
@@ -20259,7 +20331,7 @@
       "statement": "Before any request, the source checks that `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold exactly one `${secret://<name>}` reference and nothing else.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 618,
+      "line": 628,
       "group": "drive"
     },
     {
@@ -20271,7 +20343,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 619,
+      "line": 629,
       "group": "drive"
     },
     {
@@ -37552,6 +37624,10 @@
       "run.land.dead-letter"
     ],
     [
+      "connector.source.report-origin",
+      "connector.attach.weakened-hop"
+    ],
+    [
       "connector.source.receive-body",
       "run.land.unreadable-input"
     ],
@@ -38668,6 +38744,96 @@
       ],
       "clauses": [
         "run.land.session-input"
+      ]
+    },
+    "contextful_connectors::report::ReportConfig": {
+      "file": "crates/contextful-connectors/src/report.rs",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "partitions"
+        },
+        {
+          "name": "metrics"
+        },
+        {
+          "name": "estimated",
+          "doc": "Per metric, the grains the vendor estimates rather than computes."
+        },
+        {
+          "name": "entity"
+        },
+        {
+          "name": "date"
+        },
+        {
+          "name": "order_by"
+        },
+        {
+          "name": "pages_per_read"
+        },
+        {
+          "name": "poll_budget"
+        },
+        {
+          "name": "lookback_days"
+        },
+        {
+          "name": "window_days"
+        },
+        {
+          "name": "throttle_codes"
+        },
+        {
+          "name": "rows"
+        },
+        {
+          "name": "more"
+        },
+        {
+          "name": "cursor"
+        },
+        {
+          "name": "next"
+        },
+        {
+          "name": "cursor_param"
+        },
+        {
+          "name": "error_code"
+        }
+      ],
+      "clauses": [
+        "connector.source.report-declaration"
+      ]
+    },
+    "contextful_connectors::report::declared::VendorDeclaration": {
+      "file": "crates/contextful-connectors/src/report/declared.rs",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "headers",
+          "doc": "Header name to value template, hydrated onto every request."
+        },
+        {
+          "name": "create",
+          "doc": "The request that creates a report run for one partition and window."
+        },
+        {
+          "name": "poll",
+          "doc": "The request that reads a run's state."
+        },
+        {
+          "name": "state",
+          "doc": "Where a poll's answer holds the run's state, and the values naming each outcome."
+        },
+        {
+          "name": "result",
+          "doc": "Where a ready run's rows are read."
+        }
+      ],
+      "clauses": [
+        "connector.source.report-declaration"
       ]
     },
     "contextful_core::connector::manifest::Raw": {
@@ -42399,6 +42565,10 @@
           "ConnectorRemoteUnpinned": {
             "clause": "connector.package.remote-unpinned",
             "gloss": "A remote artifact reference with no 64-hex content pin."
+          },
+          "ConnectorReportFailed": {
+            "clause": "connector.source.report-failed",
+            "gloss": "A report run the vendor answered with a declared failed state."
           },
           "ConnectorScopeExceeded": {
             "clause": "connector.declare-capability.scope-exceeded",
@@ -56069,8 +56239,22 @@
     "connector.source.partition-isolation": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_fire_creates_polls_and_lands_a_report_with_a_watermark_per_partition",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-connectors/tests/integration/report.rs",
         "name": "a_retryable_failure_on_one_partition_keeps_the_pages_others_drained",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-connectors/tests/integration/report_declared.rs",
+        "name": "an_unreachable_vendor_holds_its_partition_as_a_retryable_failure",
         "verdict": "performed",
         "proved": false
       }
@@ -56170,6 +56354,22 @@
         "proved": false
       }
     ],
+    "connector.source.report-declaration": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_fire_creates_polls_and_lands_a_report_with_a_watermark_per_partition",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_malformed_report_declaration_fails_validation_naming_its_key",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.source.report-event-time": [
       {
         "kind": "test",
@@ -56179,7 +56379,23 @@
         "proved": false
       }
     ],
+    "connector.source.report-failed": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_failed_report_state_fails_the_fire_and_the_next_fire_creates_a_new_report",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.source.report-id-commit": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_report_still_building_ends_the_fire_and_the_next_fire_polls_its_id",
+        "verdict": "performed",
+        "proved": false
+      },
       {
         "kind": "test",
         "path": "crates/contextful-connectors/tests/integration/report.rs",
@@ -56188,7 +56404,64 @@
         "proved": false
       }
     ],
+    "connector.source.report-origin": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-connectors/tests/integration/report_declared.rs",
+        "name": "a_rows_url_the_vendor_names_off_the_create_origin_refuses",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.source.report-poll": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_fire_creates_polls_and_lands_a_report_with_a_watermark_per_partition",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.source.report-result": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_fire_creates_polls_and_lands_a_report_with_a_watermark_per_partition",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_report_still_building_ends_the_fire_and_the_next_fire_polls_its_id",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "connector.source.report-templates": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_fire_creates_polls_and_lands_a_report_with_a_watermark_per_partition",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_malformed_report_declaration_fails_validation_naming_its_key",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "connector.source.report-watermark": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/report.rs",
+        "name": "a_fire_creates_polls_and_lands_a_report_with_a_watermark_per_partition",
+        "verdict": "performed",
+        "proved": false
+      },
       {
         "kind": "test",
         "path": "crates/contextful-connectors/tests/integration/report.rs",
