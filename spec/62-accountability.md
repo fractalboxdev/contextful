@@ -163,6 +163,12 @@ Spans leave the process over OTLP only when an endpoint is configured.
   *because a managed queue's operator reads every message, and a trace needs nothing beyond its two W3C carriers*
 - `route-content` — A route span records the route template and never a path segment's value, the query or the body.
   *because a path segment can hold an awakeable token or a batch key, which no collector is granted*
+- `job-carrier` — An import or apply under a trace context, from `TRACEPARENT` and `TRACESTATE` or the `/control/apply` route span, records its W3C `traceparent` and `tracestate` alone with each job it adds or changes; an unchanged job keeps its carrier.
+  *because a job's submitter is the apply that set its declaration, and the two W3C carriers are all a fire needs to reach that span*
+- `job-link` — A fire of an applied version's job exports its execution's run span with one span link to the carrier that version records with the job; a job recorded with none links nothing.
+  *because a link joins a fire to its submitter's trace without placing the fire's duration inside it*
+- `scheduled-trace` — Serve dispatches each scheduled job fire without `TRACEPARENT` or `TRACESTATE`, so every fire starts a fresh trace that only {{disclosure.record.job-link}} joins to its submitter.
+  *because one trace holding every fire of a recurring job grows without bound past a collector's trace window, while a fresh trace per fire keeps each fire whole*
 
 ## explain
 

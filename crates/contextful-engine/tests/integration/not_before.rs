@@ -204,6 +204,7 @@ fn restarted(rig: &Rig) -> Engine {
         emitter: None,
         worlds: Vec::new(),
         stages: None,
+        trace_id: None,
     }
 }
 

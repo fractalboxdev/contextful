@@ -35,6 +35,7 @@ use contextful_core::run::drive::StoreInput;
 use contextful_core::run::sweep::stamp_origin;
 use contextful_core::time::Instant;
 use contextful_engine::RunSpec;
+use crate::telemetry::RunTrace;
 use contextful_policy::enforce::session::Request;
 use std::path::PathBuf;
 
@@ -124,14 +125,17 @@ fn output_plan(job: &str, table: &str, driven: &StoreDriven) -> Result<Plan> {
     Ok(plan)
 }
 
-/// Raw and prepared outputs share each declared table's attempt and status accounting.
-fn land_tables(driven: &StoreDriven, name: &str, run_id: &str, site_id: &str, mut run: impl FnMut(&str, &RunSpec) -> Result<contextful_core::run::record::RunRow, Failure>) -> Result<Landed, Failure> {
+/// Raw and prepared outputs share each declared table's attempt and status accounting. Each
+/// table run's span is a child of the fire's execution span (`run.record.job-trace`).
+fn land_tables(driven: &StoreDriven, name: &str, run_id: &str, site_id: &str, trace: &RunTrace, mut run: impl FnMut(&str, &RunSpec) -> Result<contextful_core::run::record::RunRow, Failure>) -> Result<Landed, Failure> {
     let mut total = Landed::default();
     for table in &driven.tables {
         let plan = output_plan(name, table, driven).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
         let connector = plan.connector_pin(&plan.content_hash);
-        let spec = RunSpec { plan, connector, run_id:format!("{run_id}.{table}"), site_id:site_id.into(), pid:std::process::id(), boot_id:boot_id(), trace_id:None };
+        let table_trace = trace.child();
+        let spec = RunSpec { plan, connector, run_id:format!("{run_id}.{table}"), site_id:site_id.into(), pid:std::process::id(), boot_id:boot_id(), trace_id:Some(table_trace.trace_id()) };
         let row = run(table, &spec)?;
+        table_trace.close(&row);
         if row.status != RunStatus::Success {
             return Err(Failure::new(row.error_kind.unwrap_or(FailureTag::Storage), format!("table `{table}` closed {} in run `{}`: {}", row.status, row.run_id, row.error_message.unwrap_or_default())));
         }
@@ -182,8 +186,19 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 let into = job.target.as_deref().context("a validated synthesize job names its target")?;
                 return crate::memory::fire_synthesis(&l, &project, &admit, synthesis, into);
             }
+            // The fire continues its caller's trace, or starts a fresh one, and links the
+            // carrier its applied version records with the job (`run.record.job-trace`,
+            // `disclosure.record.job-link`).
+            let submitter = match applied {
+                Some(version) => crate::cadence::job_carrier(&l.project, &text, version, &name).unwrap_or_else(|e| {
+                    eprintln!("warning: job `{name}` links no submitter, its recorded trace carrier is unreadable: {e:#}");
+                    None
+                }),
+                None => None,
+            };
+            let trace = RunTrace::open().linked(submitter.as_ref().and_then(contextful_core::trace::Carrier::context));
             if let JobKind::Plan(declared) = &job.kind {
-                return fire_plan(&l, &project, &text, &job.name, declared, run_id, site_id, site_id_env);
+                return fire_plan(&l, &project, &text, &job.name, declared, run_id, site_id, site_id_env, &trace);
             }
             if let JobKind::Maintenance(kind) = &job.kind {
                 job.refuse_undispatched()?;
@@ -255,7 +270,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let decls = effective.tables.clone();
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let mut dest = StoreDestination { store, decls, node, author: None, normalize: None, relational_parts: Default::default(), schema_diffs: Vec::new() };
-            let engine = &w.engine;
+            let traced = trace.engine(&w.engine);
+            let engine = &traced;
             let drive = Drive {
                 job: name.clone(), input: driven.input.clone(), body: body.as_ref(), max_in_flight: driven.max_in_flight,
                 run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: if delegated { Schedule::single_attempt() } else { Schedule::default() }, poll: PARKED_POLL,
@@ -286,13 +302,14 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                             stamp_origin(decl, rows, &origin);
                         }
                     }
-                    land_tables(driven, &name, origin_run, &site_id, |table, spec| {
+                    land_tables(driven, &name, origin_run, &site_id, &trace, |table, spec| {
                         dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                         let mut source: Box<dyn Source> = Box::new(Staged(stamped.get(table).cloned().unwrap_or_default(), 0));
                         engine.run_with(spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))
                     })
                 };
                 let swept = engine.sweep(&fire, &mut read_origin, &mut land_origin)?;
+                trace.close(&swept.sweep);
                 // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
                 crate::sync::settle_fire(&l, w.clock.now())?;
                 for row in &swept.origins {
@@ -318,7 +335,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 };
                 let report = if let Some(plan) = &recorded_plan {
                     engine.drive_items_recorded_with_completion(&drive, policy, plan, &effects, &mut read, &mut |id, emitted, owner| {
-                        land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, |table, spec| {
+                        land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, &trace, |table, spec| {
                             dest.normalize = plan.effects().find(|effect| effect.table == table).and_then(|effect| effect.normalize);
                             engine.run_emissions(spec, owner, emitted.get(table).map(Vec::as_slice).unwrap_or_default(), &mut dest).map_err(engine_error)
                         })
@@ -328,13 +345,16 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                         if emitted.keys().any(|table| !driven.tables.contains(table)) {
                             return Err(Failure::deterministic(FailureTag::Permanent, "isolated body emitted an undeclared table"));
                         }
-                        land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, |table, spec| {
+                        land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, &trace, |table, spec| {
                             dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                             let mut source = Staged(emitted.get(table).cloned().unwrap_or_default(), 0);
                             engine.run_body_rows(spec, owner, &mut source, &mut dest).map_err(engine_error)
                         })
                     },&mut complete)?
                 };
+                if let Ok(Some(row)) = engine.catalog.run(&run_id) {
+                    trace.close(&row);
+                }
                 // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
                 crate::sync::settle_fire(&l, w.clock.now())?;
                 let (mut successful, mut failed, mut parked, mut deferred, mut waiting) = (0, 0, 0, 0, 0);
@@ -357,7 +377,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             }
             let row = if let Some(plan) = &recorded_plan {
                 let mut land = |emitted: &contextful_core::run::drive::PreparedEmitted, owner: &contextful_engine::drive::BodyOwner| -> Result<Landed, Failure> {
-                    let landed = land_tables(driven, &name, &run_id, &site_id, |table, spec| {
+                    let landed = land_tables(driven, &name, &run_id, &site_id, &trace, |table, spec| {
                         dest.normalize = plan.effects().find(|effect| effect.table == table).and_then(|effect| effect.normalize);
                         engine.run_emissions(spec, owner, emitted.get(table).map(Vec::as_slice).unwrap_or_default(), &mut dest).map_err(engine_error)
                     })?;
@@ -373,7 +393,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 if let Some(table) = emitted.keys().find(|t| !driven.tables.contains(t)) {
                     return Err(Failure::deterministic(FailureTag::Permanent, format!("body `{}` emitted rows for `{table}`, which job `{name}` does not declare in `tables`", driven.input.body)));
                 }
-                let landed = land_tables(driven, &name, &run_id, &site_id, |table, spec| {
+                let landed = land_tables(driven, &name, &run_id, &site_id, &trace, |table, spec| {
                     dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                     let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default(), 0));
                     engine.run_with(spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))
@@ -385,8 +405,9 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 Ok(landed)
             };
 
-            w.engine.drive(&drive, &mut read, &mut land)?
+            engine.drive(&drive, &mut read, &mut land)?
             };
+            trace.close(&row);
             // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
             crate::sync::settle_fire(&l, w.clock.now())?;
             let input = row.input.clone().map(|i| i.rows).unwrap_or_default();
@@ -413,7 +434,7 @@ fn compile_plan(declaration: &std::path::Path, declared: &PlanJob) -> Result<Nod
 #[allow(clippy::too_many_arguments)]
 fn fire_plan(
     l: &crate::project::Located, project: &ProjectArgs, text: &str, name: &str, declared: &PlanJob,
-    run_id: Option<String>, site_id: Option<String>, site_id_env: Option<String>,
+    run_id: Option<String>, site_id: Option<String>, site_id_env: Option<String>, trace: &RunTrace,
 ) -> Result<()> {
     let plan = compile_plan(&l.declaration, declared)?;
     let site_id = site_id_for(text, &l.declaration, site_id, site_id_env)?;
@@ -424,7 +445,8 @@ fn fire_plan(
     let run_id = run_id.unwrap_or_else(|| format!("plan-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]));
     let cwd = l.declaration.parent().filter(|d| !d.as_os_str().is_empty()).map(std::path::Path::to_path_buf).unwrap_or_else(|| ".".into());
     let fire = PlanFire { job: name.to_string(), plan: &plan, run_id, site_id, pid: std::process::id(), boot_id: boot_id(), poll: PARKED_POLL };
-    let row = w.engine.run_plan(&fire, &CommandConnectors { cwd })?;
+    let row = trace.engine(&w.engine).run_plan(&fire, &CommandConnectors { cwd })?;
+    trace.close(&row);
     // The fire's runs close as `pipeline run`'s do (`store.push.after-run`).
     crate::sync::settle_fire(l, w.clock.now())?;
     if row.status != RunStatus::Success {

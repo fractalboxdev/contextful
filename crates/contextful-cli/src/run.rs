@@ -219,7 +219,7 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let catalog: Arc<dyn Catalog + Send + Sync> = Arc::new(if disposable { recorded.marking_unpushed() } else { recorded });
     let journal = Journal::over(rows, blobs);
     let registry = Registry::over(awakeables.clone(), journal.clone());
-    Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds(), stages: None }, registry, clock })
+    Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds(), stages: None, trace_id: None }, registry, clock })
 }
 
 fn remote_run_stores(remote: &crate::storage::Remote) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {

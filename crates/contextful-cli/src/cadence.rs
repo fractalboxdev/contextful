@@ -32,6 +32,7 @@ use contextful_core::surface::edit::check_document;
 use contextful_core::surface::external::{bind_externals, parse_externals, External, Known, Ref};
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
+use contextful_core::trace::{Carrier, TraceContext};
 use contextful_snapshot::{ControlError, Draft, SnapshotDir};
 use contextful_engine::scheduler::{Beat, Dispatch, Entry, Fired, LeaseState, Scheduler};
 use contextful_engine::worker::{Relay, WorkerDispatch};
@@ -55,6 +56,10 @@ use url::Url;
 
 /// Claims an apply retries after losing the pointer's compare-and-swap before it gives up.
 const CLAIM_ATTEMPTS: usize = 8;
+
+/// The process carriers of the caller's trace context (`disclosure.record.trace-carrier`).
+const TRACEPARENT_VAR: &str = "TRACEPARENT";
+const TRACESTATE_VAR: &str = "TRACESTATE";
 
 /// Wall clock one control-URL read may take.
 const CONTROL_READ_TIMEOUT: Duration = Duration::from_secs(10);
@@ -754,6 +759,65 @@ fn applied_jobs(source: &Source, version: Option<u64>, specs: &BTreeMap<String, 
     version.map(|v| job_blocks(&source.read(v)?, None, specs)).transpose().map(Option::unwrap_or_default)
 }
 
+/// The file beside applied version `version` holding each job's recorded trace carriers.
+fn carrier_file(version: u64) -> String {
+    format!("trace@v{version}.json")
+}
+
+/// The trace carriers recorded with applied version `version`'s jobs, by job name.
+fn recorded_carriers(root: &Path, version: u64) -> Result<BTreeMap<String, Carrier>> {
+    let path = root.join(carrier_file(version));
+    match std::fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).with_context(|| path.display().to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+        Err(e) => Err(anyhow::anyhow!("{}: {e}", path.display())),
+    }
+}
+
+/// Record `carrier`'s W3C `traceparent` and `tracestate` alone with each job applied version
+/// `version` adds or changes over `prior`; a job it leaves unchanged keeps the carrier `prior`
+/// recorded (`disclosure.record.job-carrier`).
+fn record_carriers(snaps: &SnapshotDir, version: u64, prior: Option<u64>, carrier: Option<&TraceContext>) -> Result<()> {
+    let blocks = |v: u64| -> Result<BTreeMap<String, String>> {
+        let document: toml::Value = toml::from_str(&snaps.read(v)?)?;
+        let jobs = document.get("job").and_then(toml::Value::as_array).cloned().unwrap_or_default();
+        Ok(jobs.iter().filter_map(|job| Some((job.get("name")?.as_str()?.to_string(), job.to_string()))).collect())
+    };
+    let (before, kept) = match prior {
+        Some(p) => (blocks(p)?, recorded_carriers(snaps.root(), p)?),
+        None => Default::default(),
+    };
+    let fresh = carrier.map(Carrier::of);
+    let carriers: BTreeMap<String, Carrier> = blocks(version)?
+        .into_iter()
+        .filter_map(|(name, block)| {
+            let carrier = if before.get(&name) == Some(&block) { kept.get(&name).cloned() } else { fresh.clone() };
+            carrier.map(|c| (name, c))
+        })
+        .collect();
+    if carriers.is_empty() {
+        return Ok(());
+    }
+    let path = snaps.root().join(carrier_file(version));
+    std::fs::write(&path, serde_json::to_vec(&carriers)?).with_context(|| path.display().to_string())
+}
+
+/// [`record_carriers`] after a claim: the claim stands whatever the record meets.
+fn record_after_claim(snaps: &SnapshotDir, version: u64, prior: Option<u64>, carrier: Option<&TraceContext>) {
+    if let Err(e) = record_carriers(snaps, version, prior, carrier) {
+        eprintln!("warning: v{version} is applied, and recording its jobs' trace carriers failed: {e:#}");
+    }
+}
+
+/// The carrier recorded with job `job` in applied version `version`, read from a local
+/// snapshot directory; a control URL records none (`disclosure.record.job-link`).
+pub(crate) fn job_carrier(project: &Project, text: &str, version: u64, job: &str) -> Result<Option<Carrier>> {
+    match control_config(text, project)?.source {
+        Source::Dir(d) => Ok(recorded_carriers(d.root(), version)?.remove(job)),
+        Source::Url(_) => Ok(None),
+    }
+}
+
 /// A pipeline-only editor refuses a store whose applied snapshot carries jobs.
 fn refuse_job_edit(control: &ControlConfig) -> Result<()> {
     let (version, specs) = applied(&control.source)?;
@@ -935,7 +999,8 @@ pub(crate) fn control_owner(project: &ProjectArgs, declaration: Option<PathBuf>)
 }
 
 /// Revalidate the saved draft and claim it only at the version the editor read.
-pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, carrier: Option<&TraceContext>, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
@@ -953,16 +1018,15 @@ pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, e
     if owner.root() != snapshots.root() || fresh.declaration != initial.declaration {
         return Err(SurfaceError::ConfigOwnerUnconfigured("the store's control owner changed during validation".into()).into());
     }
-    match SyncAttestation::for_authority(&fresh, authority.clone(), admit, None)? {
-        Some(attestation) => {
-            owner.claim_draft_attested_guarded(&draft, |next, previous| {
-                let prior_snapshot = owner.read(expected)?;
-                let parent = previous.map(|receipt| (receipt, expected, prior_snapshot.as_str()));
-                attestation.receipt(&fresh.project.name, next, parent, &draft.document)
-            }, boundary)?;
-        }
-        None => { owner.claim_draft_guarded(&draft, boundary)?; }
-    }
+    let version = match SyncAttestation::for_authority(&fresh, authority.clone(), admit, None)? {
+        Some(attestation) => owner.claim_draft_attested_guarded(&draft, |next, previous| {
+            let prior_snapshot = owner.read(expected)?;
+            let parent = previous.map(|receipt| (receipt, expected, prior_snapshot.as_str()));
+            attestation.receipt(&fresh.project.name, next, parent, &draft.document)
+        }, boundary)?,
+        None => owner.claim_draft_guarded(&draft, boundary)?,
+    };
+    record_after_claim(owner, version, Some(expected), carrier);
     Ok(())
 }
 
@@ -1169,6 +1233,7 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
         )?,
         None => snapshots.import(&text)?,
     };
+    record_after_claim(snapshots, v, None, crate::telemetry::caller().as_ref());
     for id in declared.keys() {
         println!("+ {id}");
     }
@@ -1252,6 +1317,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
                     println!("{} {}", sigil(c.action), c.id);
                 }
                 println!("applied v{v}");
+                record_after_claim(snapshots, v, version, crate::telemetry::caller().as_ref());
                 // The claim stands whatever retirement meets; the fire's refusal still names the verb.
                 if let Err(e) = crate::job::retire_superseded(&l, project, &declaration_text, v, bodies) {
                     eprintln!("warning: v{v} is applied, and retiring its superseded executions failed: {e:#}");
@@ -1538,7 +1604,9 @@ impl ChildDispatch {
         })().map_err(|e| ChildStepError::Infrastructure(format!("{id}: reading applied dispatch: {e:#}")))?;
         match selected {
             Some((job, located)) => {
-                cmd.args(["job", "fire", &job.name]);
+                // A scheduled fire starts a fresh trace, which only its link joins to the
+                // job's submitter (`disclosure.record.scheduled-trace`).
+                cmd.args(["job", "fire", &job.name]).env_remove(TRACEPARENT_VAR).env_remove(TRACESTATE_VAR);
                 if let Some((seed, root)) = self.issuer.as_ref().filter(|_| admits_credential(&job.kind)) {
                     let credential = fire_credential(&located, root, seed, &job).map_err(|e| ChildStepError::Infrastructure(format!("{id}: minting the fire credential: {e:#}")))?;
                     // The child admits under the pin and audience it was minted with (`surface.dispatch.fire-credential-pins`).

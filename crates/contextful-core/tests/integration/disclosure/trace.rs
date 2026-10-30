@@ -73,3 +73,18 @@ fn a_list_attribute_becomes_one_otlp_array_of_strings() {
         { "key": "contextful.tables", "value": { "arrayValue": { "values": [{ "stringValue": "a/b" }, { "stringValue": "c,d" }] } } },
     ]));
 }
+
+/// A span linking another trace's span exports one OTLP link naming that trace, span and trace state; a span with no
+/// link exports none.
+#[test]
+fn a_linked_span_exports_one_otlp_link_to_the_linked_span() {
+    let submitter = TraceContext::parse(&format!("00-{TRACE}-{PARENT}-01"), Some("vendor=1")).unwrap();
+    let fire = TraceContext::root([3; 16], [4; 8]);
+    let span = Span::at(&fire, None, "contextful.run", SpanKind::Internal).linked(&submitter);
+    let out = otlp_traces("svc", &[span])["resourceSpans"][0]["scopeSpans"][0]["spans"][0].clone();
+    assert_eq!(out["traceId"], json!("03030303030303030303030303030303"));
+    assert!(out.get("parentSpanId").is_none());
+    assert_eq!(out["links"], json!([{ "traceId": TRACE, "spanId": PARENT, "traceState": "vendor=1" }]));
+    let unlinked = Span::at(&fire, None, "contextful.run", SpanKind::Internal);
+    assert!(otlp_traces("svc", &[unlinked])["resourceSpans"][0]["scopeSpans"][0]["spans"][0].get("links").is_none());
+}

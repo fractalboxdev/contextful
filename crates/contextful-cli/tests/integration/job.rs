@@ -8,7 +8,7 @@ use contextful_core::run::journal::EntryKey;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const AUD: &str = "contextful://acme-research";
+pub(super) const AUD: &str = "contextful://acme-research";
 
 // spec: run.items.completion@080e93f0
 #[test]
@@ -86,7 +86,7 @@ fn cf(dir: &Path, args: &[&str]) -> Output {
 }
 
 /// The embedding binary under `examples/store_driven.rs`, built on first request.
-fn host_binary() -> PathBuf {
+pub(super) fn host_binary() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
     BUILT.call_once(|| {
         let mut build = crate::nested_cargo();
@@ -114,7 +114,7 @@ fn err(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).to_string()
 }
 
-fn job(extra: &str) -> String {
+pub(super) fn job(extra: &str) -> String {
     format!(
         "[[job]]\nname = \"score-documents\"\nkind = \"store-driven\"\nbody = \"score\"\n\
          statement = \"SELECT doc_id, body FROM documents ORDER BY doc_id\"\n\
@@ -124,7 +124,7 @@ fn job(extra: &str) -> String {
 
 /// A project with three documents landed at 00:00:00 and a fourth at 00:00:20, an issuer
 /// key, and a credential reading `documents`.
-fn project(manifest: &str) -> (tempfile::TempDir, String, String) {
+pub(super) fn project(manifest: &str) -> (tempfile::TempDir, String, String) {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path();
     let store = p.join(".contextful/context/research");

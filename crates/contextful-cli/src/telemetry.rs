@@ -44,6 +44,11 @@ fn telemetry() -> &'static Telemetry {
     })
 }
 
+/// The caller's context from the `TRACEPARENT` and `TRACESTATE` carriers, when well-formed.
+pub fn caller() -> Option<TraceContext> {
+    telemetry().caller.clone()
+}
+
 /// Where spans go, when an exporter is configured.
 pub fn sink() -> Option<Arc<dyn SpanSink>> {
     telemetry().exporter.clone().map(|e| e as Arc<dyn SpanSink>)
@@ -88,6 +93,9 @@ impl SpanSink for Discard {
 pub struct RunTrace {
     context: TraceContext,
     parent: Option<[u8; 8]>,
+    /// The submitter's span the run's span links without parenting under it
+    /// (`disclosure.record.job-link`).
+    link: Option<TraceContext>,
 }
 
 impl RunTrace {
@@ -99,9 +107,20 @@ impl RunTrace {
     /// or in a fresh trace when none does (`disclosure.record.route-parent`).
     pub fn under(caller: Option<&TraceContext>) -> RunTrace {
         match caller {
-            Some(caller) => RunTrace { context: caller.child(span_id()), parent: Some(caller.span_id) },
-            None => RunTrace { context: fresh_trace(), parent: None },
+            Some(caller) => RunTrace { context: caller.child(span_id()), parent: Some(caller.span_id), link: None },
+            None => RunTrace { context: fresh_trace(), parent: None, link: None },
         }
+    }
+
+    /// The run's span linking `submitter`'s span, when one is recorded.
+    pub fn linked(self, submitter: Option<TraceContext>) -> RunTrace {
+        RunTrace { link: submitter, ..self }
+    }
+
+    /// A run's span position as a child of this run's span: a job fire's table run under
+    /// its execution (`run.record.job-trace`).
+    pub fn child(&self) -> RunTrace {
+        RunTrace::under(Some(&self.context))
     }
 
     /// Where the run reports its stages: child spans of the run's span, when an exporter is
@@ -112,10 +131,11 @@ impl RunTrace {
         sink().map(|sink| Arc::new(StageSpans { run: self.context.clone(), sink }) as Arc<dyn StageSink>)
     }
 
-    /// `engine` reporting this run's stages as child spans of its span.
+    /// `engine` reporting this run's stages as child spans of its span, and recording this
+    /// run's trace id on each run it opens without one.
     #[cfg(feature = "data-plane")]
     pub fn engine<J: Clone, B: Clone>(&self, engine: &contextful_engine::Engine<J, B>) -> contextful_engine::Engine<J, B> {
-        contextful_engine::Engine { stages: self.stages(), ..engine.clone() }
+        contextful_engine::Engine { stages: self.stages(), trace_id: Some(self.trace_id()), ..engine.clone() }
     }
 
     /// The trace id both run rows carry.
@@ -133,6 +153,9 @@ impl RunTrace {
             .with("contextful.status", row.status.to_string())
             .with("contextful.rows", row.rows)
             .with("contextful.bytes", row.bytes);
+        if let Some(submitter) = &self.link {
+            span = span.linked(submitter);
+        }
         if let Some(kind) = row.error_kind {
             span = span.with("error.type", kind.name());
             span.error = Some(kind.name().to_string());

@@ -12467,6 +12467,17 @@
       "line": 533
     },
     {
+      "id": "run.record.job-trace",
+      "contract": "run",
+      "operation": "record",
+      "subject": "job-trace",
+      "kind": "behavior",
+      "statement": "A job fire's execution and each output table run take the trace {{run.record.trace-context}} names from the fire's caller, and each table run's span is a child of the execution's run span.",
+      "why": "because a fire's table runs are its execution's work, and a table run rooted apart from it hides what the fire landed",
+      "file": "spec/30-run.md",
+      "line": 534
+    },
+    {
       "id": "run.record.status-set",
       "contract": "run",
       "operation": "record",
@@ -12475,7 +12486,7 @@
       "statement": "A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.",
       "why": "because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading",
       "file": "spec/30-run.md",
-      "line": 534
+      "line": 536
     },
     {
       "id": "run.record.row-at-open",
@@ -12486,7 +12497,7 @@
       "statement": "The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 536
+      "line": 538
     },
     {
       "id": "run.record.record-folds",
@@ -12497,7 +12508,7 @@
       "statement": "An append to {{run.record.reserved-table}} runs a pass on it once {{store.fold.triggers}} fires; a pass that fails leaves the row appended and the append succeeding, and the next append retries it.",
       "why": "A-run#run-record-folds",
       "file": "spec/30-run.md",
-      "line": 537
+      "line": 539
     },
     {
       "id": "run.record.rebuild-restores-history",
@@ -12508,7 +12519,7 @@
       "statement": "A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.",
       "why": "because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs",
       "file": "spec/30-run.md",
-      "line": 539
+      "line": 541
     },
     {
       "id": "run.record.time-travel",
@@ -12519,7 +12530,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 541
+      "line": 543
     },
     {
       "id": "run.record.owner-lease",
@@ -12530,7 +12541,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 542
+      "line": 544
     },
     {
       "id": "run.record.orphan-reap",
@@ -12541,7 +12552,7 @@
       "statement": "Startup marks only non-terminal rows with expired owner leases as `partial_failure`. Startup leaves rows held by live processes unchanged.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 544
+      "line": 546
     },
     {
       "id": "run.record.writing-site",
@@ -12552,7 +12563,7 @@
       "statement": "Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row names the site that wrote it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 545
+      "line": 547
     },
     {
       "id": "run.record.site-id-length",
@@ -12563,7 +12574,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 546
+      "line": 548
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -12574,7 +12585,7 @@
       "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 548
+      "line": 550
     },
     {
       "id": "run.record.history-window",
@@ -12585,7 +12596,7 @@
       "statement": "History requests specify an inclusive start-instant lower bound and row ceiling, returning newest first. A SQL catalog applies the bound in `WHERE` over an indexed start column and the ceiling as `LIMIT`.",
       "why": "because filtering after the read scans every run a pipeline ever recorded, so a describe call grows with history rather than with its window",
       "file": "spec/30-run.md",
-      "line": 550
+      "line": 552
     },
     {
       "id": "run.record.describe-window",
@@ -12596,7 +12607,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 552
+      "line": 554
     },
     {
       "id": "run.record.bound-spelling",
@@ -12607,7 +12618,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 553
+      "line": 555
     },
     {
       "id": "run.record.truncation-flag",
@@ -12618,7 +12629,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned; an empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 555
+      "line": 557
     },
     {
       "id": "run.record.history-export",
@@ -12629,7 +12640,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 556
+      "line": 558
     },
     {
       "id": "run.record.export-ceiling",
@@ -12640,7 +12651,7 @@
       "statement": "The export returns 500 rows by default and clamps at 5000 rows. Each pipeline's window takes the full ceiling; the export clips the merged result once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 557
+      "line": 559
     },
     {
       "id": "run.record.error-cap",
@@ -12651,7 +12662,7 @@
       "statement": "The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an ellipsis marker. Every surface serves that projection.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 558
+      "line": 560
     },
     {
       "id": "run.record.failure-publishes",
@@ -12662,7 +12673,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 559
+      "line": 561
     },
     {
       "id": "run.record.skipped-count",
@@ -12673,7 +12684,7 @@
       "statement": "The run row counts rows and bytes at the destination and sums each pull's optional `skipped` count of inputs the source declined to land whole, replayed pulls included.",
       "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
       "file": "spec/30-run.md",
-      "line": 560
+      "line": 562
     },
     {
       "id": "run.record.sweep-bounds",
@@ -12684,7 +12695,7 @@
       "statement": "A store-driven run's row carries its input as {{type:contextful_core::run::record::InputBounds}}: the resolved `as_of`, snapshot ids and row count, and for a sweep origin the bounds it read under, the sweep id and the origin.",
       "why": "because a score reported per origin is auditable only when each run names the bounds it read under",
       "file": "spec/30-run.md",
-      "line": 562
+      "line": 564
     },
     {
       "id": "run.record.plan-identity",
@@ -12695,7 +12706,7 @@
       "statement": "A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 564
+      "line": 566
     },
     {
       "id": "run.record.schema-diff-home",
@@ -12706,7 +12717,7 @@
       "statement": "A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.",
       "why": "A-run#table-commit-owns",
       "file": "spec/30-run.md",
-      "line": 565,
+      "line": 567,
       "scenarios": [
         "WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none."
       ]
@@ -12720,7 +12731,7 @@
       "statement": "Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.",
       "why": "A-run#table-commit-owns",
       "file": "spec/30-run.md",
-      "line": 567
+      "line": 569
     },
     {
       "id": "run.project.best-effort",
@@ -26520,6 +26531,42 @@
       "group": "telemetry"
     },
     {
+      "id": "disclosure.record.job-carrier",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "job-carrier",
+      "kind": "behavior",
+      "statement": "An import or apply under a trace context, from `TRACEPARENT` and `TRACESTATE` or the `/control/apply` route span, records its W3C `traceparent` and `tracestate` alone with each job it adds or changes; an unchanged job keeps its carrier.",
+      "why": "because a job's submitter is the apply that set its declaration, and the two W3C carriers are all a fire needs to reach that span",
+      "file": "spec/62-accountability.md",
+      "line": 166,
+      "group": "telemetry"
+    },
+    {
+      "id": "disclosure.record.job-link",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "job-link",
+      "kind": "behavior",
+      "statement": "A fire of an applied version's job exports its execution's run span with one span link to the carrier that version records with the job; a job recorded with none links nothing.",
+      "why": "because a link joins a fire to its submitter's trace without placing the fire's duration inside it",
+      "file": "spec/62-accountability.md",
+      "line": 168,
+      "group": "telemetry"
+    },
+    {
+      "id": "disclosure.record.scheduled-trace",
+      "contract": "disclosure",
+      "operation": "record",
+      "subject": "scheduled-trace",
+      "kind": "behavior",
+      "statement": "Serve dispatches each scheduled job fire without `TRACEPARENT` or `TRACESTATE`, so every fire starts a fresh trace that only {{disclosure.record.job-link}} joins to its submitter.",
+      "why": "because one trace holding every fire of a recurring job grows without bound past a collector's trace window, while a fresh trace per fire keeps each fire whole",
+      "file": "spec/62-accountability.md",
+      "line": 170,
+      "group": "telemetry"
+    },
+    {
       "id": "disclosure.explain.decision",
       "contract": "disclosure",
       "operation": "explain",
@@ -26528,7 +26575,7 @@
       "statement": "`audit explain --table <t> --subject <principal>` answers `admit` when a grant the exchange policy issues for the `--role` names, else its `default_grants`, carries `read` over a pattern covering the table, and `deny` otherwise.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 171
+      "line": 177
     },
     {
       "id": "disclosure.explain.path",
@@ -26539,7 +26586,7 @@
       "statement": "A decision's path names the role or default set, the covering grant, then each step the table declares in {{authority.compose.relation-order}}; a deny's path ends at {{authority.filter-rows.default-deny}}.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 173
+      "line": 179
     },
     {
       "id": "disclosure.explain.replay",
@@ -26550,7 +26597,7 @@
       "statement": "`--window <from>..<to>` replays each chain entry naming the subject and the table whose read instant falls in the window: its seq, instant, outcome, agent and recorded `contextful.*` attributes.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 175
+      "line": 181
     },
     {
       "id": "disclosure.explain.coverage",
@@ -26561,7 +26608,7 @@
       "statement": "An explanation carries a coverage block: segments and entries verified, entries carrying no read instant, window spans the chain does not reach, and each visibility binding's source with its sweep watermark.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 177
+      "line": 183
     },
     {
       "id": "disclosure.explain.audience",
@@ -26572,7 +26619,7 @@
       "statement": "`audit explain --audience <t>` lists by name the roles whose grants read the table, whether `default_grants` do, and per `on_behalf_of` scheme the count of principals and served reads.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 179
+      "line": 185
     },
     {
       "id": "disclosure.explain.no-row",
@@ -26583,7 +26630,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about, a replayed `contextful.result.*` attribute beyond `contextful.result.rows` included, raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 181
+      "line": 187
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -26594,7 +26641,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 183
+      "line": 189
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -26605,7 +26652,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 185
+      "line": 191
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -26616,7 +26663,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 187
+      "line": 193
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -26627,7 +26674,7 @@
       "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 194
+      "line": 200
     },
     {
       "id": "disclosure.attest.merkle-root",
@@ -26638,7 +26685,7 @@
       "statement": "A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 196
+      "line": 202
     },
     {
       "id": "disclosure.attest.root-tag",
@@ -26649,7 +26696,7 @@
       "statement": "A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 198
+      "line": 204
     },
     {
       "id": "disclosure.attest.inclusion-proof",
@@ -26660,7 +26707,7 @@
       "statement": "`prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 200
+      "line": 206
     },
     {
       "id": "disclosure.attest.proof-invalid",
@@ -26671,7 +26718,7 @@
       "statement": "A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 202
+      "line": 208
     },
     {
       "id": "disclosure.attest.proof-unavailable",
@@ -26682,7 +26729,7 @@
       "statement": "Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.",
       "why": "because an open segment has no signed root yet, and a v0 root commits to no tree",
       "file": "spec/62-accountability.md",
-      "line": 204
+      "line": 210
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -26693,7 +26740,7 @@
       "statement": "`audit anchor` once it signs, and a held chain's replicator at start and every 10 min, copy each signed root the `[sync]` bucket lacks to `<prefix>/<project>/audit/roots/<segment>.json`; a failed copy waits for the next and fails no anchor, append or read.",
       "why": "A-disclosure#hash-chain-attestable",
       "file": "spec/62-accountability.md",
-      "line": 206
+      "line": 212
     },
     {
       "id": "disclosure.attest.replica-verify",
@@ -26704,7 +26751,7 @@
       "statement": "`audit verify --bucket` also holds the chain to each replicated root: a root failing its signature, closing a segment the chain does not reach, or absent or different locally breaks the chain as {{disclosure.attest.broken-chain}} does.",
       "why": "because deleting the roots, `chain.held` and the tip's signature leaves a chain no local check tells from an unanchored one",
       "file": "spec/62-accountability.md",
-      "line": 208
+      "line": 214
     },
     {
       "id": "disclosure.attest.replicate-verb",
@@ -26715,7 +26762,7 @@
       "statement": "`audit replicate` copies the roots {{disclosure.attest.root-replication}} copies, once, and prints the segments it sent.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 210
+      "line": 216
     },
     {
       "id": "disclosure.attest.lineage-elision",
@@ -26726,7 +26773,7 @@
       "statement": "A lineage attestation counts a claim's evidence references into tables the caller's session does not register as `withheld` in the `contextful.recall` block, and names no such table.",
       "why": "because naming a withheld table leaks its existence outside the caller's authority, while a count keeps the suppression explicable and never confirms a table exists",
       "file": "spec/62-accountability.md",
-      "line": 211
+      "line": 217
     },
     {
       "id": "disclosure.attest.verify-verb",
@@ -26737,7 +26784,7 @@
       "statement": "`audit verify` opens the chain read-only and prints its end when every check of {{disclosure.attest.broken-chain}} passes, each signature included under `--public-key`.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 213
+      "line": 219
     },
     {
       "id": "disclosure.attest.anchor-verb",
@@ -26748,7 +26795,7 @@
       "statement": "`audit anchor --issuer-key <seed>` signs the chain's missing roots and its tip as {{disclosure.record.unsigned-tip}} anchors them, and prints the chain end.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 214
+      "line": 220
     },
     {
       "id": "disclosure.attest.prove-verb",
@@ -26759,7 +26806,7 @@
       "statement": "`audit prove --seq <n>` prints the proof {{disclosure.attest.inclusion-proof}} returns, and `audit check-proof` verifies one under a public key, reading no store.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 215
+      "line": 221
     },
     {
       "id": "disclosure.attest.owner-only",
@@ -26770,7 +26817,7 @@
       "statement": "An audit verb reading a chain, presented with a capability credential, raises `AuditRequiresOwner` before it reads an audit file.",
       "why": "because the chain names every person's reads, and a credential scoped to some tables reaches no record of others",
       "file": "spec/62-accountability.md",
-      "line": 216
+      "line": 222
     },
     {
       "id": "disclosure.erase.privilege",
@@ -26781,7 +26828,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read#memory-access-follows",
       "file": "spec/62-accountability.md",
-      "line": 223
+      "line": 229
     },
     {
       "id": "disclosure.erase.unsupported-scope",
@@ -26792,7 +26839,7 @@
       "statement": "An empty target set or erasure admitted only by narrowed grants raises `ErasureScopeUnsupported` before store access; supported erasure admits every requested table explicitly.",
       "why": "because ignoring a grant constraint widens destructive authority",
       "file": "spec/62-accountability.md",
-      "line": 225
+      "line": 231
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -26803,7 +26850,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 227
+      "line": 233
     },
     {
       "id": "disclosure.erase.key-set",
@@ -26814,7 +26861,7 @@
       "statement": "A key-set request binds its selectors to the declared keys of {{store.declare.erasure-metadata}} and carries an opaque subject hash instead of a raw subject identity.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 229
+      "line": 235
     },
     {
       "id": "disclosure.erase.column-key-set",
@@ -26825,7 +26872,7 @@
       "statement": "A column-scoped {{disclosure.erase.key-set}} carries a declared column and non-null scalar keys; canonical declarations select every table naming that column, including tables without subject metadata. Caller table subsets and malformed selectors follow {{disclosure.erase.unsupported-scope}}.",
       "why": "because a caller table subset leaves declared copies of the erased key readable",
       "file": "spec/62-accountability.md",
-      "line": 231
+      "line": 237
     },
     {
       "id": "disclosure.erase.atomic-publication",
@@ -26836,7 +26883,7 @@
       "statement": "Subject and key-set erasure select one committed frontier across every affected table; a failed transaction exposes none of its staged replacements.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 233
+      "line": 239
     },
     {
       "id": "disclosure.erase.reader-frontier",
@@ -26847,7 +26894,7 @@
       "statement": "Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.",
       "why": "A-disclosure#re-synthesis-after, A-read#extraction-cache-keys",
       "file": "spec/62-accountability.md",
-      "line": 235
+      "line": 241
     },
     {
       "id": "disclosure.erase.shared-references",
@@ -26858,7 +26905,7 @@
       "statement": "A shared digest survives while any surviving declared reference names it; erasure collects a digest only after its last surviving reference disappears.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 237
+      "line": 243
     },
     {
       "id": "disclosure.erase.surviving-citations",
@@ -26869,7 +26916,7 @@
       "statement": "A citing table carrying the survival declaration of {{store.declare.erasure-metadata}} retains its rows; its references resolve through {{read.reference.erased-verdict}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 239
+      "line": 245
     },
     {
       "id": "disclosure.erase.subject-pseudonym",
@@ -26880,7 +26927,7 @@
       "statement": "Subject erasure computes its subject hash as a domain-separated HMAC-SHA-256 under the configured project audit key; no transaction or audit artifact carries raw subject identities or erased key values.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 241
+      "line": 247
     },
     {
       "id": "disclosure.erase.signer-binding",
@@ -26891,7 +26938,7 @@
       "statement": "Erasure signs through the configured issuer or node's {{authority.issue.signing-port}}; readers verify the canonical audit chain under configured public-key pins, independently of transaction artifacts. Missing signing or verifier configuration follows {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#audit-log-opens",
       "file": "spec/62-accountability.md",
-      "line": 243
+      "line": 249
     },
     {
       "id": "disclosure.erase.row-free-audit",
@@ -26902,7 +26949,7 @@
       "statement": "The signed audit chain binds the committed transaction, {{disclosure.erase.subject-pseudonym}} and affected counts to the exact replacement-file inventory.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 245
+      "line": 251
     },
     {
       "id": "disclosure.erase.store-binding",
@@ -26913,7 +26960,7 @@
       "statement": "The signed erasure entry binds {{store.init.store-identity}}; readers reject a frontier whose signed store identity differs from the receiving store, following {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 247
+      "line": 253
     },
     {
       "id": "disclosure.erase.working-publication",
@@ -26924,7 +26971,7 @@
       "statement": "Erasure preserves an immutable signed survivor baseline and selects independent working copies under the ordinary table layout; normal append and fold advance working publication without changing the baseline or requiring another erasure signature.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 249
+      "line": 255
     },
     {
       "id": "disclosure.erase.recovery",
@@ -26935,7 +26982,7 @@
       "statement": "Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 251
+      "line": 257
     },
     {
       "id": "disclosure.erase.recovery-verb",
@@ -26946,7 +26993,7 @@
       "statement": "`context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 253
+      "line": 259
     },
     {
       "id": "disclosure.erase.unsigned-recovery",
@@ -26957,7 +27004,7 @@
       "statement": "Uncommitted staging origins resolve against canonical stored tables and require Forget over the complete store scope; signed-only recovery admits the complete authenticated frontier. Uncommitted recovery returns no transaction identity.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 255
+      "line": 261
     },
     {
       "id": "disclosure.erase.retirement-inventory",
@@ -26968,7 +27015,7 @@
       "statement": "Signed retirement inventories bind regular paths through domain-separated HMAC under {{disclosure.record.audit-key}} and their file digests; recovery admits missing files as completed collection, validates all remaining files before deletion, and rejects changes through {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 257
+      "line": 263
     },
     {
       "id": "disclosure.erase.canonical-audit-key",
@@ -26979,7 +27026,7 @@
       "statement": "Erasure and keyed retirement recovery require the persisted canonical {{disclosure.record.audit-key}}; caller-supplied keys equal it, and absent or mismatched keys follow {{disclosure.erase.recovery}} before content access, signed intent, staging or collection.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 259
+      "line": 265
     },
     {
       "id": "disclosure.erase.survivor-names",
@@ -26990,7 +27037,7 @@
       "statement": "Erasure survivor snapshots use row-independent part names, preserve admitted surviving rows, record rewritten part key versions, and rebuild declared indexes through {{store.index.vector-by-fold}} and {{store.index.fulltext-by-fold}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 261
+      "line": 267
     },
     {
       "id": "disclosure.erase.cascade",
@@ -27001,7 +27048,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 263
+      "line": 269
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -27012,7 +27059,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 265
+      "line": 271
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -27023,7 +27070,7 @@
       "statement": "Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 267
+      "line": 273
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -27034,7 +27081,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 269
+      "line": 275
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -27045,7 +27092,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 271
+      "line": 277
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -27056,7 +27103,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 273
+      "line": 279
     },
     {
       "id": "disclosure.erase.tenant-rewrite",
@@ -27067,7 +27114,7 @@
       "statement": "`context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 275
+      "line": 281
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -27078,7 +27125,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 288
+      "line": 294
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -27089,7 +27136,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 290
+      "line": 296
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -27100,7 +27147,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 292
+      "line": 298
     },
     {
       "id": "disclosure.receipt.coverage",
@@ -27111,7 +27158,7 @@
       "statement": "A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.",
       "why": "because a purge deletes no bucket object, so a claim over the replication bucket names a removal that never ran",
       "file": "spec/62-accountability.md",
-      "line": 294
+      "line": 300
     },
     {
       "id": "disclosure.receipt.chain-record",
@@ -27122,7 +27169,7 @@
       "statement": "A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 296
+      "line": 302
     },
     {
       "id": "disclosure.receipt.prior-request",
@@ -27133,7 +27180,7 @@
       "statement": "A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.",
       "why": "because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record",
       "file": "spec/62-accountability.md",
-      "line": 298
+      "line": 304
     },
     {
       "id": "disclosure.receipt.zero-rows",
@@ -27144,7 +27191,7 @@
       "statement": "A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.",
       "why": "because an owner proves a tenant's absence with one artifact whether or not rows existed",
       "file": "spec/62-accountability.md",
-      "line": 300
+      "line": 306
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -36841,6 +36888,10 @@
       "run.own.body-parent"
     ],
     [
+      "run.record.job-trace",
+      "run.record.trace-context"
+    ],
+    [
       "run.record.record-folds",
       "run.record.reserved-table"
     ],
@@ -38011,6 +38062,10 @@
     [
       "disclosure.record.queued-parent",
       "run.land.receive-queued-ask"
+    ],
+    [
+      "disclosure.record.scheduled-trace",
+      "disclosure.record.job-link"
     ],
     [
       "disclosure.explain.path",
@@ -58442,6 +58497,24 @@
         "proved": false
       }
     ],
+    "disclosure.record.job-carrier": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_scheduled_fire_starts_a_fresh_trace_linked_to_its_submitter",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.record.job-link": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_scheduled_fire_starts_a_fresh_trace_linked_to_its_submitter",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.record.memory-read-tables": [
       {
         "kind": "test",
@@ -58663,6 +58736,15 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/trace.rs",
         "name": "a_served_delivery_continues_the_callers_trace_through_its_route_span",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.record.scheduled-trace": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_scheduled_fire_starts_a_fresh_trace_linked_to_its_submitter",
         "verdict": "performed",
         "proved": false
       }
@@ -66911,6 +66993,15 @@
         "kind": "test",
         "path": "crates/contextful-sqlite/tests/integration/machine.rs",
         "name": "history_selects_its_window_over_an_indexed_start_column",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.record.job-trace": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/trace.rs",
+        "name": "a_job_fire_continues_its_callers_trace_or_starts_a_fresh_one",
         "verdict": "performed",
         "proved": false
       }

@@ -85,6 +85,10 @@ pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
     /// Where each run reports its pulls, landings, commits and journaled steps; `None`
     /// times no stage (`disclosure.record.stage-unconfigured`).
     pub stages: Option<Arc<dyn StageSink>>,
+    /// The trace id every run this engine opens carries when its own open names none: a
+    /// job fire's, so the execution the engine drives for it joins that trace
+    /// (`run.record.job-trace`).
+    pub trace_id: Option<String>,
 }
 
 fn json_bytes(v: &Option<Value>) -> Vec<u8> {

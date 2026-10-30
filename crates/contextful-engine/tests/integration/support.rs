@@ -57,7 +57,7 @@ impl Rig {
         let clock = SetClock::new(T0);
         let journal = Journal::over(FileJournalStore::open(dir.path()), FileBlobStore::open(dir.path()));
         let catalog = Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone())));
-        let engine = Engine { catalog, journal, awakeables: None, keeper: Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }), emitter: None, worlds: Vec::new(), stages: None };
+        let engine = Engine { catalog, journal, awakeables: None, keeper: Keeper::new(Cadence { poll: Duration::from_millis(20), renew: Duration::from_secs(10) }), emitter: None, worlds: Vec::new(), stages: None, trace_id: None };
         Rig { dir, clock, engine }
     }
 
