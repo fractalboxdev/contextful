@@ -342,7 +342,7 @@ fn a_tenant_selection_removes_matching_rows_from_every_partitioned_table() {
 
 /// A dead letter citing a removed row joins the selection; one citing a kept row, or
 /// citing nothing, stays; evidence that does not decode refuses.
-// spec: disclosure.erase.dead-letters@a2586c32
+// spec: disclosure.erase.dead-letters@e25d1f2a
 #[test]
 fn a_dead_letter_citing_a_removed_row_joins_the_selection() {
     use contextful_core::disclosure::erase::{select_dead_letters, ErasureError};

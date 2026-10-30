@@ -270,8 +270,10 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
   *A-disclosure#forced-rewrite-measured*
 - `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
   *A-disclosure#forced-rewrite-measured*
-- `dead-letters` — Erasure also rewrites each row of a declared table's `<table>_dead_letter` whose {{read.synthesize.dead-letter-evidence}} cites a removed row, admitting that table under {{disclosure.erase.privilege}}; undecodable `evidence` follows {{disclosure.erase.unsupported-scope}}.
+- `dead-letters` — Erasure also rewrites each row of a declared table's `<table>_dead_letter` whose {{read.synthesize.dead-letter-evidence}} cites a removed row; undecodable `evidence` follows {{disclosure.erase.unsupported-scope}}.
   *because a dead letter repeats its source rows' content, so a letter left in place keeps erased bytes readable*
+- `dead-letter-grant` — A Forget grant covering a table also covers its `<table>_dead_letter`, in erasure and in {{disclosure.erase.recovery-verb}}.
+  *because a dead-letter table derives from its table alone, so covering it reaches no content the grant does not already reach*
 - `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.
   *A-disclosure#re-synthesis-after*
 - `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.

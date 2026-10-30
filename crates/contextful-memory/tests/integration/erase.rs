@@ -91,7 +91,7 @@ fn holds_no(root: &Path, canary: &str) {
 
 /// A subject's failed batch dead-letters its content; erasing the subject rewrites that
 /// letter out of every retained file and leaves another subject's letter unchanged.
-// spec: disclosure.erase.dead-letters@a2586c32
+// spec: disclosure.erase.dead-letters@e25d1f2a
 // spec: read.synthesize.dead-letter-evidence@81db37cf
 #[test]
 fn subject_erasure_rewrites_the_dead_letters_of_its_failed_batches() {

@@ -93,9 +93,12 @@ impl DeadLetter {
     }
 }
 
+/// The suffix naming the dead-letter table beside a table.
+pub const DEAD_LETTER_SUFFIX: &str = "_dead_letter";
+
 /// The dead-letter table beside `table` (`run.land.dead-letter`).
 pub fn dead_letter_table(table: &str) -> String {
-    format!("{table}_dead_letter")
+    format!("{table}{DEAD_LETTER_SUFFIX}")
 }
 
 fn is_zero(n: &u64) -> bool {

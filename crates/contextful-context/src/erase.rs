@@ -116,11 +116,7 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
             }
         })
     };
-    let admit_letters = |letters: &[&str]| -> Result<()> {
-        if !letters.is_empty() { ForgetAdmission::admit(request.admission.authority(), letters)?; }
-        Ok(())
-    };
-    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, admit_letters: &admit_letters, select: &select, allow_empty: false })
+    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: false })
 }
 
 /// A store owner's tenant purge; the caller presents no capability credential.
@@ -175,8 +171,7 @@ pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> 
         Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?, tenant_digest.clone()))
     };
     let guard = || Ok(());
-    let admit_letters = |_: &[&str]| Ok(());
-    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, admit_letters: &admit_letters, select: &select, allow_empty: true })?;
+    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: true })?;
     // A tenant holding no row publishes no rewrite; its receipt counts zero in every declared table.
     let affected_counts = if erased.transaction_id.is_empty() { prospective.affected_counts } else { erased.affected_counts.clone() };
     let claim = ReceiptClaim {
@@ -230,9 +225,6 @@ struct Plan<'a> {
     audit_key: &'a [u8],
     clock: &'a dyn Clock,
     guard: &'a dyn Fn() -> Result<()>,
-    /// Admits the dead-letter tables beside declared tables that the publication rewrites
-    /// with its selection (`disclosure.erase.dead-letters`).
-    admit_letters: &'a dyn Fn(&[&str]) -> Result<()>,
     select: &'a dyn Fn(&RetainedRows) -> Result<(ErasureSelection, String)>,
     /// An empty selection returns an unpublished outcome with an empty transaction id,
     /// before any staging and whatever frontier the store already holds.
@@ -251,12 +243,12 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         let mut rows = RetainedRows::new();
         let mut directories = BTreeMap::new();
         // The dead-letter table beside each declared table, when the store holds one the
-        // declarations do not, joins the publication (`disclosure.erase.dead-letters`).
+        // declarations do not, joins the publication (`disclosure.erase.dead-letters`). The
+        // Forget admission of its declared table covers it (`disclosure.erase.dead-letter-grant`).
         let letters: Vec<String> = bound.tables()?.into_iter()
             .filter(|name| plan.declarations.iter().all(|decl| decl.name != *name)
                 && plan.declarations.iter().any(|decl| contextful_core::run::ports::dead_letter_table(&decl.name) == *name))
             .collect();
-        (plan.admit_letters)(&letters.iter().map(String::as_str).collect::<Vec<_>>())?;
         let declarations: Vec<TableDecl> = plan.declarations.iter().cloned().chain(letters.iter().map(TableDecl::named)).collect();
         for decl in &declarations {
             let directory = bound.table_dir(&decl.name)?;
@@ -433,7 +425,9 @@ pub fn recover_admitted_erasure(
                 names
             }
         };
-        let tables: Vec<&str> = names.iter().map(String::as_str).collect();
+        let held = bound.tables()?;
+        let mut tables: Vec<&str> = names.iter().map(|name| forget_scope(name, &held)).collect();
+        tables.sort(); tables.dedup();
         let admitted = ForgetAdmission::admit(authority, &tables)?;
         boundary(admitted.authority()).map_err(|error| ContextError::Invalid(error.to_string()))?;
         bound.canonical_audit_key()?;
@@ -441,6 +435,15 @@ pub fn recover_admitted_erasure(
         Ok(())
     })?;
     Ok(transaction)
+}
+
+/// The table whose Forget admission covers `name`: a dead-letter table's own table when the
+/// store holds it, else `name` (`disclosure.erase.dead-letter-grant`).
+fn forget_scope<'n>(name: &'n str, held: &[String]) -> &'n str {
+    match name.strip_suffix(contextful_core::run::ports::DEAD_LETTER_SUFFIX) {
+        Some(owner) if held.iter().any(|table| table == owner) => owner,
+        _ => name,
+    }
 }
 
 fn validate_staged_origins(staged: &[PathBuf], tables: &[String]) -> Result<()> {
