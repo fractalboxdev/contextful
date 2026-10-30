@@ -187,6 +187,28 @@ fn the_input_is_read_once_and_recorded_as_the_first_step() {
     assert_eq!(endpoint.served().len(), 3);
 }
 
+/// An engine carrying a fire's trace id records it on the job execution's run row; an engine carrying none records
+/// none.
+#[test]
+fn a_traced_engine_records_its_trace_id_on_the_job_execution_row() {
+    const TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+    let rig = Rig::new();
+    let endpoint = Endpoint::default();
+    let body = Score::new(&endpoint);
+    let mut read = |as_of: &str| Ok(set(as_of, docs(2)));
+    let landed = Mutex::new(Vec::new());
+    let traced = Engine { trace_id: Some(TRACE.into()), ..rig.engine.clone() };
+    let row = traced.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "fire-1"), &mut read, &mut keep(&landed)).unwrap();
+    assert_eq!(row.status, RunStatus::Success, "{row:?}");
+    assert_eq!(row.trace_id.as_deref(), Some(TRACE));
+    assert_eq!(rig.catalog().run("fire-1").unwrap().unwrap().trace_id.as_deref(), Some(TRACE));
+
+    rig.clock.advance(60);
+    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "fire-2"), &mut read, &mut keep(&landed)).unwrap();
+    assert_eq!(row.status, RunStatus::Success, "{row:?}");
+    assert_eq!(row.trace_id, None);
+}
+
 /// A resumed run iterates recorded input without re-reading the statement. Rows landed after the pinned `as_of`, or
 /// folded since, do not enter the input set.
 // spec: run.journal.open-as-of@e1287668

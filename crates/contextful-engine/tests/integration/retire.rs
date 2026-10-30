@@ -94,6 +94,7 @@ fn a_delete_the_catalog_commit_outran_repeats_at_the_next_open() {
         emitter: None,
         worlds: Vec::new(),
         stages: None,
+        trace_id: None,
     };
 
     let mut x = engine.open_execution(&open("job-1")).unwrap();

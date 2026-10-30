@@ -327,7 +327,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                         "contextful.control.draft_nonce": nonce })).is_err() {
                         return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
                     }
-                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks, authority, &control_admit, &boundary)
+                    // The route span names the apply's trace (`disclosure.record.route-parent`).
+                    let carrier = request.header(contextful_core::trace::TRACEPARENT).and_then(|p| contextful_core::trace::TraceContext::parse(p, request.header(contextful_core::trace::TRACESTATE)));
+                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks, authority, &control_admit, carrier.as_ref(), &boundary)
                         .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
                 }
             }

@@ -227,7 +227,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             connector_id: connector.id,
             connector_version: connector.version,
             connector_hash: connector.hash,
-            trace_id: open.trace_id.clone(),
+            trace_id: open.trace_id.clone().or_else(|| self.trace_id.clone()),
             phase: Phase::Plan,
             pipeline_phase: open.scope.seeding().then_some(PipelinePhase::Seeding),
             execution_id: execution_id.clone(),

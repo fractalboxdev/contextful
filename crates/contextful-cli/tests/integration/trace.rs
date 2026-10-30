@@ -86,7 +86,12 @@ fn fire(dir: &Path, run: &str, env: &[(&str, &str)]) -> Output {
 /// The binary run with `args` in `dir` under exactly the trace and exporter variables `env` sets, no proxy reaching
 /// the loopback collector.
 pub(super) fn traced(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    traced_by(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args, env)
+}
+
+/// `binary` run as [`traced`] runs the stock one.
+fn traced_by(binary: &Path, dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let mut cmd = Command::new(binary);
     cmd.args(args)
         .current_dir(dir)
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
@@ -507,4 +512,122 @@ fn a_stdio_read_under_a_meta_traceparent_exports_one_child_span() {
     let answer: Value = serde_json::from_str(ok(&out).lines().next().unwrap()).unwrap();
     assert_eq!(answer["result"]["structuredContent"]["rows"].as_array().map(Vec::len), Some(2), "{answer}");
     assert_one_read_span(&collector);
+}
+
+/// The `contextful.run` span run `run` exported.
+fn run_span(spans: &[Value], run: &str) -> Value {
+    named(spans, "contextful.run")
+        .into_iter()
+        .find(|s| attribute(s, "contextful.run.id") == Some(serde_json::json!({ "stringValue": run })))
+        .unwrap_or_else(|| panic!("run `{run}` exported no span: {spans:?}"))
+}
+
+/// The store-driven embedding binary run as [`traced`], holding `token` under `public`.
+fn hosted(dir: &Path, public: &str, token: &str, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let mut vars = vec![("CONTEXTFUL_TOKEN", token), ("CONTEXTFUL_ISSUER_PUBKEY", public), ("CONTEXTFUL_AUDIENCE", crate::job::AUD)];
+    vars.extend_from_slice(env);
+    traced_by(&crate::job::host_binary(), dir, args, &vars)
+}
+
+/// A job fire's execution and its output table run take the fire caller's trace, the table run's span a child of the
+/// execution's run span; an untraced fire starts a fresh trace.
+// spec: run.record.job-trace@8c92821a
+#[test]
+fn a_job_fire_continues_its_callers_trace_or_starts_a_fresh_one() {
+    let (dir, public, token) = crate::job::project(&crate::job::job("max_in_flight = 1\n"));
+    let p = dir.path();
+    let collector = Collector::start();
+    let parent = format!("00-{TRACE}-{PARENT}-01");
+    let fire = |run: &str, now: &str, env: &[(&str, &str)]| {
+        let mut vars = vec![("OTEL_EXPORTER_OTLP_ENDPOINT", collector.url.as_str())];
+        vars.extend_from_slice(env);
+        let args = ["job", "fire", "score-documents", "--project", "research", "--run-id", run, "--site-id", "site", "--now", now];
+        hosted(p, &public, &token, &args, &vars)
+    };
+    ok(&fire("traced", "2030-01-01T00:01:00Z", &[("TRACEPARENT", &parent)]));
+    assert_eq!(trace_of(p, "traced"), Value::from(TRACE));
+    assert_eq!(trace_of(p, "traced.scores"), Value::from(TRACE));
+    let spans = collector.spans();
+    let execution = run_span(&spans, "traced");
+    assert_eq!((execution["traceId"].as_str(), execution["parentSpanId"].as_str()), (Some(TRACE), Some(PARENT)));
+    let table = run_span(&spans, "traced.scores");
+    assert_eq!((table["traceId"].as_str(), table["parentSpanId"].as_str()), (Some(TRACE), execution["spanId"].as_str()));
+
+    ok(&fire("fresh", "2030-01-01T00:02:00Z", &[]));
+    let fresh = trace_of(p, "fresh");
+    let id = fresh.as_str().unwrap_or_default().to_string();
+    assert!(id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()) && id != TRACE, "{id}");
+    assert_eq!(trace_of(p, "fresh.scores"), fresh);
+    let spans = collector.spans();
+    let execution = run_span(&spans, "fresh");
+    assert_eq!(execution["traceId"].as_str(), Some(id.as_str()));
+    assert!(execution.get("parentSpanId").is_none() && execution.get("links").is_none(), "{execution}");
+    assert_eq!(run_span(&spans, "fresh.scores")["parentSpanId"], execution["spanId"]);
+}
+
+/// The run spans of the job executions a fire opened: a run id carrying no table suffix.
+fn executions(spans: &[Value]) -> Vec<Value> {
+    named(spans, "contextful.run")
+        .into_iter()
+        .filter(|s| attribute(s, "contextful.run.id").and_then(|v| v["stringValue"].as_str().map(|r| !r.contains('.'))).unwrap_or(false))
+        .collect()
+}
+
+/// An import under a trace context records its W3C carriers with the job it adds, a pipeline-only apply keeps them,
+/// and an untraced apply changing the job records none. Each scheduled fire starts a fresh trace whatever trace serve
+/// runs under, its execution's run span linking the job's recorded carrier when one is recorded.
+// spec: disclosure.record.job-carrier@2cbf1367
+// spec: disclosure.record.job-link@42684955
+// spec: disclosure.record.scheduled-trace@39a43178
+#[test]
+fn a_scheduled_fire_starts_a_fresh_trace_linked_to_its_submitter() {
+    let declaration = format!("site_id = \"site\"\n{}", crate::job::job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let (dir, public, token) = crate::job::project(&declaration);
+    let p = dir.path();
+    std::fs::create_dir(p.join("pipelines")).unwrap();
+    let feed = "id=\"feed\"\ntables=[\"items\"]\n[source]\nname=\"http\"\nconfig={endpoint=\"https://example.org/items\"}\n";
+    std::fs::write(p.join("pipelines/feed.toml"), feed).unwrap();
+    let collector = Collector::start();
+    let submitter = format!("00-{TRACE}-{PARENT}-01");
+    let serving = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    let host = |args: &[&str], env: &[(&str, &str)]| hosted(p, &public, &token, args, env);
+    ok(&host(&["pipeline", "import", "--project", "research"], &[("TRACEPARENT", &submitter), ("TRACESTATE", "vendor=1")]));
+    let recorded = std::fs::read_to_string(p.join(".contextful/control/research/trace@v1.json")).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&recorded).unwrap(),
+        serde_json::json!({ "score-documents": { "traceparent": submitter, "tracestate": "vendor=1" } })
+    );
+    std::fs::write(p.join("pipelines/feed.toml"), feed.replace("example.org/items", "example.org/updated")).unwrap();
+    let partial = ok(&host(&["pipeline", "apply", "feed", "--project", "research"], &[]));
+    assert!(partial.contains("applied v2"), "{partial}");
+
+    let cycle = |now: &str| {
+        let env = [("TRACEPARENT", serving), ("OTEL_EXPORTER_OTLP_ENDPOINT", collector.url.as_str())];
+        let answer: Value = serde_json::from_str(&ok(&host(&["pipeline", "serve", "--cycle", "--project", "research", "--now", now], &env))).unwrap();
+        assert_eq!(answer["fired"], serde_json::json!(["job:score-documents"]), "{answer}");
+    };
+    cycle("2030-01-01T00:01:00Z");
+    let spans = collector.spans();
+    let first = executions(&spans);
+    assert_eq!(first.len(), 1, "{spans:?}");
+    let first = &first[0];
+    let trace = first["traceId"].as_str().unwrap().to_string();
+    assert!(trace != TRACE && !serving.contains(&trace), "{first}");
+    assert!(first.get("parentSpanId").is_none(), "{first}");
+    assert_eq!(first["links"], serde_json::json!([{ "traceId": TRACE, "spanId": PARENT, "traceState": "vendor=1" }]));
+    let tables: Vec<Value> = named(&spans, "contextful.run").into_iter().filter(|s| s["parentSpanId"] == first["spanId"]).collect();
+    assert_eq!(tables.len(), 1, "{spans:?}");
+    assert_eq!(tables[0]["traceId"].as_str(), Some(trace.as_str()));
+
+    let changed = declaration.replace("max_in_flight = 1", "max_in_flight = 2");
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{changed}")).unwrap();
+    let full = ok(&host(&["pipeline", "apply", "--project", "research"], &[]));
+    assert!(full.contains("applied v3"), "{full}");
+    cycle("2030-01-01T00:02:00Z");
+    let spans = collector.spans();
+    let fires = executions(&spans);
+    assert_eq!(fires.len(), 2, "{spans:?}");
+    let second = fires.iter().find(|s| s["spanId"] != first["spanId"]).unwrap();
+    assert!(second["traceId"].as_str() != Some(trace.as_str()) && second["traceId"].as_str() != Some(TRACE), "{second}");
+    assert!(second.get("parentSpanId").is_none() && second.get("links").is_none(), "{second}");
 }

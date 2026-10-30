@@ -172,8 +172,8 @@ impl From<bool> for Attr {
     }
 }
 
-/// One finished span: identifiers, name, kind, interval, attributes and, for a failure,
-/// its reason.
+/// One finished span: identifiers, name, kind, interval, attributes, the spans it links
+/// and, for a failure, its reason.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     pub trace_id: [u8; 16],
@@ -184,6 +184,8 @@ pub struct Span {
     pub start_unix_nanos: i128,
     pub end_unix_nanos: i128,
     pub attributes: Vec<(String, Attr)>,
+    /// Spans in other traces this span relates to without parenting under them.
+    pub links: Vec<TraceContext>,
     pub error: Option<String>,
 }
 
@@ -199,8 +201,15 @@ impl Span {
             start_unix_nanos: 0,
             end_unix_nanos: 0,
             attributes: Vec::new(),
+            links: Vec::new(),
             error: None,
         }
+    }
+
+    /// The span with a link to `linked`'s span.
+    pub fn linked(mut self, linked: &TraceContext) -> Span {
+        self.links.push(linked.clone());
+        self
     }
 
     /// The span with attribute `key` set to `value`.
@@ -229,6 +238,14 @@ fn any_value(v: &Attr) -> Value {
     }
 }
 
+fn link(linked: &TraceContext) -> Value {
+    let mut link = json!({ "traceId": linked.trace_hex(), "spanId": linked.span_hex() });
+    if let Some(state) = &linked.state {
+        link["traceState"] = json!(state);
+    }
+    link
+}
+
 /// The OTLP/HTTP JSON `ExportTraceServiceRequest` body for `spans`, under resource
 /// attribute `service.name` = `service`.
 pub fn otlp_traces(service: &str, spans: &[Span]) -> Value {
@@ -247,6 +264,9 @@ pub fn otlp_traces(service: &str, spans: &[Span]) -> Value {
             });
             if let Some(parent) = s.parent {
                 span["parentSpanId"] = json!(hex(&parent));
+            }
+            if !s.links.is_empty() {
+                span["links"] = s.links.iter().map(link).collect();
             }
             span
         })

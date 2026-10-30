@@ -531,6 +531,8 @@ The store records run status, owner leases and execution history. History reques
 - `columns` — A run row is a {{type:contextful_core::run::record::RunRow}}.
 - `trace-context` — A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.
 - `run-span` — With an exporter configured, a run exports one `contextful.run` span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.
+- `job-trace` — A job fire's execution and each output table run take the trace {{run.record.trace-context}} names from the fire's caller, and each table run's span is a child of the execution's run span.
+  *because a fire's table runs are its execution's work, and a table run rooted apart from it hides what the fire landed*
 - `status-set` — A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
 - `row-at-open` — The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.
@@ -566,8 +568,6 @@ The store records run status, owner leases and execution history. History reques
   *A-run#table-commit-owns*
 - `schema-diff-shape` — Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.
   *A-run#table-commit-owns*
-
-unsettled: Does a run the engine drives for a job continue the trace of the job's submitter, or start a fresh one? owner: run-path affects: run.record
 
 #### Scenarios
 
