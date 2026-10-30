@@ -30,7 +30,10 @@ use contextful_core::connector::ConnectorError;
 use contextful_connectors::object::ObjectConfig;
 use contextful_core::run::derive::config::{bind, bindings, check_output_table, check_single_output, Binding, DeriveConfig};
 use contextful_core::run::derive::engine::check_locality;
-use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
+use contextful_core::memory::synthesize::{CallRecord, Inference, Message};
+use contextful_core::run::derive::config::ModelEndpoint;
+use contextful_core::run::derive::task::{check_host_tables, Answer, DeriveTask, MeteredClient, Request, Tasks};
+use contextful_outbound::client::HeaderValue;
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_context::{node, ContextError, Store};
@@ -116,6 +119,50 @@ impl PreSendHook for DeriveLedger {
             .map_err(|error| Failure::new(FailureTag::Storage, format!("request ledger: {error}")))?;
         state.records.clear();
         Ok(())
+    }
+}
+
+/// The run's metered client for a host task declaring `pure` false: completions reach the
+/// declared model endpoint, every request's allowlist is that endpoint's host alone, and each
+/// request passes the run's request-ledger hook under the marker table's run id
+/// (`run.bind.model-endpoint`, `run.bind.off-endpoint`).
+struct HostClient {
+    endpoint: contextful_outbound::infer::Endpoint,
+    client: contextful_outbound::client::Client,
+}
+
+impl HostClient {
+    fn open(model: &ModelEndpoint, hook: Arc<dyn PreSendHook>, run_id: &str) -> Result<HostClient> {
+        let key = std::env::var(crate::memory::INFERENCE_KEY_VAR).ok();
+        let endpoint = contextful_outbound::infer::Endpoint::new(&model.endpoint, &model.model, key).map_err(anyhow::Error::msg)?;
+        let endpoint = crate::telemetry::traced(endpoint).with_hook(hook.clone()).for_run(run_id);
+        let origin = url::Url::parse(&model.endpoint)?;
+        let allow = contextful_core::connector::attach::Allowlist::parse(&[origin.host_str().unwrap_or_default()])?;
+        let client = contextful_outbound::client::Client::new(allow, origin).with_hook(hook).for_run(run_id);
+        Ok(HostClient { endpoint, client })
+    }
+}
+
+/// A mediated client's failure as a host task reads it: a refusal no retry changes is
+/// `DeriveMeteredClient` (`run.bind.off-endpoint`); any other fails the unit.
+fn host_failure(failure: Failure) -> RunError {
+    if failure.deterministic && failure.tag == FailureTag::Config {
+        RunError::DeriveMeteredClient(failure.message)
+    } else {
+        RunError::Invalid(failure.message)
+    }
+}
+
+impl MeteredClient for HostClient {
+    fn send(&self, request: &Request) -> Result<Answer, RunError> {
+        let url = url::Url::parse(&request.url).map_err(|e| RunError::DeriveMeteredClient(format!("`{}` is no URL: {e}", request.url)))?;
+        let headers: Vec<(String, HeaderValue)> = request.headers.iter().map(|(k, v)| (k.clone(), HeaderValue::Plain(v.clone()))).collect();
+        let response = self.client.send(&request.method, &url, &headers, request.body.as_deref()).map_err(host_failure)?;
+        Ok(Answer { status: response.status, body: response.body })
+    }
+
+    fn complete(&self, messages: &[Message]) -> Result<CallRecord, RunError> {
+        self.endpoint.call(messages).map_err(|e| RunError::Invalid(format!("model call: {e}")))
     }
 }
 
@@ -1205,6 +1252,18 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
     let mut derive_skipped = 0;
     let mut order: Vec<&contextful_core::pipeline::declare::TableEntry> = spec.tables.iter().collect();
     if let Checked::Host(host) = &checked {
+        // A task declaring `pure` false and naming its endpoint receives the run's metered
+        // client, its requests settling into the marker table's ledger (`run.bind.model-endpoint`).
+        let marker = host.tables.get(&host.task.marker_table()).cloned().unwrap_or_else(|| spec.table_name(&host.task.marker_table()));
+        let marker_run = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{marker}") };
+        let ledger = match &host.config.model {
+            Some(_) if !host.task.pure() => Some(Arc::new(DeriveLedger::new(dest.store.clone(), marker, dest.node.clone(), marker_run.clone(), w.clock.clone()))),
+            _ => None,
+        };
+        let client = match (&host.config.model, &ledger) {
+            (Some(model), Some(ledger)) => Some(Arc::new(HostClient::open(model, ledger.clone(), &marker_run)?) as Arc<dyn MeteredClient>),
+            _ => None,
+        };
         let derive = HostDerive {
             pipeline_id: spec.id.clone(),
             config: host.config.clone(),
@@ -1215,9 +1274,15 @@ fn fire(f: Fire, tasks: &Tasks) -> Result<()> {
             }).collect(),
             reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
             available: available.clone(),
-            client: None,
+            client,
         };
-        let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+        let staged_rows = derive.stage(&Uncanceled);
+        // The run's requests settle into its ledger before any table lands, a refused tick's included
+        // (`run.journal.ledger-settles-first`).
+        if let Some(ledger) = &ledger {
+            ledger.finish(None).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+        }
+        let (landing, skipped) = staged_rows.map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
         derive_skipped = skipped;
         order = landing.iter().filter_map(|(table, _)| spec.tables.iter().find(|t| spec.table_name(t.name()) == *table)).collect();
         staged = landing.into_iter().collect();

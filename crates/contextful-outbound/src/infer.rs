@@ -91,6 +91,13 @@ impl Endpoint {
         self
     }
 
+    /// The endpoint whose completions' intents carry `run_id`, so the run's request ledger
+    /// admits them (`run.bind.model-endpoint`).
+    pub fn for_run(mut self, run_id: &str) -> Endpoint {
+        self.client = self.client.for_run(run_id);
+        self
+    }
+
     /// The endpoint passing each completion through the operator's pre-send `hook`.
     pub fn with_hook(mut self, hook: Arc<dyn PreSendHook>) -> Endpoint {
         self.client = self.client.with_hook(hook);

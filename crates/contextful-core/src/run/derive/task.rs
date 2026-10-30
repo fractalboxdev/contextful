@@ -6,6 +6,8 @@ use super::config::{DeriveConfig, OrderBy, check_output_table, check_reserved_di
 use super::emit::{
     DERIVATION_KEY, DERIVED_ID, EMPTY_ATTEMPTS, KIND, MARKER_SEQ, UnitStatus, by_unit, derived_id, redact, standing,
 };
+use crate::connector::infer::{DataItem, Provenance, fence, taint};
+use crate::memory::synthesize::{CallRecord, Message};
 use crate::run::RunError;
 use crate::run::journal::sha256_hex;
 use crate::run::ports::Row;
@@ -73,10 +75,58 @@ pub struct Answer {
 }
 
 /// The run's metered client, the network reach the engine hands a host task that is not
-/// pure (`run.bind.reach-client`).
+/// pure (`run.bind.reach-client`). It reaches the task's model endpoint host alone, and a
+/// request it refuses answers `DeriveMeteredClient` (`run.bind.model-endpoint`,
+/// `run.bind.off-endpoint`).
 pub trait MeteredClient: Send + Sync {
     /// Send `request` under the run's meter, answering its status and body.
     fn send(&self, request: &Request) -> Result<Answer, RunError>;
+    /// Send one chat completion to the run's model endpoint under the run's meter.
+    fn complete(&self, messages: &[Message]) -> Result<CallRecord, RunError>;
+}
+
+/// One model call a host task makes: the operator's template, sent in the system role and
+/// never fenced, and the values the call reads, each with its provenance, which enter the
+/// prompt inside data boundary markers (`run.bind.model-fence`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModelCall {
+    pub template: String,
+    pub items: Vec<(Provenance, DataItem)>,
+    /// Characters each value keeps (`connector.infer.value-cap`).
+    pub cap: usize,
+    /// The caller's rules, restated after the blocks.
+    pub rules: String,
+}
+
+/// A model call's answer and the label its output carries (`connector.infer.output-taint`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inferred {
+    pub record: CallRecord,
+    pub taint: Provenance,
+}
+
+/// The run's metered client as a task holds it: a request the client refuses is recorded
+/// for [`Reach::refusal`] (`run.bind.off-endpoint`).
+pub struct Metered<'r> {
+    client: &'r dyn MeteredClient,
+    refused: &'r std::sync::Mutex<Option<RunError>>,
+}
+
+impl Metered<'_> {
+    /// Send `request` under the run's meter; a refusal fails the tick whether or not the
+    /// task returns it.
+    pub fn send(&self, request: &Request) -> Result<Answer, RunError> {
+        let answer = self.client.send(request);
+        if let Err(e @ RunError::DeriveMeteredClient(_)) = &answer {
+            record(self.refused, e);
+        }
+        answer
+    }
+}
+
+fn record(slot: &std::sync::Mutex<Option<RunError>>, e: &RunError) {
+    let mut refused = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    refused.get_or_insert_with(|| e.clone());
 }
 
 /// What the engine hands a host task while it derives one unit: the run's metered client
@@ -105,7 +155,11 @@ impl<'a> Reach<'a> {
 
     /// The run's metered client; a pure task, or a run binding none, raises
     /// `DeriveMeteredClient`, recorded for [`Reach::refusal`].
-    pub fn client(&self) -> Result<&'a dyn MeteredClient, RunError> {
+    pub fn client(&self) -> Result<Metered<'_>, RunError> {
+        self.bound().map(|client| Metered { client, refused: &self.refused })
+    }
+
+    fn bound(&self) -> Result<&'a dyn MeteredClient, RunError> {
         if let Some(client) = self.client {
             return Ok(client);
         }
@@ -114,9 +168,22 @@ impl<'a> Reach<'a> {
         } else {
             format!("host task `{}` asks for a metered client and the run binds none", self.task)
         });
-        let mut refused = self.refused.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        refused.get_or_insert_with(|| e.clone());
+        record(&self.refused, &e);
         Err(e)
+    }
+
+    /// One model call through the run's metered client: `call.template` in the system role,
+    /// then every item inside its data boundary markers under one batch token, answering the
+    /// call's record and its least-trusted input's label (`run.bind.model-fence`).
+    pub fn infer(&self, call: &ModelCall) -> Result<Inferred, RunError> {
+        let client = self.bound()?;
+        let items: Vec<DataItem> = call.items.iter().map(|(_, item)| item.clone()).collect();
+        let messages = [Message::new("system", call.template.clone()), Message::new("user", fence(&items, call.cap, &call.rules))];
+        let answer = client.complete(&messages);
+        if let Err(e @ RunError::DeriveMeteredClient(_)) = &answer {
+            record(&self.refused, e);
+        }
+        Ok(Inferred { record: answer?, taint: taint(call.items.iter().map(|(label, _)| *label)) })
     }
 
     /// The first refused request for a client, which fails the tick.

@@ -128,6 +128,14 @@ Engine bindings select registered tasks, configure engine interfaces and constra
   *because compiled task code shares the engine's process, so the client the engine hands it is the one reach the engine withholds*
 - `reach-client` — A host task declaring `pure` false receives the run's metered client for every unit; a run binding none refuses its request as {{run.select.metered-client}}.
   *A-connector#host-access-quota*
+- `model-endpoint` — A host task declaring `pure` false names its {{connector.infer.model-endpoint}} with `endpoint` and `model`. The run's metered client reaches that endpoint's host alone, and each request it sends enters the run's request ledger under the marker table's run id.
+  *because a compiled task shares the engine's process, so the client the engine hands it is the one route the engine meters*
+- `model-keys` — `endpoint` or `model` beside a built-in or pure task refuses as {{run.declare.config-key}}, and either without the other refuses as {{run.declare.spec-invalid}}.
+  *because a task the engine hands no client reaches no endpoint, and an endpoint without a model names no call*
+- `model-fence` — A host task's model call sends the task's template in the system role and each value it reads inside {{connector.infer.data-fence}} markers carrying its provenance label, answering the content beside its {{connector.infer.output-taint}} label.
+  *because a parent row is third-party data, and a value outside the markers reads to a model as instruction*
+- `off-endpoint` — A host task's request to an address off its endpoint's origin refuses as {{run.select.metered-client}} before any byte leaves, failing the tick whether or not the task returns the error.
+  *because the refusal repeats on every retry, and a unit settling past it records a derivation its task never completed*
 - `driver-mismatch` — `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no `engine`; any other pairing raises `DeriveDriverMismatch`.
   *A-run#derive-engine-machine*
 - `endpoint-host-bare` — An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.
