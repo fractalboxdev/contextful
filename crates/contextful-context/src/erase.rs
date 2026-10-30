@@ -5,7 +5,7 @@ use crate::error::IoPath;
 use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
-use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_dead_letters, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
+use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_dead_letters, select_dead_letters_without_evidence, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
 use contextful_core::ports::{Clock, SigningPort};
 use contextful_core::store::declare::{DeclarationSet, TableDecl};
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS_DIR};
@@ -31,7 +31,12 @@ pub enum EraseSelector<'a> {
 pub struct EraseRequest<'a> {
     pub declarations: &'a [TableDecl],
     pub tables: &'a [String],
-    pub selector: EraseSelector<'a>,
+    /// The rows to erase; `None` selects none, leaving the request to
+    /// `dead_letters_without_evidence` alone.
+    pub selector: Option<EraseSelector<'a>>,
+    /// Also remove every dead letter without evidence beside each of `tables`
+    /// (`disclosure.erase.dead-letters-without-evidence`).
+    pub dead_letters_without_evidence: bool,
     pub admission: &'a ForgetAdmission<'a>,
     pub signer: Option<Arc<dyn SigningPort + Send + Sync>>,
     pub audit_dir: &'a Path,
@@ -45,7 +50,14 @@ pub struct Erased {
     pub transaction_id: String,
     pub subject_hash: String,
     pub affected_counts: BTreeMap<String, usize>,
+    /// The dead letters without evidence the request removed, per dead-letter table;
+    /// empty unless the request asked for them (`disclosure.erase.purge-counts`).
+    pub dead_letters_without_evidence: BTreeMap<String, usize>,
 }
+
+/// The subject hash of a purge of dead letters without evidence that names no subject:
+/// the operation kind (`disclosure.erase.purge-counts`).
+pub const WITHOUT_EVIDENCE_OPERATION: &str = "dead-letters-without-evidence";
 
 struct ConfiguredSigner(Arc<dyn SigningPort + Send + Sync>);
 impl SigningPort for ConfiguredSigner {
@@ -101,22 +113,29 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
     if request.audit_key.is_empty() { return Err(incomplete("no project audit key is configured")); }
     let all: Vec<&str> = request.declarations.iter().map(|decl| decl.name.as_str()).collect();
     ForgetAdmission::admit(request.admission.authority(), &all)?;
+    if request.selector.is_none() && !request.dead_letters_without_evidence { return Err(unsupported("select one subject, key set or the dead letters without evidence")); }
+    if request.dead_letters_without_evidence && (request.tables.is_empty() || request.tables.iter().any(|table| !all.contains(&table.as_str()))) {
+        return Err(unsupported("the dead letters without evidence name no declared table"));
+    }
+    let without_evidence: Vec<String> = request.tables.iter().map(|table| contextful_core::run::ports::dead_letter_table(table)).collect();
     let guard = || revalidate(&request);
     let select = |rows: &RetainedRows| -> Result<(ErasureSelection, String)> {
         Ok(match &request.selector {
-            EraseSelector::Subject(subject) => (select_subject(request.declarations, rows, request.tables, subject)?,
+            None => (ErasureSelection::default(), WITHOUT_EVIDENCE_OPERATION.to_string()),
+            Some(EraseSelector::Subject(subject)) => (select_subject(request.declarations, rows, request.tables, subject)?,
                 audit::query_digest(request.audit_key, &format!("contextful.erasure.subject\n{subject}"))),
-            EraseSelector::KeySet { subject_hash, keys } => {
+            Some(EraseSelector::KeySet { subject_hash, keys }) => {
                 key_set_scope(request.tables, keys)?;
                 (select_keys(request.declarations, rows, keys)?, key_set_hash(subject_hash)?)
             }
-            EraseSelector::ColumnKeySet { subject_hash, column, keys } => {
+            Some(EraseSelector::ColumnKeySet { subject_hash, column, keys }) => {
                 key_set_scope(request.tables, &column_key_set_declared(declarations, column, keys)?)?;
                 (select_column_keys_declared(declarations, rows, column, keys)?, key_set_hash(subject_hash)?)
             }
         })
     };
-    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: false })
+    let without_evidence = request.dead_letters_without_evidence.then_some(without_evidence.as_slice());
+    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, without_evidence, allow_empty: false })
 }
 
 /// A store owner's tenant purge; the caller presents no capability credential.
@@ -171,7 +190,7 @@ pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> 
         Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?, tenant_digest.clone()))
     };
     let guard = || Ok(());
-    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: true })?;
+    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, without_evidence: None, allow_empty: true })?;
     // A tenant holding no row publishes no rewrite; its receipt counts zero in every declared table.
     let affected_counts = if erased.transaction_id.is_empty() { prospective.affected_counts } else { erased.affected_counts.clone() };
     let claim = ReceiptClaim {
@@ -226,6 +245,9 @@ struct Plan<'a> {
     clock: &'a dyn Clock,
     guard: &'a dyn Fn() -> Result<()>,
     select: &'a dyn Fn(&RetainedRows) -> Result<(ErasureSelection, String)>,
+    /// The dead-letter tables whose rows without evidence the publication also removes,
+    /// counted apart in its audit entry (`disclosure.erase.purge-counts`).
+    without_evidence: Option<&'a [String]>,
     /// An empty selection returns an unpublished outcome with an empty transaction id,
     /// before any staging and whatever frontier the store already holds.
     allow_empty: bool,
@@ -271,8 +293,9 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         }
         let (mut selected, subject_hash) = (plan.select)(&rows)?;
         select_dead_letters(&mut selected, &rows, &letters)?;
+        let without_evidence = plan.without_evidence.map(|tables| select_dead_letters_without_evidence(&mut selected, &rows, tables));
         if plan.allow_empty && selected.affected_tables().next().is_none() {
-            return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new() });
+            return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new(), dead_letters_without_evidence:BTreeMap::new() });
         }
         let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("erasure transaction identity is unavailable"))?;
         let transaction_id = crate::store::etag(&nonce);
@@ -353,7 +376,9 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         }
         (plan.guard)()?;
         let log = AuditLog::anchor(plan.audit_dir, ConfiguredSigner(signer.clone())).map_err(|_| incomplete("the canonical audit chain cannot open under the erasure signer"))?;
-        let entry = log.append(json!({"operation":"erasure","store_id":store_id,"transaction_id":transaction_id,"subject_hash":subject_hash,"affected_counts":counts,"replacement_hashes":hashes,"retired_directories":retired,"executed_at":plan.clock.now().to_rfc3339()}))
+        let mut attributes = json!({"operation":"erasure","store_id":store_id,"transaction_id":transaction_id,"subject_hash":subject_hash,"affected_counts":counts,"replacement_hashes":hashes,"retired_directories":retired,"executed_at":plan.clock.now().to_rfc3339()});
+        if let Some(without_evidence) = &without_evidence { attributes["dead_letters_without_evidence"] = json!(without_evidence); }
+        let entry = log.append(attributes)
             .map_err(|_| incomplete("the row-free erasure audit entry did not persist"))?;
         log.export().map_err(|_| incomplete("the erasure audit evidence did not sign"))?;
         drop(log);
@@ -396,7 +421,7 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         bound.metadata().replace(&bound.root().join(FRONTIER_FILE), &bytes)?;
         crate::erasure_frontier::load(bound)?;
         recover_committed_erasure(bound)?;
-        Ok(Erased { store:configured.clone(), transaction_id, subject_hash, affected_counts:counts })
+        Ok(Erased { store:configured.clone(), transaction_id, subject_hash, affected_counts:counts, dead_letters_without_evidence:without_evidence.unwrap_or_default() })
     })
 }
 

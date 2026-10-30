@@ -126,7 +126,7 @@ fn subject_erasure_rewrites_the_dead_letters_of_its_failed_batches() {
     let boundary = |_: &AdmittedAuthority| Ok(());
     let tables = ["research/notes".to_string(), "research/calls".to_string()];
     let erased = erase_declared(&configured, &pack, EraseRequest {
-        declarations: pack.tables(), tables: &tables, selector: EraseSelector::Subject("alice"), admission: &admission,
+        declarations: pack.tables(), tables: &tables, selector: Some(EraseSelector::Subject("alice")), dead_letters_without_evidence:false, admission: &admission,
         signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &FixedClock(at("2030-01-12T00:00:00Z")),
     }).unwrap();
 

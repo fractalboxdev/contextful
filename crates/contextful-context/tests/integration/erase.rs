@@ -83,7 +83,7 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
         let keys = std::collections::BTreeMap::from([("notes".to_string(), vec![json!({"id":canary}).as_object().unwrap().clone()])]);
         let subject_hash = contextful_policy::audit::query_digest(&audit_key, "fixture opaque subject");
         let selector = if key_set { EraseSelector::KeySet { subject_hash:&subject_hash, keys:&keys } } else { EraseSelector::Subject(canary) };
-        let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector, admission:&admission, signer:Some(signer.clone()), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
+        let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector:Some(selector), dead_letters_without_evidence:false, admission:&admission, signer:Some(signer.clone()), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
         let mut expected = if all_erased { json!([]) } else { json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]) };
         if extended { expected.as_array_mut().unwrap().push(json!({ "id":"extra", "subject":"other", "text":"extra words" })); }
         assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), expected);
@@ -144,7 +144,7 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
         if !all_erased { assert_eq!(held.iter().find(|r| r["id"] == "kept").unwrap()["text"], "restated text"); }
         check(continued.store.root(), canary);
         if all_erased {
-            let again = erase(&continued.store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("survivor"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
+            let again = erase(&continued.store, EraseRequest { declarations:&declarations, tables:&tables, selector:Some(EraseSelector::Subject("survivor")), dead_letters_without_evidence:false, admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
             assert_eq!(contextful_context::rows::table_rows(&again.store, &table, &["id"]).unwrap().len(), usize::from(extended));
             check(again.store.root(), canary);
         }
@@ -189,7 +189,7 @@ fn canonical_audit_key_refusal(missing: bool) {
         let declarations = [table.clone()]; let tables = ["notes".to_string()]; let audit_dir = project.audit_dir();
         let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
         let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
-        let result = erase_declared(&store, &DeclarationSet::from_tables(&declarations), EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("victim"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&requested, boundary:&boundary, clock:&FixedClock(now) });
+        let result = erase_declared(&store, &DeclarationSet::from_tables(&declarations), EraseRequest { declarations:&declarations, tables:&tables, selector:Some(EraseSelector::Subject("victim")), dead_letters_without_evidence:false, admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&requested, boundary:&boundary, clock:&FixedClock(now) });
         assert!(result.is_err(), "caller-supplied audit key admits erasure: missing={missing}");
         assert!(contextful_policy::audit::entries(&audit_dir).unwrap().is_empty());
         assert!(!fixture.store.root().join("_erasure_frontier.json").exists());
@@ -854,7 +854,7 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     let tables = ["notes".to_string()];
     let audit_dir = fixture.store.root().parent().unwrap().join("fixture-audit");
     let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
-    let request = EraseRequest { declarations: &declarations, tables: &tables, selector: EraseSelector::Subject("alice"), admission: &admission,
+    let request = EraseRequest { declarations: &declarations, tables: &tables, selector: Some(EraseSelector::Subject("alice")), dead_letters_without_evidence:false, admission: &admission,
         signer: Some(signer.clone()), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &FixedClock(now) };
     let configured = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
     let pack = DeclarationSet::from_tables(&declarations);
@@ -899,7 +899,7 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     assert_eq!(audit.len(), 1);
     let encoded = serde_json::to_string(&audit).unwrap();
     assert!(!encoded.contains("alice") && !encoded.contains("private"));
-    let request = EraseRequest { declarations: &declarations, tables: &tables, selector: EraseSelector::Subject("bob"), admission: &admission,
+    let request = EraseRequest { declarations: &declarations, tables: &tables, selector: Some(EraseSelector::Subject("bob")), dead_letters_without_evidence:false, admission: &admission,
         signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &FixedClock(now) };
     let again = erase_declared(&erased.store, &pack, request).unwrap();
     assert!(contextful_context::rows::table_rows(&again.store, &table, &["subject"]).unwrap().is_empty());
@@ -970,7 +970,7 @@ fn a_forget_grant_on_a_table_covers_its_dead_letters() {
     let audit_dir = project.audit_dir();
     let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
     let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
-    let erased = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("alice"), admission:&admission,
+    let erased = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector:Some(EraseSelector::Subject("alice")), dead_letters_without_evidence:false, admission:&admission,
         signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
     let kept = contextful_context::rows::table_rows(&erased.store, &letters, &["response"]).unwrap();
     assert_eq!(serde_json::to_value(kept).unwrap(), json!([{ "response":"kept letter" }]), "the grant on `notes` erases its dead letters");
@@ -1006,7 +1006,7 @@ fn keyset_erasure_uses_the_same_signed_publication_and_retains_other_keys() {
     let clock = FixedClock(now);
     let undeclared = std::collections::BTreeMap::from([("notes".into(), vec![json!({"text":"private"}).as_object().unwrap().clone()])]);
     let request_for = |keys| EraseRequest { declarations:&declarations, tables:&tables,
-        selector:EraseSelector::KeySet { subject_hash:&subject_hash, keys }, admission:&admission,
+        selector:Some(EraseSelector::KeySet { subject_hash:&subject_hash, keys }), dead_letters_without_evidence:false, admission:&admission,
         signer:Some(signer.clone()), audit_dir:&audit_dir,
         audit_key:&audit_key, boundary:&boundary, clock:&clock };
     let request = || request_for(&keys);
@@ -1129,7 +1129,7 @@ impl TwoTableErasure {
         let names = ["notes".to_string(), "events".to_string()];
         let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
         let store = self.fixture.store.with_erasure_verifier(self.audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
-        erase(&store, EraseRequest { declarations:&self.tables, tables:&names, selector:EraseSelector::Subject(subject), admission:&admission, signer:Some(signer), audit_dir:&self.audit_dir, audit_key:&self.audit_key, boundary:&boundary, clock:&FixedClock(now) })
+        erase(&store, EraseRequest { declarations:&self.tables, tables:&names, selector:Some(EraseSelector::Subject(subject)), dead_letters_without_evidence:false, admission:&admission, signer:Some(signer), audit_dir:&self.audit_dir, audit_key:&self.audit_key, boundary:&boundary, clock:&FixedClock(now) })
     }
 
     fn ids(&self, store: &contextful_context::Store, table: usize) -> Vec<serde_json::Value> {
@@ -1465,4 +1465,167 @@ fn a_zero_row_purge_after_an_earlier_erasure_leaves_the_frontier_unchanged() {
     let after = contextful_policy::audit::entries(&audit_dir).unwrap();
     assert_eq!(after.len(), entries.len() + 1, "a zero-row purge signs more than its receipt entry");
     assert_eq!(erasures(&after), erasures(&entries), "a zero-row purge signs an erasure entry");
+}
+
+/// A store holding `notes` and `calls`, each beside a dead-letter table: `notes_dead_letter`
+/// holds one letter citing each subject's row, one synthesis letter written without
+/// `evidence` and one pipeline letter, and `calls_dead_letter` one letter without evidence.
+#[cfg(feature = "read")]
+struct Letters {
+    fixture: Fixture,
+    declarations: [contextful_core::store::declare::TableDecl; 2],
+    project: contextful_context::project::Project,
+}
+
+#[cfg(feature = "read")]
+const LETTER_CANARY: &str = "evidence-less-letter-canary";
+
+#[cfg(feature = "read")]
+impl Letters {
+    fn new() -> Self {
+        let fixture = Fixture::new();
+        let notes = decl("name = \"notes\"\nsubject_id = \"subject\"");
+        let calls = decl("name = \"calls\"\nsubject_id = \"subject\"");
+        fixture.land(&notes, "run-0001", json!([{ "subject":"alice", "text":"private" }, { "subject":"bob", "text":"retained" }]), "2030-01-01T00:00:00Z").unwrap();
+        fixture.land(&calls, "run-0002", json!([{ "subject":"bob", "text":"call" }]), "2030-01-01T00:00:30Z").unwrap();
+        let cite = |seq: i64| json!([{ "table":"notes", "run":"run-0001", "seq":seq }]).to_string();
+        fixture.land(&decl("name = \"notes_dead_letter\""), "run-0003", json!([{ "response":"alice letter", "evidence":cite(0) }, { "response":"bob letter", "evidence":cite(1) },
+            { "response":format!("written before evidence {LETTER_CANARY}") }]), "2030-01-01T00:01:00Z").unwrap();
+        fixture.land(&decl("name = \"notes_dead_letter\""), "run-0004", json!([{ "key":format!("inbox/{LETTER_CANARY}.csv"), "reason":"unreadable", "sha256":"00" }]), "2030-01-01T00:01:30Z").unwrap();
+        fixture.land(&decl("name = \"calls_dead_letter\""), "run-0005", json!([{ "response":"out of scope letter" }]), "2030-01-01T00:02:00Z").unwrap();
+        contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+        let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+        Letters { fixture, declarations:[notes, calls], project }
+    }
+
+    fn responses(store: &contextful_context::Store, table: &str) -> Vec<serde_json::Value> {
+        contextful_context::rows::table_rows(store, &decl(&format!("name = \"{table}\"")), &["response"]).unwrap().into_iter().map(|row| row["response"].clone()).collect()
+    }
+
+    fn erase(&self, subject: Option<&str>) -> contextful_context::Result<contextful_context::erase::Erased> {
+        use contextful_context::erase::{erase, EraseRequest, EraseSelector};
+        use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+        use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner};
+        let audit_key = contextful_context::project::audit_key(&self.fixture.store, &self.project).unwrap();
+        let reads = crate::read::Reads::new();
+        let mut grant = crate::read::read(&["notes", "calls"], None);
+        grant.actions = vec![Action::Forget];
+        let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+        let admission = ForgetAdmission::admit(&authority, &["notes", "calls"]).unwrap();
+        let boundary = |_: &contextful_policy::verify::AdmittedAuthority| Ok(());
+        let audit_dir = self.project.audit_dir();
+        let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+        let store = self.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+        let tables = ["notes".to_string()];
+        erase(&store, EraseRequest { declarations:&self.declarations, tables:&tables, selector:subject.map(EraseSelector::Subject), dead_letters_without_evidence:true,
+            admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(crate::read::at("2030-01-01T00:05:00Z")) })
+    }
+}
+
+/// Every file under `directory`, with its bytes.
+#[cfg(feature = "read")]
+fn tree(directory: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    let mut out = std::collections::BTreeMap::new();
+    for entry in std::fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() { out.extend(tree(&path)); } else { out.insert(path.clone(), std::fs::read(&path).unwrap()); }
+    }
+    out
+}
+
+/// The purge alone removes each letter of a requested table carrying no `evidence`,
+/// synthesis and pipeline letters alike; letters carrying evidence and every letter of
+/// `calls`, outside the request, survive byte for byte.
+// spec: disclosure.erase.dead-letters-without-evidence@691172f7
+#[test]
+#[cfg(feature = "read")]
+fn the_purge_removes_the_dead_letters_without_evidence_of_each_requested_table() {
+    let letters = Letters::new();
+    let calls_dir = letters.fixture.store.root().join("tables/calls_dead_letter");
+    let calls_before = tree(&calls_dir);
+    assert!(!calls_before.is_empty(), "the out-of-scope comparison ranges over no file");
+    let erased = letters.erase(None).unwrap();
+    assert_eq!(Letters::responses(&erased.store, "notes_dead_letter"), [json!("alice letter"), json!("bob letter")], "letters carrying evidence survive, and only they");
+    assert_eq!(contextful_context::rows::table_rows(&erased.store, &letters.declarations[0], &["subject"]).unwrap().len(), 2, "the purge alone removes no source row");
+    assert_eq!(tree(&calls_dir), calls_before, "a dead-letter table outside the request changes");
+    assert_eq!(Letters::responses(&erased.store, "calls_dead_letter"), [json!("out of scope letter")]);
+    assert_eq!(erased.dead_letters_without_evidence, std::collections::BTreeMap::from([("notes_dead_letter".to_string(), 2)]));
+}
+
+/// Beside a subject, the purge removes the subject's cited letter and the letters without
+/// evidence in one publication, and the signed entry counts the purge apart.
+// spec: disclosure.erase.dead-letters-without-evidence@691172f7
+// spec: disclosure.erase.purge-counts@7c152824
+#[test]
+#[cfg(feature = "read")]
+fn the_purge_beside_a_subject_publishes_once_and_counts_apart() {
+    let letters = Letters::new();
+    let erased = letters.erase(Some("alice")).unwrap();
+    assert_eq!(Letters::responses(&erased.store, "notes_dead_letter"), [json!("bob letter")]);
+    assert_eq!(erased.affected_counts["notes_dead_letter"], 3);
+    assert_eq!(erased.dead_letters_without_evidence, std::collections::BTreeMap::from([("notes_dead_letter".to_string(), 2)]));
+    let entries = contextful_policy::audit::entries(&letters.project.audit_dir()).unwrap();
+    let signed: Vec<_> = entries.iter().filter(|entry| entry.attributes["operation"] == "erasure").collect();
+    assert_eq!(signed.len(), 1, "the subject and the purge publish one signed erasure");
+    assert_eq!(signed[0].attributes["dead_letters_without_evidence"], json!({ "notes_dead_letter": 2 }));
+    assert_eq!(signed[0].attributes["subject_hash"], json!(erased.subject_hash));
+    assert!(erased.subject_hash.starts_with("hmac-sha256:"), "a subject erasure keeps its pseudonym");
+
+    let alone = Letters::new();
+    let purged = alone.erase(None).unwrap();
+    assert_eq!(purged.subject_hash, "dead-letters-without-evidence", "a purge alone names its operation in place of a subject hash");
+    let entries = contextful_policy::audit::entries(&alone.project.audit_dir()).unwrap();
+    assert!(entries.iter().any(|entry| entry.attributes["subject_hash"] == "dead-letters-without-evidence"));
+}
+
+/// After the purge commits, no retained file under the store holds a removed letter's
+/// bytes, decoded where it is Parquet.
+// spec: disclosure.erase.dead-letters-without-evidence@691172f7
+#[test]
+#[cfg(feature = "read")]
+fn no_purged_dead_letter_byte_remains_in_a_retained_file() {
+    let letters = Letters::new();
+    let holds = |bytes: &[u8]| bytes.windows(LETTER_CANARY.len()).any(|window| window == LETTER_CANARY.as_bytes());
+    assert!(tree(letters.fixture.store.root()).values().any(|bytes| holds(bytes)), "the canary never reaches a file");
+    let erased = letters.erase(None).unwrap();
+    let after = tree(erased.store.root());
+    assert!(after.keys().any(|path| path.to_string_lossy().contains("notes_dead_letter") && path.extension().is_some_and(|extension| extension == "parquet")), "the scan reaches no dead-letter part");
+    for (path, bytes) in &after {
+        if path.extension().is_some_and(|extension| extension == "parquet") {
+            for batch in contextful_context::parquet_io::read(path).unwrap() {
+                let schema = batch.schema();
+                let columns = schema.fields().iter().map(|field| field.name().as_str()).collect::<Vec<_>>();
+                let rows = contextful_context::rows::batch_rows(&batch, &columns).unwrap();
+                assert!(!serde_json::to_string(&rows).unwrap().contains(LETTER_CANARY), "a purged letter survives in {}", path.display());
+            }
+        }
+        assert!(!holds(bytes), "purged bytes survive in {}", path.display());
+    }
+}
+
+/// A request carrying neither a selector nor the purge, or the purge over no declared
+/// table, refuses before staging.
+#[test]
+#[cfg(feature = "read")]
+fn a_request_without_a_selector_or_a_scoped_purge_refuses() {
+    use contextful_context::erase::{erase, EraseRequest};
+    use contextful_core::{disclosure::erase::ErasureError, grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+    use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner};
+    let letters = Letters::new();
+    let audit_key = contextful_context::project::audit_key(&letters.fixture.store, &letters.project).unwrap();
+    let reads = crate::read::Reads::new();
+    let mut grant = crate::read::read(&["*"], None);
+    grant.actions = vec![Action::Forget];
+    let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+    let admission = ForgetAdmission::admit(&authority, &["notes", "calls"]).unwrap();
+    let boundary = |_: &contextful_policy::verify::AdmittedAuthority| Ok(());
+    let audit_dir = letters.project.audit_dir();
+    for (tables, purge) in [(vec!["notes".to_string()], false), (vec![], true), (vec!["absent".to_string()], true)] {
+        let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+        let store = letters.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+        let refused = erase(&store, EraseRequest { declarations:&letters.declarations, tables:&tables, selector:None, dead_letters_without_evidence:purge,
+            admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(crate::read::at("2030-01-01T00:05:00Z")) });
+        assert!(matches!(refused, Err(contextful_context::ContextError::Erasure(ErasureError::ErasureScopeUnsupported(_)))), "{tables:?} {purge}: {:?}", refused.err());
+    }
+    assert!(!letters.fixture.store.root().join("_erasure_frontier.json").exists());
 }

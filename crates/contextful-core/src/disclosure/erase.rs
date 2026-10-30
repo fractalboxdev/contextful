@@ -12,7 +12,7 @@ const CASCADE_HOPS: usize = 16;
 pub type RetainedRows = BTreeMap<String, Vec<Map<String, Value>>>;
 
 /// Row positions selected for removal; selectors and row values remain absent.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ErasureSelection {
     removed: BTreeMap<String, Vec<bool>>,
 }
@@ -60,6 +60,26 @@ pub fn select_dead_letters(selection: &mut ErasureSelection, rows: &RetainedRows
     }
     selection.removed.extend(masks);
     Ok(())
+}
+
+/// Extends a selection to every row of the `letters` tables carrying no [`DEAD_LETTER_EVIDENCE`],
+/// absent or null, keeping each row it already selects, and counts those rows per table the
+/// store holds (`disclosure.erase.dead-letters-without-evidence`). A table absent from `rows` is skipped.
+pub fn select_dead_letters_without_evidence(selection: &mut ErasureSelection, rows: &RetainedRows, letters: &[String]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for table in letters {
+        let Some(retained) = rows.get(table) else { continue };
+        let mask = selection.removed.entry(table.clone()).or_insert_with(|| vec![false; retained.len()]);
+        let mut count = 0;
+        for (removed, row) in mask.iter_mut().zip(retained) {
+            if row.get(DEAD_LETTER_EVIDENCE).is_none_or(Value::is_null) {
+                *removed = true;
+                count += 1;
+            }
+        }
+        counts.insert(table.clone(), count);
+    }
+    counts
 }
 
 /// Selects subject rows and exclusively referenced descendants across retained versions.
