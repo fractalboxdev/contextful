@@ -1502,7 +1502,7 @@ impl Letters {
         contextful_context::rows::table_rows(store, &decl(&format!("name = \"{table}\"")), &["response"]).unwrap().into_iter().map(|row| row["response"].clone()).collect()
     }
 
-    fn erase(&self, subject: Option<&str>) -> contextful_context::Result<contextful_context::erase::Erased> {
+    fn erase(&self, subject: Option<&str>) -> Result<contextful_context::erase::Erased, String> {
         use contextful_context::erase::{erase, EraseRequest, EraseSelector};
         use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
         use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner};
@@ -1518,7 +1518,7 @@ impl Letters {
         let store = self.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
         let tables = ["notes".to_string()];
         erase(&store, EraseRequest { declarations:&self.declarations, tables:&tables, selector:subject.map(EraseSelector::Subject), dead_letters_without_evidence:true,
-            admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(crate::read::at("2030-01-01T00:05:00Z")) })
+            admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(crate::read::at("2030-01-01T00:05:00Z")) }).map_err(|error| error.to_string())
     }
 }
 
