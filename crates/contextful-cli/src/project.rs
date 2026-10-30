@@ -5,7 +5,8 @@ use anyhow::{Context, Result};
 use contextful_context::project::{check_name, discover, Project};
 use contextful_context::read::Face;
 use contextful_context::Store;
-use contextful_core::pipeline::declare::ManifestFile;
+use contextful_core::pipeline::declare::{ManifestFile, PipelineSpec};
+use contextful_core::run::derive::task::Tasks;
 use contextful_policy::enforce::mask::Pepper;
 use std::path::Path;
 #[cfg(feature = "data-plane")]
@@ -205,12 +206,51 @@ pub(crate) fn open_face_with_pins(project: &Project, declaration: &Path, manifes
     let offset = now_offset()?;
     let store = open_store(project, public_key, keyset)?;
     let face = Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?;
-    Ok(face.with_cohorts(&cohort_models(declaration)?)?.with_now_offset(offset))
+    let cohorts = cohort_models(declaration)?;
+    let derives = if cohorts.is_empty() { Vec::new() } else { derive_lineage(declaration)? };
+    Ok(face.with_cohorts(&cohorts)?.with_derived(&derives).with_now_offset(offset))
+}
+
+/// The host tasks the embedding binary registered, whose joins enter a derive's lineage.
+static HOST_TASKS: std::sync::OnceLock<Tasks> = std::sync::OnceLock::new();
+
+/// Record the embedding binary's host tasks for [`derive_lineage`].
+pub(crate) fn register_tasks(tasks: &Tasks) {
+    let _ = HOST_TASKS.set(tasks.clone());
+}
+
+/// Each derive pipeline's parents beside its output tables, so an output of a per-individual
+/// table is itself per-individual (`disclosure.bound-cohort.derived-individual`).
+fn derive_lineage(declaration: &Path) -> Result<Vec<(Vec<String>, Vec<String>)>> {
+    let declared = contextful_core::pipeline::declare::collect(&manifests(declaration)?)?;
+    Ok(declared
+        .iter()
+        .map(|d| &d.spec)
+        .filter(|s| s.source.name == DERIVE_SOURCE)
+        .map(|s| (derive_parents(s, HOST_TASKS.get()), s.tables.iter().map(|t| s.table_name(t.name())).collect()))
+        .collect())
+}
+
+/// The source name a derive pipeline declares.
+const DERIVE_SOURCE: &str = "derive";
+
+/// A derive pipeline's source table, then each table its registered host task joins.
+pub(crate) fn derive_parents(spec: &PipelineSpec, tasks: Option<&Tasks>) -> Vec<String> {
+    let source = spec.source.config.get("source_table").and_then(serde_json::Value::as_str).map(str::to_string);
+    source.into_iter().chain(host_joins(spec, tasks)).collect()
+}
+
+/// The tables a derive pipeline's registered host task joins; none for another source or task.
+pub(crate) fn host_joins(spec: &PipelineSpec, tasks: Option<&Tasks>) -> Vec<String> {
+    let task = (spec.source.name == DERIVE_SOURCE)
+        .then(|| spec.source.config.get("task").and_then(serde_json::Value::as_str).and_then(|name| tasks?.get(name)))
+        .flatten();
+    task.map(|t| t.joins().into_iter().map(|j| j.table).collect()).unwrap_or_default()
 }
 
 /// Each `cohort` model the declaration set declares, its statement resolved, whose source
 /// tables answer only `read-individual` (`disclosure.bound-cohort.per-individual-row`).
-fn cohort_models(declaration: &Path) -> Result<Vec<contextful_core::pipeline::model::ModelSpec>> {
+pub(crate) fn cohort_models(declaration: &Path) -> Result<Vec<contextful_core::pipeline::model::ModelSpec>> {
     use contextful_core::pipeline::model::{collect_models, Governance};
     let mut cohort = Vec::new();
     for model in collect_models(&manifests(declaration)?, &[])? {

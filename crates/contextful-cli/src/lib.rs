@@ -292,6 +292,8 @@ pub fn main_with(tasks: Tasks) {
 pub fn main_host(host: Host) {
     #[cfg_attr(not(feature = "data-plane"), allow(unused_variables))]
     let Host { tasks, bodies } = host;
+    #[cfg(feature = "read-plane")]
+    project::register_tasks(&tasks);
     let matches = Cli::command().get_matches();
     admit::record_command_path(&matches);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.format(&mut Cli::command()).exit());

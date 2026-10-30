@@ -100,10 +100,10 @@ fn template(face: &Face, authority: &AdmittedAuthority, id: &str) -> Result<Resp
     face.execute_template(&session, id, &Map::new(), ReadOptions::default())
 }
 
-/// A query, template or retrieve read touching a table a `cohort` model's statement names
-/// raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over
-/// that table.
-// spec: disclosure.bound-cohort.per-individual-row@6f9a71eb
+/// A query, template, retrieve, row or subscribe read touching a per-individual table raises
+/// `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a
+/// derive task's input read is a row read.
+// spec: disclosure.bound-cohort.per-individual-row@b3d08f04
 #[test]
 fn a_cohort_source_table_answers_only_a_grant_holding_read_individual() {
     let (r, face) = released();
@@ -184,4 +184,61 @@ fn grouping_a_cohort_table_by_a_strict_subset_of_its_key_refuses() {
         assert!(query(sql).is_ok(), "{sql}: {:?}", query(sql));
     }
     assert_eq!(template(&face, &reader, "regional_by_key").unwrap().rows.len(), 3);
+}
+
+/// A row, native row or subscribe read of a cohort model's source table answers only a grant
+/// holding `read-individual` over it, as a statement read does.
+// spec: disclosure.bound-cohort.per-individual-row@b3d08f04
+#[test]
+fn row_and_subscribe_reads_of_a_cohort_source_answer_only_read_individual() {
+    let (r, face) = released();
+    let source = ["survey/responses".to_string()];
+    let none = BTreeMap::new();
+
+    let reader = authority(&r, vec![grant(&[Action::Read], &["*"])]);
+    let session = face.session(&reader, &Request::default(), Bounds::default()).unwrap();
+    let message = refused_with(face.rows(&session, "survey/responses", None), "DisclosurePerIndividualUngranted");
+    assert!(message.contains("survey/responses"), "{message}");
+    refused_with(face.source_rows(&session, "survey/responses", None, &["respondent_id"]), "DisclosurePerIndividualUngranted");
+    refused_with(face.subscribe(&session, &source, &none), "DisclosurePerIndividualUngranted");
+    assert_eq!(face.rows(&session, "survey/regional", None).unwrap().rows.len(), 3);
+
+    let individual = authority(&r, vec![grant(&[Action::Read, Action::ReadIndividual], &["survey/responses"])]);
+    let session = face.session(&individual, &Request::default(), Bounds::default()).unwrap();
+    assert_eq!(face.rows(&session, "survey/responses", None).unwrap().rows.len(), 6);
+    assert_eq!(face.source_rows(&session, "survey/responses", None, &["respondent_id"]).unwrap().rows.len(), 6);
+    let page = face.subscribe(&session, &source, &none).unwrap();
+    assert!(!page["messages"].as_array().unwrap().is_empty(), "{page}");
+}
+
+/// A derive output whose parent is a cohort source table holds per-individual rows, and so
+/// does an output derived from that output: each answers only `read-individual`.
+// spec: disclosure.bound-cohort.derived-individual@6c87283b
+#[test]
+fn a_derived_output_of_a_cohort_source_answers_only_read_individual() {
+    let (r, _) = released();
+    land_rows(&r.store, "survey/passages", "run-0002", json!([{ "respondent_id": "p1", "text": "solar" }]));
+    land_rows(&r.store, "survey/topics", "run-0003", json!([{ "respondent_id": "p1", "topic": "energy" }]));
+    let derives = [
+        (vec!["research/notes".to_string(), "survey/passages".to_string()], vec!["survey/topics".to_string()]),
+        (vec!["survey/responses".to_string()], vec!["survey/passages".to_string()]),
+    ];
+    let face = Face::open(r.store.clone(), MANIFEST, pepper()).unwrap().with_cohorts(&[spec()]).unwrap().with_derived(&derives);
+    let derived = ["survey/passages", "survey/topics"];
+
+    let reader = authority(&r, vec![grant(&[Action::Read], &["*"])]);
+    let session = face.session(&reader, &Request::default(), Bounds::default()).unwrap();
+    assert!(!derived.is_empty());
+    for table in derived {
+        let message = refused_with(face.rows(&session, table, None), "DisclosurePerIndividualUngranted");
+        assert!(message.contains(table), "{message}");
+        refused_with(face.query(&session, &format!("SELECT * FROM \"{table}\""), ReadOptions::default()), "DisclosurePerIndividualUngranted");
+    }
+    assert!(!face.rows(&session, "research/notes", None).unwrap().rows.is_empty());
+
+    let individual = authority(&r, vec![grant(&[Action::Read, Action::ReadIndividual], &["survey/passages", "survey/topics"])]);
+    let session = face.session(&individual, &Request::default(), Bounds::default()).unwrap();
+    for table in derived {
+        assert_eq!(face.rows(&session, table, None).unwrap().rows.len(), 1, "{table}");
+    }
 }

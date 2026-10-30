@@ -26461,10 +26461,32 @@
       "operation": "bound-cohort",
       "subject": "per-individual-row",
       "kind": "refusal",
-      "statement": "A query, template or retrieve read touching a table a `cohort` model's statement names raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table.",
+      "statement": "A query, template, retrieve, row or subscribe read touching a per-individual table raises `DisclosurePerIndividualUngranted` unless a grant holds `read-individual` over that table; a derive task's input read is a row read.",
       "why": "because the face applies no floor to an ad-hoc read, so a read of a source table returns contributors' rows that no release has suppressed",
       "file": "spec/61-disclosure.md",
       "line": 134
+    },
+    {
+      "id": "disclosure.bound-cohort.derived-individual",
+      "contract": "disclosure",
+      "operation": "bound-cohort",
+      "subject": "derived-individual",
+      "kind": "behavior",
+      "statement": "A table a `cohort` model's statement names is per-individual, and so is each output table of a derive pipeline whose source or joined table is per-individual, transitively.",
+      "why": "because a derive copies its parents' rows into its output, which then holds contributors' rows no release has suppressed",
+      "file": "spec/61-disclosure.md",
+      "line": 136
+    },
+    {
+      "id": "disclosure.bound-cohort.derive-individual",
+      "contract": "disclosure",
+      "operation": "bound-cohort",
+      "subject": "derive-individual",
+      "kind": "behavior",
+      "statement": "A derive run whose source or joined table is per-individual refuses as {{disclosure.bound-cohort.per-individual-row}} at run start, before selecting any unit, unless its credential holds `read-individual` over that table; a run without a credential refuses too.",
+      "why": "because no declaration carries a grant, so the run's credential is the only authority a derive holds, and refusing before selection lands no row",
+      "file": "spec/61-disclosure.md",
+      "line": 138
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -26475,7 +26497,7 @@
       "statement": "A `cohort` model whose permitted grouping columns or non-contributor grain columns name its contributor key or a forbidden column raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 136
+      "line": 140
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -26486,7 +26508,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 138
+      "line": 142
     },
     {
       "id": "disclosure.record.segment",
@@ -38671,6 +38693,10 @@
     [
       "disclosure.bound-cohort.governance-declaration",
       "run.declare.spec-invalid"
+    ],
+    [
+      "disclosure.bound-cohort.derive-individual",
+      "disclosure.bound-cohort.per-individual-row"
     ],
     [
       "disclosure.record.header-unsupported",
@@ -59094,6 +59120,31 @@
         "proved": false
       }
     ],
+    "disclosure.bound-cohort.derive-individual": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/disclosure.rs",
+        "name": "a_derive_over_a_cohort_source_runs_only_under_read_individual",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.bound-cohort.derived-individual": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/disclosure.rs",
+        "name": "a_derive_over_a_cohort_source_runs_only_under_read_individual",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/cohort.rs",
+        "name": "a_derived_output_of_a_cohort_source_answers_only_read_individual",
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.bound-cohort.exact-figures": [
       {
         "kind": "test",
@@ -59131,6 +59182,13 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/cohort.rs",
         "name": "a_cohort_source_table_answers_only_a_grant_holding_read_individual",
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/cohort.rs",
+        "name": "row_and_subscribe_reads_of_a_cohort_source_answer_only_read_individual",
         "verdict": "performed",
         "proved": false
       }

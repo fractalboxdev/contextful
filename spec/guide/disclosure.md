@@ -101,9 +101,10 @@ cohort key resolving to one person fails at declaration
 
 The tables a cohort model's statement reads hold one row per contributor, so a read of
 one fails unless the credential grants `read-individual` over it
-({{disclosure.bound-cohort.per-individual-row}}). A statement grouping the published
-cohort table by fewer than all its group-key columns fails: the coarser groups sum
-figures no release noised ({{disclosure.bound-cohort.cohort-widening}}).
+({{disclosure.bound-cohort.per-individual-row}}). A derive reading one needs it too; its
+output inherits the rule ({{disclosure.bound-cohort.derive-individual}}). A statement
+grouping the published cohort table by fewer than all its group-key columns fails: the
+coarser groups sum figures no release noised ({{disclosure.bound-cohort.cohort-widening}}).
 
 A named query template holds exactly one statement
 ({{disclosure.template.single-statement}}). The offline diagnostic checks every

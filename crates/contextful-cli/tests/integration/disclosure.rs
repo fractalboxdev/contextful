@@ -418,7 +418,7 @@ fn refusal_text(answer: &serde_json::Value) -> String {
 /// A served face over a released `cohort` model: its source table answers only a credential
 /// holding `read-individual` over it, and its published table refuses a grouping coarser
 /// than its released key.
-// spec: disclosure.bound-cohort.per-individual-row@6f9a71eb
+// spec: disclosure.bound-cohort.per-individual-row@b3d08f04
 // spec: disclosure.bound-cohort.cohort-widening@5979fff9
 #[test]
 fn a_served_cohort_model_guards_its_source_rows_and_its_released_key() {
@@ -450,4 +450,81 @@ fn a_served_cohort_model_guards_its_source_rows_and_its_released_key() {
     let answers = credentialed_queries(p, &public, &individual, &statements[..1]);
     let rows = &answers[0]["result"]["structuredContent"]["rows"];
     assert_eq!(rows.as_array().map(Vec::len), Some(6), "{answers:?}");
+}
+
+/// A derive pipeline over the cohort model's source table `revenue`, reading each row's
+/// `industry` as a media file under `media/`.
+const DERIVE: &str = r#"
+[[pipeline]]
+id = "revenue-text"
+tables = [{ name = "passages", primary_key = ["unit_ref", "derivation_key", "cue_seq"] }]
+[pipeline.source]
+name = "derive"
+config = { engine = "reader", source_table = "revenue", media_column = "industry", parent_id_column = "tenant_id" }
+
+[derive.reader]
+driver = "exec"
+media_root = "media"
+[derive.reader.engine]
+command = ["cat", "{input}"]
+output_format = "srt"
+"#;
+
+/// A derive run reading a cohort model's source table refuses at run start, landing nothing,
+/// unless its credential holds `read-individual` over that table; the output it lands then
+/// answers only a reader holding `read-individual` over the output.
+// spec: disclosure.bound-cohort.derive-individual@a3d9fb27
+// spec: disclosure.bound-cohort.derived-individual@6c87283b
+#[test]
+fn a_derive_over_a_cohort_source_runs_only_under_read_individual() {
+    let dir = benchmark(&format!("{}{CAP}{DERIVE}", governed("governance = \"cohort\"")));
+    let p = dir.path();
+    std::fs::create_dir_all(p.join("media")).unwrap();
+    for industry in ["energy", "retail"] {
+        std::fs::write(p.join("media").join(industry), format!("1\n00:00:00,000 --> 00:00:01,000\n{industry} memo.\n\n")).unwrap();
+    }
+    std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUDIENCE}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+    let text = |out: std::process::Output| {
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let public = text(cli(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |extra: &[&str]| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--ttl", "600"];
+        args.extend_from_slice(extra);
+        text(cli(p, &args))
+    };
+    let run = |token: Option<&str>, run_id: &str| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_contextful"));
+        c.current_dir(p).env_remove("CONTEXTFUL_NODE_ID").env_remove("CONTEXTFUL_TOKEN").env("CONTEXTFUL_PEPPER", PEPPER);
+        c.args(["pipeline", "run", "revenue-text", "--project", "benchmark", "--run-id", run_id, "--site-id", "site-a"]);
+        if let Some(token) = token {
+            c.env("CONTEXTFUL_TOKEN", token).args(["--public-key", public.as_str(), "--audience", AUDIENCE]);
+        }
+        c.output().unwrap()
+    };
+    let output = p.join(".contextful/context/benchmark/tables/revenue_text_passages");
+    let refused = |out: std::process::Output| {
+        assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+        assert!(stderr.contains("DisclosurePerIndividualUngranted") && stderr.contains("revenue"), "{stderr}");
+        assert!(!output.exists(), "a refused derive landed output");
+    };
+
+    refused(run(None, "derive-unbound"));
+    let reader = mint(&["--action", "read", "--action", "write", "--table", "revenue", "--table", "revenue_text_passages"]);
+    refused(run(Some(&reader), "derive-read"));
+
+    let individual = mint(&["--action", "read", "--action", "write", "--action", "read-individual", "--table", "revenue", "--table", "revenue_text_passages"]);
+    let out = run(Some(&individual), "derive-individual");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(output.exists(), "the granted derive landed its output");
+
+    let statement = ["SELECT count(*) FROM revenue_text_passages"];
+    let any = mint(&["--table", "*"]);
+    let answers = credentialed_queries(p, &public, &any, &statement);
+    assert!(refusal_text(&answers[0]).contains("DisclosurePerIndividualUngranted"), "{answers:?}");
+    let output_reader = mint(&["--action", "read", "--action", "read-individual", "--table", "revenue_text_passages"]);
+    let answers = credentialed_queries(p, &public, &output_reader, &statement);
+    assert_eq!(answers[0]["result"]["structuredContent"]["rows"], serde_json::json!([["6"]]), "{answers:?}");
 }
