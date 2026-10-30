@@ -223,15 +223,15 @@ Revisit: a source whose tenant spelling varies between batches.
 
 ## sidecar-copies-tenant — A sidecar copies only the tenant, zone and availability instant
 
-Any column copied into a sidecar sits outside the enforced relation. A filter beyond tenant and zone costs oversampling, never exposure.
+Any column copied into a sidecar sits outside the enforced relation. A filter beyond tenant and zone costs a pre-scan of the relation, never exposure.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Tenant, zone and availability instant *(chosen)* | — | A restricted read oversamples; a mask on the availability column leaves its sidecar copy. |
+| Tenant, zone and availability instant *(chosen)* | — | A restricted read pre-scans its relation; a mask on the availability column leaves its sidecar copy. |
 | Any declared filter column | Enforcement | A copied column bypasses masks and row policy on disk and in the bucket. |
 | No copies at all | Recall | A tenant-scoped probe walks other tenants' nodes. |
 
-Revisit: a declared filter whose oversampling misses recall targets.
+Revisit: a declared filter whose pre-scan misses latency targets.
 
 ## validity-interval-row — A validity interval is one row
 

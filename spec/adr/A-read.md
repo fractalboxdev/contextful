@@ -34,9 +34,9 @@ A dashboard issues one statement per panel over one frontier, and each repeat re
 | Key on resolved snapshot ids | Freshness | A run committed before the next fold changes the result under the same ids. |
 | A time to live as the staleness guard | Invalidation by construction | Every commit reads stale until expiry. |
 
-## restricted-sidecar-probe — A restricted sidecar probe doubles for a bounded number of rounds and reports under-fill
+## restricted-sidecar-probe — A probe blind to restriction doubles for a bounded number of rounds and reports under-fill
 
-Rows a reader cannot see can cluster near a query point, so one oversampled probe under-fills the limit. Bounded work comes first, then recall, then an honest count.
+Rows a reader cannot see can rank above its own, so one oversampled probe under-fills the limit. A full-text probe's postings carry no row predicate, and an unfiltered vector probe can name rows its relation no longer yields. Bounded work comes first, then recall, then an honest count.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -45,6 +45,19 @@ Rows a reader cannot see can cluster near a query point, so one oversampled prob
 | Probe until the limit fills | Bounded work | A reader seeing few rows walks the whole graph. |
 
 Revisit: under-fill reported on more than a small share of restricted reads.
+
+## filtered-vector-traversal — A filtered vector probe walks the graph admitting matching rows, and ranks a narrow match exactly
+
+A filter or restriction can hide most of a graph near the query. A pre-scan of the reader's relation under the filter yields the identifiers the probe may return, so enforcement stays in the relation. The walk skips refused nodes as results and still expands their neighbours. An exact probe reads every node's identifier once, while the walk lengthens as the match narrows, so the crossover follows the matching count.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Traversal over pre-scanned identifiers, exact under a matching count *(chosen)* | — | Every filtered probe reads its relation's identifier column once. |
+| Doubling over-fetch | Recall | A selective filter returns short after 4 rounds. |
+| Exact distance for every filter | Latency | A broad filter over a large graph scores every matching row. |
+| Filter columns copied into the sidecar | Enforcement | A copied column bypasses masks and row policy on disk. |
+
+Revisit: a pre-scan exceeding the probe's own cost on a large relation.
 
 ## reciprocal-rank-calibrates — Reciprocal rank calibrates the lexical leg, admitted by the native evaluation
 

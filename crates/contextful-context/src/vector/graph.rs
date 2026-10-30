@@ -599,6 +599,13 @@ impl Layout {
     /// [`Layout::search`] returning only nodes whose availability instant `admits` holds
     /// for; the walk still passes through the others (`read.horizon.rank-statistics`).
     pub fn search_admitting(&self, bytes: &[u8], query: &[f32], k: usize, ef: usize, admits: impl Fn(i64) -> bool) -> Vec<(u32, f32)> {
+        self.search_nodes(bytes, query, k, ef, |n| admits(self.available(bytes, n)))
+    }
+
+    /// [`Layout::search`] returning only nodes `admits` holds for: a refused node still
+    /// expands its neighbours, so the walk crosses it to admitted nodes beyond
+    /// (`read.retrieve.filtered-traversal`).
+    pub fn search_nodes(&self, bytes: &[u8], query: &[f32], k: usize, ef: usize, admits: impl Fn(u32) -> bool) -> Vec<(u32, f32)> {
         if self.count == 0 || k == 0 || query.len() != self.dim {
             return Vec::new();
         }
@@ -609,8 +616,28 @@ impl Layout {
         for layer in (1..=self.max_level).rev() {
             ep = search_layer(&ep, 1, layer, &mut visited, &neighbours, &distance);
         }
-        let admitted = |n: u32| admits(self.available(bytes, n));
-        let found = search_layer_admitting(&ep, ef.max(k), 0, &mut visited, &neighbours, &distance, &admitted);
+        let found = search_layer_admitting(&ep, ef.max(k), 0, &mut visited, &neighbours, &distance, &admits);
         found.into_iter().take(k).map(|s| (s.node, 1.0 - s.dist)).collect()
+    }
+
+    /// The `k` nodes `admits` holds for nearest `query`, by exact distance over every
+    /// admitted node, nearest first (`read.retrieve.filtered-exact-threshold`).
+    pub fn exact_nodes(&self, bytes: &[u8], query: &[f32], k: usize, admits: impl Fn(u32) -> bool) -> Vec<(u32, f32)> {
+        if self.count == 0 || k == 0 || query.len() != self.dim {
+            return Vec::new();
+        }
+        let mut found: BinaryHeap<Scored> = BinaryHeap::with_capacity(k + 1);
+        for n in (0..self.count as u32).filter(|&n| admits(n)) {
+            let s = Scored { dist: self.distance(bytes, query, n), node: n };
+            if found.len() < k {
+                found.push(s);
+            } else if found.peek().is_some_and(|w| s < *w) {
+                found.pop();
+                found.push(s);
+            }
+        }
+        let mut out = found.into_vec();
+        out.sort();
+        out.into_iter().map(|s| (s.node, 1.0 - s.dist)).collect()
     }
 }

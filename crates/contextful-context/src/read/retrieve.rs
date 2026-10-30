@@ -13,7 +13,7 @@ use contextful_core::read::template::{Bindings, Bound};
 use crate::fulltext::{self, FulltextSidecar, SidecarCache};
 use crate::vector::{self, Fallback, VectorSidecar};
 use contextful_core::read::rank::{
-    candidate_window, over_fetch_size, probe_again, fallback_order, OVER_FETCH_ROUNDS, fuse, order, Fusion, token_fallback, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
+    candidate_window, over_fetch_size, probe_again, sidecar_probe_size, fallback_order, OVER_FETCH_ROUNDS, fuse, order, Fusion, token_fallback, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
     Timeframe,
 };
 use contextful_core::read::respond::{Cell, Response};
@@ -430,21 +430,38 @@ impl Face {
             }
             // Each sidecar arm probes, re-joins through the relation and, while the rows the
             // reader can see under-fill the limit behind a full probe, doubles and probes
-            // again (`read.retrieve.adaptive-over-fetch`).
+            // again (`read.retrieve.adaptive-over-fetch`). A vector arm under a filter or
+            // restriction context probes once, admitting only the identifiers its relation
+            // yields under the filter (`read.retrieve.filtered-traversal`).
             if !claims {
                 let bound = available.filter(|_| decl.available_time.is_some());
-                let mut arms: Vec<Box<dyn Fn(u32) -> Result<(String, Vec<String>, u64), Fallback> + '_>> = Vec::new();
+                let mut arms: Vec<(u32, Probe<'_>)> = Vec::new();
                 if let Some(query) = request.query_embedding.as_deref() {
-                    arms.push(Box::new(move |round| self.sidecar_probe(session, table, query, limit, round, bound)));
+                    if predicate.is_some() || restricted(session, table) {
+                        if let Ok(sidecar) = self.vector_sidecar(session, table, query.len()) {
+                            let id_column = sidecar.entry().id_column.clone();
+                            let (sql, matching) = matching_identifiers(&engine, table, &id_column, predicate.as_ref(), deadline)?;
+                            executed.push(sql);
+                            let size = sidecar_probe_size(limit, false);
+                            let k = usize::try_from(size).unwrap_or(usize::MAX);
+                            let probe: Probe<'_> = Box::new(move |_| {
+                                let (found, _) = sidecar.probe_filtered(query, k, bound, &matching)?;
+                                Ok((id_column.clone(), found.into_iter().map(|c| c.id).collect(), size))
+                            });
+                            arms.push((1, probe));
+                        }
+                    } else {
+                        arms.push((OVER_FETCH_ROUNDS, Box::new(move |round| self.sidecar_probe(session, table, query, limit, round, bound))));
+                    }
                 }
                 if super::LEXICAL_BACKEND && fulltext && !tokens.is_empty() {
                     let tokens = &tokens;
-                    arms.push(Box::new(move |round| self.fulltext_probe(session, table, tokens, limit, round, bound)));
+                    arms.push((OVER_FETCH_ROUNDS, Box::new(move |round| self.fulltext_probe(session, table, tokens, limit, round, bound))));
                 }
-                for probe in arms {
+                for (rounds, probe) in arms {
                     let mut rejoined = std::collections::HashSet::new();
                     let mut visible = 0u64;
-                    for round in 0..OVER_FETCH_ROUNDS {
+                    for round in 0..rounds {
                         let Ok((id_column, ids, size)) = probe(round) else { break };
                         let returned = ids.len() as u64;
                         let fresh: Vec<String> = ids.into_iter().filter(|id| rejoined.insert(id.clone())).collect();
@@ -484,7 +501,7 @@ impl Face {
                         }
                         visible += recalled_rows.len() as u64;
                         rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
-                        if !probe_again(visible, limit, returned, size, round) {
+                        if round + 1 >= rounds || !probe_again(visible, limit, returned, size, round) {
                             underfilled |= visible < limit && returned >= size;
                             break;
                         }
@@ -629,23 +646,26 @@ impl Face {
     /// doubles each round (`read.retrieve.adaptive-over-fetch`). Under an availability
     /// `bound` the graph yields only nodes it admits (`read.horizon.rank-statistics`).
     fn sidecar_probe(&self, session: &Session, table: &str, query: &[f32], limit: u64, round: u32, bound: Option<Availability>) -> Result<(String, Vec<String>, u64), Fallback> {
-        let (dir, entry) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len())?;
+        let sidecar = self.vector_sidecar(session, table, query.len())?;
+        let size = over_fetch_size(limit, restricted(session, table), round);
+        let k = usize::try_from(size).unwrap_or(usize::MAX);
+        let ids = sidecar.probe_within(query, k, bound)?.into_iter().map(|c| c.id).collect();
+        Ok((sidecar.entry().id_column.clone(), ids, size))
+    }
+
+    /// The table's current vector sidecar for a query of `dim`, or why the arm takes the
+    /// exact scan: a sidecar keyed on an identifier, or over a vector, the session masks or
+    /// zone-withholds is never opened (`read.retrieve.sidecar-falls-back`).
+    fn vector_sidecar(&self, session: &Session, table: &str, dim: usize) -> Result<VectorSidecar, Fallback> {
+        let (dir, entry) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, dim)?;
         let IndexEntry::Vector(vector) = &entry else { return Err(Fallback::ManifestMismatch) };
-        let id_column = vector.id_column.clone();
-        let policy = session.policy(table);
-        if let Some(p) = policy {
+        if let Some(p) = session.policy(table) {
             let withheld = |c: &str| p.columns.get(c).is_some_and(|c| c.mask.is_some()) || !p.column_set(c).admits(session.zone());
-            if withheld(&id_column) || withheld(EMBEDDING_COLUMN) {
+            if withheld(&vector.id_column) || withheld(EMBEDDING_COLUMN) {
                 return Err(Fallback::Withheld);
             }
         }
-        let sidecar = VectorSidecar::open(&dir, table, &entry, &self.store.sealing())?;
-        let restricted =
-            session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
-        let size = over_fetch_size(limit, restricted, round);
-        let k = usize::try_from(size).unwrap_or(usize::MAX);
-        let ids = sidecar.probe_within(query, k, bound)?.into_iter().map(|c| c.id).collect();
-        Ok((id_column, ids, size))
+        VectorSidecar::open(&dir, table, &entry, &self.store.sealing())
     }
 
     /// The `id_column` and the candidate identifiers the table's current full-text
@@ -672,9 +692,7 @@ impl Face {
     ) -> Result<(String, Vec<String>, u64), Fallback> {
         let (dir, snapshot_id, entries) = fulltext::current_entries(&self.store, table)?;
         let policy = session.policy(table);
-        let restricted =
-            session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
-        let size = over_fetch_size(limit, restricted, round);
+        let size = over_fetch_size(limit, restricted(session, table), round);
         let k = usize::try_from(size).unwrap_or(usize::MAX);
         let (mut id_column, mut first_fallback) = (None, None);
         let mut ids: Vec<String> = Vec::new();
@@ -713,6 +731,34 @@ impl Face {
     pub fn fulltext_cache(&self) -> &SidecarCache<FulltextSidecar> {
         &self.fulltext
     }
+}
+
+/// One sidecar arm's probe of a round: the `id_column`, the candidate identifiers and the
+/// probe size.
+type Probe<'p> = Box<dyn Fn(u32) -> Result<(String, Vec<String>, u64), Fallback> + 'p>;
+
+/// Whether the session carries restriction context on `table`: a tenant scope, a row
+/// policy or a column mask (`read.retrieve.sidecar-oversampling`).
+fn restricted(session: &Session, table: &str) -> bool {
+    session.tenant_scoped() || session.policy(table).is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()))
+}
+
+/// The pre-scan of a filtered vector arm: every non-null `id_column` value the reader's
+/// relation of `table` yields under the caller's filter, with the statement that read them.
+/// Their count picks the probe's plan (`read.retrieve.filtered-exact-threshold`).
+#[allow(clippy::result_large_err)] // every read-path function returns `ReadFault` unboxed
+fn matching_identifiers(
+    engine: &SqlEngine,
+    table: &str,
+    id_column: &str,
+    predicate: Option<&(String, Vec<Bound>)>,
+    deadline: Option<(u64, &'static str)>,
+) -> Result<(String, std::collections::HashSet<String>), ReadFault> {
+    let id = ident(id_column);
+    let (filtered, values) = predicate.map_or((String::new(), Vec::new()), |(sql, v)| (format!(" AND {sql}"), v.clone()));
+    let sql = format!("SELECT DISTINCT CAST({id} AS VARCHAR) FROM {} WHERE {id} IS NOT NULL{filtered}", ident(table));
+    let (_, rows) = engine.run_values_timed(&sql, &Bindings::positional(values), None, deadline)?;
+    Ok((sql, rows.iter().filter_map(|r| r.first().and_then(text_of)).collect()))
 }
 
 /// What one arm's rows are read against.

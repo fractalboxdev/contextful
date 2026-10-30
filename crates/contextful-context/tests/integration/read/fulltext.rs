@@ -156,6 +156,58 @@ fn a_term_on_one_row_behind_10000_newer_rows_returns_for_limit_10() {
     assert!(hit, "{found:?}");
 }
 
+/// `lab/text` under a row policy keyed on `owner`: `p00000`, the oldest row and the reader's
+/// own, holds the term once in a long body; `crowd` rows of another agent hold it twice in
+/// two words and score above it; 300 newer rows of the reader's fill the recency window.
+fn crowded_text_reads(crowd: usize) -> Reads {
+    let manifest = format!("{MANIFEST}{TEXT}[pipeline.tables.policy.rows]\npredicate = \"owner = subject.agent\"\n");
+    let mut r = Reads::with_manifest(&format!("{MANIFEST}{TEXT}"));
+    let rows: Vec<serde_json::Map<String, Value>> = (0..crowd + 301)
+        .map(|i| {
+            let (owner, body) = match i {
+                0 => ("agent://research-loop", "the zephyrine ledger sits among many other ordinary words of a long passage".to_string()),
+                i if i <= crowd => ("agent://other", "zephyrine zephyrine".to_string()),
+                i => ("agent://research-loop", format!("routine passage {i}")),
+            };
+            json!({"passage_id": format!("p{i:05}"), "owner": owner, "body": body}).as_object().unwrap().clone()
+        })
+        .collect();
+    let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == "lab/text").unwrap();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    land(&r.store, &decl, &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
+    fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    r
+}
+
+/// A full-text probe, and a vector probe carrying neither filter nor restriction context, runs at most 4 rounds in
+/// total, doubling its size while readable rows fall below the requested limit. The retrieval block reports any
+/// remaining shortfall.
+// spec: read.retrieve.adaptive-over-fetch@9ceecb22
+#[cfg(feature = "fts")]
+#[test]
+fn an_under_filled_full_text_probe_doubles_until_the_reader_sees_its_rows() {
+    let question = RetrieveRequest { limit: Some(5), ..ask("lab/text", "zephyrine") };
+    // 600 rows the reader cannot see score above its own: the first 256-row probe and the
+    // 512-row second miss `p00000`, the 1024-row third reaches it.
+    let r = crowded_text_reads(600);
+    let s = r.session(&["lab/*"], None, None);
+    let ranked = r.face.retrieve(&s, &question, Bounds::default()).unwrap();
+    assert_eq!(ids(&ranked), ["p00000"], "{:?}", ranked.blocks);
+    assert!(ranked.blocks["contextful.retrieval"].get("underfilled").is_none(), "{:?}", ranked.blocks);
+    // Past 2048 higher-scoring hidden rows the fourth round still sees none of the reader's:
+    // the read answers and names the under-fill.
+    let r = crowded_text_reads(2200);
+    let s = r.session(&["lab/*"], None, None);
+    let ranked = r.face.retrieve(&s, &question, Bounds::default()).unwrap();
+    assert!(ids(&ranked).is_empty(), "{:?}", ids(&ranked));
+    assert_eq!(ranked.blocks["contextful.retrieval"]["underfilled"], json!(true), "{:?}", ranked.blocks);
+}
+
 /// Every failed full-text precondition leaves the window-bound ranking unchanged.
 #[test]
 fn a_read_without_its_full_text_sidecar_ranks_the_window_unchanged() {

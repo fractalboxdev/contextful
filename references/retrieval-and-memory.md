@@ -54,11 +54,11 @@ Predicate-Agnostic Search Over Vector Embeddings and Structured Data." *SIGMOD*,
 
 - **Priority:** optional
 - **Informs:** `read.retrieve`, `store.index`, `assurance.evaluate`
-- **Question:** Does predicate-aware graph traversal replace the doubling over-fetch
-  of `read.retrieve`, at most 4 rounds, under a selective restriction? Predicate
-  subgraph search keeps recall when the filter is selective, where a fixed over-fetch
-  either wastes work or returns short; restricted recall@k against the exact path at
-  three restriction selectivities settles the replacement.
+- **Question:** Do ACORN's predicate-agnostic expanded neighbour lists lower the cost
+  of `read.retrieve.filtered-traversal` under a narrow filter enough to move the
+  crossover `read.retrieve.filtered-exact-threshold` fixes? Filtered recall@10 and
+  probe latency against the exact path, at the matching counts around that crossover,
+  settle the build-time cost.
 
 ## Graph retrieval
 
